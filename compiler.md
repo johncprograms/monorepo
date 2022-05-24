@@ -1,6 +1,13 @@
 # compiler
 An exploration of how to structure a compiler's dataflow.
 
+## source overview
+[src/main_jc2.cpp](src/main_jc2.cpp) -- All the code lives here.
+There's some older code in src/c_* files, but none of those are used in this newer compiler.
+I was experimenting with a single-sourcefile project here, so all the non-shared code is really dumped into src/main_jc2.cpp.
+It wasn't that bad of an experience; the main thing I found lacking was support for multiple views of the same file in my editor.
+It's ~8,500 LOC in the one sourcefile, which is really not that bad as a single file. Definitely workable, doesn't really affect much.
+
 ## background
 
 This was a project solely for me to learn about how a compiler can work from first principles. It's not targeted at any specific pre-existing language; it's a mishmash of very simple language ideas that meets some minimum bar of complexity to make this a challenge.

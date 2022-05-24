@@ -1,6 +1,12 @@
 # text_editor
 My personal text editor. It's a modal editor I wrote to avoid wrist problems, so it's not beginner-friendly. None of the keybinds make sense, except to me. So don't try to use it. But hey, you might find some interesting code in there.
 
+# source overview
+- [src/main_te.cpp](src/main_te.cpp) -- entry point and app-level code.
+- [src/ui_buf2.h](src/src/ui_buf2.h) -- the fundamental text buffer storage datastructures.
+- [src/ui_txt2.h](src/ui_txt2.h) -- the code and data required to expose all the usual text editing commanding features for editing one buffer.
+- [src/ui_edit2.h](src/ui_edit2.h) -- the code and data implementing the multi-modal application model I chose for this editor. Multiple text editors you can switch between, search-oriented file explorer to open new files, file content search / replace, etc.
+
 # credits
 * Sean Barrett for https://github.com/nothings/stb/blob/master/stb_truetype.h, which is included in the repo, or at least on old version of it.
 * Myself, of course! :D

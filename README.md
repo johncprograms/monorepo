@@ -17,11 +17,12 @@ Right now the source files are all organized flat under src/ with various prefix
 
 # projects
 
-- [builder](builder.md) -- main_build.cpp -- The program that builds the rest of these projects.
-- graph -- main_graph.cpp -- A terrible, experimental graph plotter, so I can write ad-hoc visualizations.
-- [text_editor](text_editor.md) -- main_te.cpp -- The fully-featured text editor that I wrote according to my tastes, which I use every day for all my programming.
-- [grid](grid.md) -- main_grid.cpp -- An experimental csv viewer/editor that allows linking between elements.
-- [compiler](compiler.md) -- main_jc2.cpp -- The latest experimental compiler I wrote, for a toy statically-typed language.
-- [rt](rt.md) -- main_rt.cpp -- Experimental rendering code, containing rasterization algorithms, ray-tracing algorithms, and more.
-- sudoku -- main_su.cpp -- Old, experimental sudoku app.
-- trailspace -- main_trailspace.cpp -- Old command-line program to remove trailing whitespace from text files. Not very useful anymore now that the text editor does that in one command.
+- [builder](builder.md) -- The program that builds the rest of these projects.
+- [graph](src/main_graph.cpp) -- A terrible, experimental graph plotter, so I can write ad-hoc visualizations.
+- [text_editor](text_editor.md) -- The fully-featured text editor that I wrote according to my tastes, which I use every day for all my programming.
+- [grid](src/main_grid.cpp) -- An experimental csv viewer/editor that allows linking between elements.
+- [compiler](compiler.md) -- The latest experimental compiler I wrote, for a toy statically-typed language.
+- [rt](rt.md) -- Experimental rendering code, containing rasterization algorithms, ray-tracing algorithms, and more.
+- [sudoku](src/main_su.cpp) -- Old, experimental sudoku app.
+
+There's some other smaller projects not really worth mentioning, because they're so small as to be trivial.

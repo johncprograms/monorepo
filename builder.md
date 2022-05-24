@@ -1,4 +1,7 @@
 # builder
+
+[src/main_build.cpp](src/main_build.cpp)
+
 My .bat files to invoke compilation/linking/etc were growing out of control, so I consolidated all the logic into one .exe
 
 One of the core ideas here was to bake the config into the source code itself, so all I have to do to invoke a build is run the tiniest of build scripts, b.bat. What this means is, I've defined a comment line of code syntax that has to be present as the first line of code in the uber sourcefile we're building. There's different configurations of what you can set that line to, but the basic idea is to have this build tool load up the primary sourcefile, read the first line, and use the given config. I can definitely do a better job here, this is the bare minimum. But I don't really need more than that right now.
