@@ -13,4 +13,8 @@
 *.manifest
 *.res
 *.rc
-.vs/
+.vs
+Debug
+github
+te_logs
+exe\te_logs

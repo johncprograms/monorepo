@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <Type Name="diff_t">
+    <DisplayString>{{ {len} {mem,[len]s8} }}</DisplayString>
+  </Type>
+  <Type Name="string_t">
+    <DisplayString>{{ {len} {mem,[len]s8} }}</DisplayString>
+  </Type>
+  <Type Name="symbol_t">
+    <DisplayString>{{ {len} {name,[len]s8} }}</DisplayString>
+  </Type>
+  <Type Name="absoluterect_t">
+    <DisplayString>({p0.x},{p0.y}) ({p1.x},{p1.y})</DisplayString>
+  </Type>
+  <Type Name="array_t&lt;unsigned char&gt;">
+    <DisplayString>{{ {len} / {capacity} {mem,[len]s8} }}</DisplayString>
+  </Type>
+  <Type Name="array32_t&lt;unsigned char&gt;">
+    <DisplayString>{{ {len} / {capacity} {mem,[len]s8} }}</DisplayString>
+  </Type>
+  <Type Name="tslice_t&lt;unsigned char&gt;">
+    <DisplayString>{{ {len} {mem,[len]s8} }}</DisplayString>
+  </Type>
+  <Type Name="tslice32_t&lt;unsigned char&gt;">
+    <DisplayString>{{ {len} {mem,[len]s8} }}</DisplayString>
+  </Type>
+  <Type Name="tstring_t&lt;unsigned char&gt;">
+    <DisplayString>{{ {len} {mem,[len]s8} }}</DisplayString>
+  </Type>
+  <Type Name="token_t">
+    <DisplayString>{{ {type} {mem,[len]s8} }}</DisplayString>
+  </Type>
+  <Type Name="array_t&lt;*&gt;">
+    <DisplayString>{{ {len} / {capacity} }}</DisplayString>
+    <Expand>
+      <ArrayItems>
+        <Size>len</Size>
+        <ValuePointer>mem</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+  <Type Name="array32_t&lt;*&gt;">
+    <DisplayString>{{ {len} / {capacity} }}</DisplayString>
+    <Expand>
+      <ArrayItems>
+        <Size>len</Size>
+        <ValuePointer>mem</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+  <Type Name="tslice_t&lt;*&gt;">
+    <DisplayString>{{ len={len} }}</DisplayString>
+    <Expand>
+      <ArrayItems>
+        <Size>len</Size>
+        <ValuePointer>mem</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+  <Type Name="tslice32_t&lt;*&gt;">
+    <DisplayString>{{ len={len} }}</DisplayString>
+    <Expand>
+      <ArrayItems>
+        <Size>len</Size>
+        <ValuePointer>mem</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+  <Type Name="tstring_t&lt;*&gt;">
+    <DisplayString>{{ len={len} }}</DisplayString>
+    <Expand>
+      <ArrayItems>
+        <Size>len</Size>
+        <ValuePointer>mem</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+  <Type Name="pagearray_elem_t&lt;*&gt;">
+    <DisplayString>{{ {len} / {capacity} }}</DisplayString>
+    <Expand>
+      <Item Name="prev">prev</Item>
+      <Item Name="next">next</Item>
+      <ArrayItems>
+        <Size>len</Size>
+        <ValuePointer>mem</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+  <Type Name="queue_srsw_t&lt;*&gt;">
+    <DisplayString>{{ rd={pos_rd} wr={pos_wr} }}</DisplayString>
+    <Expand>
+      <ArrayItems>
+        <Size>capacity</Size>
+        <ValuePointer>($T1*)mem</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+  <Type Name="list_t&lt;*&gt;">
+    <DisplayString>{{ len={len} }}</DisplayString>
+    <Expand>
+      <LinkedListItems>
+        <Size>len</Size>
+        <HeadPointer>first</HeadPointer>
+        <NextPointer>next</NextPointer>
+        <ValueNode>value</ValueNode>
+      </LinkedListItems>
+    </Expand>
+  </Type>
+
+</AutoVisualizer>
