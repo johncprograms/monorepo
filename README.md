@@ -11,6 +11,8 @@ This is a Git copy of the monorepo I use for various projects and experiments. T
 - [compiler](compiler.md) -- The latest experimental compiler I wrote, for a toy statically-typed language.
 - [rt](rt.md) -- Experimental rendering code, containing rasterization algorithms, ray-tracing algorithms, and more.
 - [sudoku](src/main_su.cpp) -- Old, experimental sudoku app.
+- [th](src/main_th.cpp) -- Multithreading test harness to test out the lock-free datastructures in [src/threading.h](src/threading.h)
+- [test](src/main_test.cpp) -- The primary test program, which calls out to all the test code living alongside the product code. The level of testing is commensurate with the production quality of the individual pieces of code; so some is more experimental than others. Which is to say, not really enough test code, except for some of the core text editor code.
 
 There's some other smaller projects not really worth mentioning, because they're so small as to be trivial.
 
