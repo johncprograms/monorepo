@@ -11,10 +11,9 @@
 // we'd have to be smarter about reserving space than this simple slice can support.
 //
 
-// TODO: iterative version. tail recursion, so should be easy.
 template< typename ExtIndex, typename IntIndex, typename Data >
 Inl void
-_MinHeapifyDownRecursive(
+_MinHeapifyDown(
   ExtIndex* external_from_internal,
   IntIndex* internal_from_external,
   Data* data,
@@ -22,39 +21,41 @@ _MinHeapifyDownRecursive(
   IntIndex int_index
   )
 {
-  // swap with the smaller of our two children to maintain the heap invariant.
-  // then recurse if necessary.
-  auto int_left = 2 * int_index + 1;
-  auto int_rght = 2 * int_index + 2;
-  auto int_smallest = int_index;
-  if( int_left < len ) {
-    auto ext_left = external_from_internal[ int_left ];
-    auto ext_smallest = external_from_internal[ int_smallest ];
-    if( data[ ext_left ] < data[ ext_smallest ] ) {
-      int_smallest = int_left;
+  Forever {
+    // swap with the smaller of our two children to maintain the heap invariant.
+    // then recurse if necessary.
+    auto int_left = 2 * int_index + 1;
+    auto int_rght = 2 * int_index + 2;
+    auto int_smallest = int_index;
+    if( int_left < len ) {
+      auto ext_left = external_from_internal[ int_left ];
+      auto ext_smallest = external_from_internal[ int_smallest ];
+      if( data[ ext_left ] < data[ ext_smallest ] ) {
+        int_smallest = int_left;
+      }
     }
-  }
-  if( int_rght < len ) {
-    auto ext_rght = external_from_internal[ int_rght ];
-    auto ext_smallest = external_from_internal[ int_smallest ];
-    if( data[ ext_rght ] < data[ ext_smallest ] ) {
-      int_smallest = int_rght;
+    if( int_rght < len ) {
+      auto ext_rght = external_from_internal[ int_rght ];
+      auto ext_smallest = external_from_internal[ int_smallest ];
+      if( data[ ext_rght ] < data[ ext_smallest ] ) {
+        int_smallest = int_rght;
+      }
     }
-  }
-  // TODO: could eliminate this conditional with inlining above.
-  if( int_smallest != int_index ) {
-    auto ext_index = external_from_internal[ int_index ];
-    auto ext_smallest = external_from_internal[ int_smallest ];
-    SWAP( IntIndex, internal_from_external[ ext_index ], internal_from_external[ ext_smallest ] );
-    SWAP( ExtIndex, external_from_internal[ int_index ], external_from_internal[ int_smallest ] );
-    _MinHeapifyDownRecursive( external_from_internal, internal_from_external, data, len, int_smallest );
+    if( int_smallest != int_index ) {
+      auto ext_index = external_from_internal[ int_index ];
+      auto ext_smallest = external_from_internal[ int_smallest ];
+      SWAP( IntIndex, internal_from_external[ ext_index ], internal_from_external[ ext_smallest ] );
+      SWAP( ExtIndex, external_from_internal[ int_index ], external_from_internal[ int_smallest ] );
+      int_index = int_smallest;
+      continue;
+    }
+    return;
   }
 }
 
-// TODO: iterative version. tail recursion, so should be easy.
 template< typename ExtIndex, typename IntIndex, typename Data >
 Inl void
-_MinHeapifyUpRecursive(
+_MinHeapifyUp(
   ExtIndex* external_from_internal,
   IntIndex* internal_from_external,
   Data* data,
@@ -62,14 +63,18 @@ _MinHeapifyUpRecursive(
   IntIndex int_index
   )
 {
-  if( !int_index ) return;
-  auto ext_index = external_from_internal[ int_index ];
-  auto int_parent = ( int_index - 1 ) / 2;
-  auto ext_parent = external_from_internal[ int_parent ];
-  if( data[ ext_index ] < data[ ext_parent ] ) {
-    SWAP( IntIndex, internal_from_external[ ext_index ], internal_from_external[ ext_parent ] );
-    SWAP( ExtIndex, external_from_internal[ int_index ], external_from_internal[ int_parent ] );
-    _MinHeapifyUpRecursive( external_from_internal, internal_from_external, data, len, int_parent );
+  Forever {
+    if( !int_index ) return;
+    auto ext_index = external_from_internal[ int_index ];
+    auto int_parent = ( int_index - 1 ) / 2;
+    auto ext_parent = external_from_internal[ int_parent ];
+    if( data[ ext_index ] < data[ ext_parent ] ) {
+      SWAP( IntIndex, internal_from_external[ ext_index ], internal_from_external[ ext_parent ] );
+      SWAP( ExtIndex, external_from_internal[ int_index ], external_from_internal[ int_parent ] );
+      int_index = int_parent;
+      continue;
+    }
+    return;
   }
 }
 
@@ -92,12 +97,12 @@ MinHeapDecreasedKey(
   if( !int_index ) return;
   SWAP( ExtIndex, external_from_internal[ int_top ], external_from_internal[ int_index ] );
   SWAP( IntIndex, internal_from_external[ ext_top ], internal_from_external[ ext_index ] );
-  _MinHeapifyDownRecursive( external_from_internal, internal_from_external, data, len, Cast( IntIndex, 0 ) );
+  _MinHeapifyDown( external_from_internal, internal_from_external, data, len, Cast( IntIndex, 0 ) );
 #else
   // this is the bane of our existence, here: mapping from ext_index to int_index.
   // this is the only real spot where we need this, to support decrease-key.
   auto int_index = internal_from_external[ ext_index ];
-  _MinHeapifyUpRecursive( external_from_internal, internal_from_external, data, len, int_index );
+  _MinHeapifyUp( external_from_internal, internal_from_external, data, len, int_index );
 #endif
 }
 
@@ -113,7 +118,7 @@ InitMinHeapInPlace(
 {
   auto one_past_last_idx = Cast( IntIndex, len / 2 );
   ReverseFori( IntIndex, i, 0, one_past_last_idx ) {
-    _MinHeapifyDownRecursive( external_from_internal, internal_from_external, data, len, i );
+    _MinHeapifyDown( external_from_internal, internal_from_external, data, len, i );
   }
 }
 
@@ -140,7 +145,7 @@ MinHeapExtract(
   auto ext_last = external_from_internal[ len ];
   external_from_internal[0] = ext_last;
   internal_from_external[ext_last] = 0;
-  _MinHeapifyDownRecursive( external_from_internal, internal_from_external, data, len, Cast( IntIndex, 0 ) );
+  _MinHeapifyDown( external_from_internal, internal_from_external, data, len, Cast( IntIndex, 0 ) );
 }
 
 Inl void

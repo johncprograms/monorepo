@@ -139,6 +139,9 @@ typedef double   f64;
 #define MIN_f32   ( -3.402823466e+38F )
 #define MAX_f32   (  3.402823466e+38F )
 
+#define MAX_INT_REPRESENTABLE_IN_f32 ( 1u << 24 )
+#define MAX_INT_REPRESENTABLE_IN_f64 ( 1ull << 53 )
+
 #define MIN_f64   ( -1.7976931348623158e+308 )
 #define MAX_f64   (  1.7976931348623158e+308 )
 
@@ -171,6 +174,9 @@ typedef double   f64;
   #define _lzcnt_idx_t \
     _lzcnt_u64
 
+  #define _popcnt_idx_t( x ) \
+    Cast( u32, _popcnt64( x ) )
+
   #define _BitScanForward_idx_t( a, b ) \
     _BitScanForward64( Cast( unsigned long*, ( a ) ), b )
 
@@ -202,6 +208,9 @@ typedef double   f64;
 
   #define _lzcnt_idx_t \
     _lzcnt_u32
+
+  #define _popcnt_idx_t( x ) \
+    Cast( u32, _popcnt32( x ) )
 
   #define _BitScanForward_idx_t( a, b ) \
     _BitScanForward( Cast( unsigned long*, ( a ) ), b )
@@ -323,6 +332,7 @@ u8 _addcarry_u32( u8 c_in, u32 a, u32 b, u32* out );
 u64 _lzcnt_u64( u64 a );
 u32 _lzcnt_u32( u32 a );
 s32 _popcnt64( s64 a );
+s32 _popcnt32( s32 a );
 
 
 // this should be defined to a "yy.mm.dd.hh.mm.ss" datetime string by the build system.

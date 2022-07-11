@@ -1220,6 +1220,55 @@ ShortestPathDijkstraMinHeap(
   }
 }
 
+
+
+void
+MinimumSpanningTreePrim(
+  n_t N,
+  e_t E,
+  e_t* outoffsets, // length N
+  e_t* outdegrees, // length N
+  n_t* outnodes, // length E
+  f32* outedge_weights, // length E, same indexing as outnodes.
+  n_t start_node,
+  n_t* buffer, // length N
+  n_t* buffer2, // length N
+  f32* min_cost_from_node, // length N
+  n_t* previous_node_in_min_spanning_tree, // length N
+  u64* bits_visited // bitarray of length N
+  )
+{
+  auto minheap_ext_from_int = buffer;
+  auto minheap_int_from_ext = buffer2;
+  idx_t minheap_len = N;
+  Fori( n_t, u, 0, N ) {
+    min_cost_from_node[u] = MAX_f32; // TODO: use INF ?
+    previous_node_in_min_spanning_tree[u] = MAX_n_t;
+    minheap_ext_from_int[u] = u;
+    minheap_int_from_ext[u] = u;
+  }
+  // note no need to initialize the minheap; the costs are all identical at the start.
+  while( minheap_len ) {
+    n_t u;
+    MinHeapExtract( minheap_ext_from_int, minheap_int_from_ext, min_cost_from_node, &minheap_len, &u );
+    SETBIT( bits_visited, u );
+
+    auto outdegree = outdegrees[ u ];
+    auto outoffset = outoffsets[ u ];
+    Fori( e_t, e, 0, outdegree ) {
+      auto v = outnodes[ outoffset + e ];
+      auto visited = GETBIT( bits_visited, v );
+      if( visited ) continue;
+      auto edge_weight = outedge_weights[ outoffset + e ];
+      if( edge_weight < min_cost_from_node[v] ) {
+        min_cost_from_node[v] = edge_weight;
+        previous_node_in_min_spanning_tree[v] = u;
+        MinHeapDecreasedKey( minheap_ext_from_int, minheap_int_from_ext, min_cost_from_node, minheap_len, v );
+      }
+    }
+  }
+}
+
 //
 // takes time: O( N E )
 //
@@ -1560,6 +1609,8 @@ RecoverShortestPathFloydWarshall(
   }
 }
 
+
+
 //
 // These assume your node values are in [0, N)
 //
@@ -1856,6 +1907,15 @@ TestGraph()
     n_t found_len;
 
     CompileAssert( sizeof( bits_visited ) == Bitbuffer64Len( N ) * sizeof( bits_visited[0] ) );
+
+    // test some min spanning tree functions
+    {
+      Arrayzero( bits_visited );
+      f32 min_cost_from_node[N];
+      n_t previous_node_in_min_spanning_tree[N];
+      MinimumSpanningTreePrim( N, E, outoffsets, outdegrees, outnodes, outedge_weights, 0, buffer, buffer2, min_cost_from_node, previous_node_in_min_spanning_tree, bits_visited );
+      int k = 0;
+    }
 
     // test some DFS functions
     {

@@ -1,5 +1,8 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
+// simple dynamic array, which always has a power of 2 capacity.
+// this means we can elide the usual capacity field, and instead just round up the length field.
+// the theory being, smaller stack size is sometimes worth the computation cost of reconstructing capacity.
 
 // meant to hold elements which are uniform in size.
 Templ struct

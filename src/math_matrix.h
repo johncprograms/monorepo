@@ -1,6 +1,5 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-
 Templ
 struct mat4x4r
 {

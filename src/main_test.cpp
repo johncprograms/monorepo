@@ -28,6 +28,7 @@ LogUI( void* cstr ... )
 #include "rand.h"
 #include "ds_minheap_extractable.h"
 #include "ds_minheap_decreaseable.h"
+#include "ds_minheap_generic.h"
 #include "ds_queue.h"
 #include "ds_fsalloc.h"
 #include "cstr.h"
@@ -43,6 +44,7 @@ LogUI( void* cstr ... )
 #include "ds_btree.h"
 #include "main.h"
 #include "simplex.h"
+#include "ds_huffman.h"
 
 #include "ds_idx_hashset.h"
 
@@ -1482,6 +1484,201 @@ Insert(
 
 
 
+
+#if 0
+
+bitarray = 0100 0011
+conceptual_array = { 0, 1, 2, 3, 4, 5, 6, 7 }
+array = { 0, 1, 6 }
+array_len = popcount( bitarray )
+say we want conceptual index 6, which should come back as 2 in this case.
+     bitarray = 0100 0011
+            6 = 0000 0110
+       1 << 6 = 0100 0000
+which is a power of two by definition.
+so we can subtract one to get the mask of the bits to the right.
+ (1 << 6) - 1 = 0011 1111
+then if we AND that with bitarray, we can then count the number of bits to the right.
+array_idx_from_conceptual_idx(ci) = popcount( ( ( 1 << ci ) - 1 ) & bitarray )
+
+what about the inverse mapping?
+given array index 2, we should return conceptual index 6 in this case.
+     bitarray = 0100 0011
+       ai = 2 = 0000 0010
+we could use a loop and lzcnt to iterate to find the 2'th bit that's set.
+or if the 2'th bit is closer to the end, we could do the reverse loop. Taking us to O(W/2).
+i think that's the best we could do, unless we start storing an extra table so we get O(1) access.
+e.g.
+  idx_t ci_from_ai[] = { 0, 1, 6 }.
+then we just have a simple table lookup:
+conceptual_idx_from_array_idx(ai) = ci_from_ai[ai]
+
+// fixed length array
+//
+struct
+sparse_array_t
+{
+  u64 bitarray;
+  idx_t len;
+//  idx_t* conceptual_index_from_array_index; // length len
+  T* elems; // length len
+};
+Inl void
+Alloc( sparse_array_t* a, u64 bitarray )
+{
+  auto len = _popcnt_idx_t( bitarray );
+  a->len = len;
+  a->bitarray = bitarray;
+//  a->conceptual_index_from_array_index = MemHeapAlloc( idx_t, len );
+  a->elems = MemHeapAlloc( T, len );
+}
+Inl void
+Free( sparse_array_t* a )
+{
+  MemHeapFree( a->elems );
+//  MemHeapFree( a->conceptual_index_from_array_index );
+}
+Inl T*
+Element( sparse_array_t* a, idx_t conceptual_index )
+{
+  auto bitarray = a->bitarray;
+  auto elems = a->elems;
+  auto array_index = _popcnt_idx_t( ( ( 1 << conceptual_index ) - 1 ) & bitarray );
+  AssertCrash( array_index < 64 );
+  auto result = elems + array_index;
+  return result;
+}
+
+#endif
+
+
+
+#if 0
+
+// compressed sparse row format
+struct
+sparse_array2d_t
+{
+  idx_t dim_x;
+  idx_t dim_y;
+  idx_t nonzero_len;
+  T* nonzero_data; // array of length nonzero_len
+  idx_t* col_idxs; // array of length nonzero_len
+  idx_t* row_starts; // array of length ( dim_x + 1 )
+};
+Inl T
+ElementValue( sparse_array2d_t* a, idx_t x, idx_t y )
+{
+  auto dim_x = a->dim_x;
+  auto dim_y = a->dim_y;
+  auto row_starts = a->row_starts;
+  AssertCrash( x < dim_x );
+  AssertCrash( y < dim_y );
+  auto row_start = row_starts[ y ];
+  auto row_end = row_starts[ y + 1 ];
+  auto col_start = col_idxs + row_start;
+  auto col_len = row_end - row_start;
+  // assume the column indices are sorted, within each row.
+  idx_t sorted_insert_idx;
+  BinarySearch( col_start, col_len, x, &sorted_insert_idx );
+  if( sorted_insert_idx == col_len || col_start[sorted_insert_idx] != x ) {
+    // x not found in the sorted list of column indices.
+    return T{};
+  }
+  return nonzero_data[ row_start + sorted_insert_idx ];
+}
+
+
+#endif
+
+
+#if 1
+
+Templ void
+RunLengthEncode(
+  T* input, // array of length input_len
+  idx_t input_len,
+  T* output_rundata, // array of length output_len
+  idx_t* output_runlengths, // array of length output_len
+  idx_t* output_len_
+  )
+{
+  idx_t output_len = 0;
+  Fori( idx_t, i, 0, input_len ) {
+    auto input_i = input[i];
+    idx_t j = i + 1;
+    for( ; j < input_len; ++j ) {
+      auto input_j = input[j];
+      if( input_i != input_j ) break;
+    }
+    output_rundata[ output_len ] = input_i;
+    output_runlengths[ output_len ] = j - i;
+    output_len += 1;
+    i = j - 1;
+  }
+  *output_len_ = output_len;
+}
+
+Templ void
+RunLengthDecode(
+  T* input_rundata, // array of length input_len
+  idx_t* input_runlengths, // array of length input_len
+  idx_t input_len,
+  T* output, // array of length output_len
+  idx_t* output_len_
+  )
+{
+  idx_t output_len = 0;
+  For( i, 0, input_len ) {
+    auto rundata = input_rundata[i];
+    auto runlength = input_runlengths[i];
+    For( j, 0, runlength ) {
+      output[ output_len + j ] = rundata;
+    }
+    output_len += runlength;
+  }
+  *output_len_ = output_len;
+}
+
+static void
+TestRLE()
+{
+  constant idx_t N = 50;
+  u8 input[N];
+  u8 encoded_rundata[N];
+  idx_t encoded_runlengths[N];
+  u8 decoded[N];
+
+  rng_xorshift32_t rng;
+  Init( rng, 0x1234567812345678ULL );
+
+  constant idx_t num_sequences = 1000;
+  For( seq, 0, num_sequences ) {
+
+    For( i, 0, N ) {
+      input[i] = Rand32( rng ) % 4;
+    }
+    Arrayzero( encoded_rundata );
+    Arrayzero( encoded_runlengths );
+    Arrayzero( decoded );
+
+    idx_t encoded_len;
+    RunLengthEncode( AL( input ), encoded_rundata, encoded_runlengths, &encoded_len );
+
+    idx_t decoded_len;
+    RunLengthDecode( encoded_rundata, encoded_runlengths, encoded_len, decoded, &decoded_len );
+    AssertCrash( decoded_len == N );
+    For( i, 0, N ) {
+      auto input_i = input[i];
+      auto decoded_i = decoded[i];
+      AssertCrash( input_i == decoded_i );
+    }
+  }
+}
+
+#endif
+
+
 int
 Main( u8* cmdline, idx_t cmdline_len )
 {
@@ -1512,6 +1709,9 @@ Main( u8* cmdline, idx_t cmdline_len )
   TestExecute();
   TestGraph();
   TestMinHeap();
+  TestMinHeapGeneric();
+  TestRLE();
+  TestHuffman();
   TestBtree();
   TestFsalloc();
 
@@ -1554,6 +1754,423 @@ main( int argc, char** argv )
 
 
 #if 0
+
+set cover problem:
+given a set of multisets,
+construct the smallest set of elements of the multisets, s.t. every input set has at least one element represented.
+for example,
+given
+  { { 0, 0, 0 }, { 1, 1, 1 }, { 0, 2, 3 } }
+we should construct
+  { 0, 1 }
+since 0 is covering the first and third input sets, and 1 is covering the second input set.
+we can't use fewer elements than two.
+
+struct
+element_count_t
+{
+  int element;
+  unordered_set<size_t> multisets_covered;
+};
+bool CompareCount(const element_count_t& a, const element_count_t& b)
+{
+  return a.multisets_covered.size() < b.multisets_covered.size();
+}
+
+unordered_set<int>
+SetCovering(
+  unordered_multiset<int>* multisets,
+  size_t N)
+{
+  // So we could insert all possible elements into result, and then remove redundant ones.
+  // Or we could build up result through set unions / intersections / etc.
+  // So my set intersection idea is:
+  // Construct the set of elements for each multiset. Call these elements_i.
+  // Look for elements_i which are entirely subsumed by another elements_j, for i != j. Ignore these elements_i.
+  //   This would eliminate the redundant input multisets from consideration.
+  // Then we still have redundant elements to deal with, i.e. elements that appear in multiple elements_i.
+  // We could pick the elements that appear in the largest number of elements_i, which would then eliminate
+  //   those elements_i from future consideration.
+  // So going by sorted frequency, that'd give us some benefit. Not optimal, but probably good.
+
+  // And actually the elements_i subsuming test is entirely orthogonal here, so I'll leave that out.
+  // We can always add that later I think.
+
+  unordered_map<int, unordered_set<size_t>> element_counts;
+  for (size_t i = 0; i < N; ++i) {
+    const auto& multiset = multisets[i];
+    for (int element : multiset) {
+      auto iter = find(begin(element_counts), end(element_counts), element);
+      if (iter == end(element_counts)) {
+        element_counts[element] = unordered_set<size_t>{i};
+      }
+      else {
+        iter->second.insert(i);
+        element_counts[element] = iter->second;
+      }
+    }
+  }
+
+  vector<element_count_t> sorted_element_counts;
+  sorted_element_counts.reserve(element_counts.size());
+  for (const auto& iter : element_counts) {
+    sorted_element_counts.emplace_back(iter->first, move(iter->second));
+  }
+  sort(begin(sorted_element_counts), end(sorted_element_counts), CompareCount);
+
+  unordered_set<int> result;
+
+  unordered_set<size_t> covered_multisets;
+  for (const auto& element_count : sorted_element_counts) {
+
+    // This element could be redundant due to previous iterations of this loop!
+    // So we need to check if it's redundant.
+    // Or, we need to remove future-iteration elements when choosing this one as a covering element.
+
+    int element = element_count.element;
+    bool redundant = true;
+    for (size_t covered_multiset : element_count.multisets_covered) {
+      if (!covered_multisets.contains(covered_multiset)) {
+        redundant = false;
+        break;
+      }
+    }
+    if (redundant) {
+      continue;
+    }
+    // Now we know this element covers a multiset we haven't yet covered.
+    // So, use this element as a covering element.
+
+    result.insert(element);
+    for (size_t covered_multiset : element_count.multisets_covered) {
+      covered_multisets.insert(covered_multiset);
+    }
+  }
+
+  return result;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+bin packing problem:
+given a set of items with sizes, a bin capacity C, and a number of sets S,
+find a disjoint partition of the set of items s.t. each set partition has total size less than C.
+E.g.
+set of items are simple uints: { 0, 1, 2, ..., N-1 }.
+struct partition_t
+{
+  unordered_set<size_t> contained;
+  int size = 0;
+};
+// Returns true if we constructed a valid packing.
+// Note that since we're not doing optimal packing, this may be false in cases where we could have actually packed.
+bool
+BinPacking(
+  int* sizes, // array of length N
+  size_t N,
+  int C,
+  partition_t* partitions, // array of length S
+  size_t S)
+{
+  // A naive solution is something like:
+  for (size_t i = 0; i < N; ++i) {
+    auto item_size = sizes[i];
+    // Decide where to pack item i into.
+    // Let's just say we pack it into the first partition that has room:
+    bool packed = false;
+    for (size_t s = 0; s < S; ++s) {
+      auto partition = partitions + s;
+      bool partition_has_room = C - partition->size >= item_size;
+      if (partition_has_room) {
+        partition->contained.insert(i);
+        partition->size += item_size;
+        assert(partition->size <= C);
+        packed = true;
+      }
+    }
+    if (!packed) {
+      return false;
+    }
+  }
+  return true;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+knapsack problem:
+given a catalogue of items with given weight and price, and a maximum weight capacity of your knapsack,
+pick the number of each item to steal which maximize price and fit in your knapsack.
+simplified: just return the maximum price.
+
+struct
+item_t
+{
+  int weight; // assume non-negative
+  int price; // assume non-negative
+};
+
+// The greedy algorithm is to compute ratio = price / weight, and then pick items in ratio order as they fit.
+// That's not going to be optimal for huge ratio differences, where we really want something in between.
+// This will only really be a problem when the knapsack is mostly-full.
+
+// The full exponential search will be optimal, although potentially extremely slow.
+
+int MaxValue(
+  item_t* items, // array of length N, containing initialized item_t objects
+  size_t N,
+  int capacity) // capacity of the knapsack.
+{
+  assert(capacity > 0);
+
+  int max_value = INT_MIN;
+  for (size_t i = 0; i < N; ++i) {
+    // if we pick items[i], then we have less capacity for other things.
+    auto weight_i = items[i].weight;
+    auto value_i = items[i].price;
+    if (weight_i > capacity) {
+      // wouldn't fit in the knapsack anymore.
+      continue;
+    }
+    auto capacity_after_i = capacity - weight_i;
+    auto value = value_i;
+    if (capacity_after_i) {
+      // Only look for more things if we have remaining capacity.
+      // This slightly saves on function call overhead
+      value += MaxValue(items, N, capacity_after_i);
+    }
+    if (value > max_value) {
+      max_value = value;
+    }
+  }
+  if (max_value == INT_MIN) {
+    return 0;
+  }
+  return max_value;
+}
+
+// Note we could turn this into a dynamic programming memoizing solution, by solving
+// for all possible capacity values. That's potentially silly if capacity is huge, but it'd be a bound.
+// The idea being:
+// Memoize MaxValue(capacity)
+// We know that MaxValue(c) = max over i of ( value_i + MaxValue(c - weight_i) )
+// And MaxValue(0) = 0 by convention.
+// So we could build up from capacity=0 up to whatever capacity we want:
+
+MaxValue[0] = 0;
+for (size_t capacity = 1; capacity <= target_capacity; ++capacity) {
+  int max_value = INT_MIN;
+  for (size_t i = 0; i < N; ++i) {
+    auto value_i = items[i].price;
+    auto weight_i = items[i].weight;
+    if (weight_i > capacity) {
+      // doesn't fit.
+      continue;
+    }
+    auto value = value_i + MaxValue[capacity - weight_i];
+    if (value > max_value) {
+      max_value = value;
+    }
+  }
+  MaxValue[capacity] = max_value;
+}
+return MaxValue[target_capacity];
+
+// Well, presumably you'd cache this memoization with the item list, and support variable-capacity queries.
+// That's the whole point of memoization here, really.
+
+
+
+
+
+
+
+
+dice roll problem:
+given a 5-sided die, simulate a 7-sided die.
+
+// given:
+int rand5();
+
+int ChangeRadix(symbol* values, size_t N, int in_radix, int out_radix)
+{
+
+}
+
+int rand7()
+{
+  // 5 and 7 are relatively prime ( both are primes ), so presumably we'll want 7*5=35 as a conversion.
+  // if we roll the 5-die 7 times, can we then interpret that as 5 rolls of a 7-die?
+  // the pmf of each die is very simple:
+  // pmf5(x) = 1/5, for x in { 0, 1, 2, 3, 4 }
+  // pmf7(x) = 1/7, for x in { 0, 1, 2, 3, 4, 5, 6 }
+  // can we just sum the values of the 7 5-die rolls?
+  // the LLN says summations of RVs converge on a gaussian distribution, so likely not.
+  // yeah, the variance characteristics change; rolling all 1s is more unlikely than all middle values.
+  // so summation is out; what about bit concatenation? that should prevent the mixing of addition.
+  // problem is: 5 and 7 aren't powers of 2.
+  // so can we use custom radix systems instead of 2? maybe base-35 is convertible to both 5 and 7?
+  // (r, x0, x1, ..., xN-1) = r^0 x0 + r^1 x1 + ... + r^(N-1) xN-1
+  // oh right, the radix systems are just encodings; the underlying integers are still integers.
+  // well i guess it would help to make bit concatenation and slicing work, right?
+  // i think actually no, we'd want gcd(5,7) as the radix to do nice bit concat/slicing.
+  // we can't break apart a base-35 symbol into anything smaller, right? or can we?
+  // yeah we can. so i think this approach would work.
+
+  // what about the inverse CDF approach?
+  // cmf7(x) = {
+  //   1/7 for x == 0
+  //   2/7 for x == 1
+  //   3/7 for x == 2
+  //   4/7 for x == 3
+  //   5/7 for x == 4
+  //   6/7 for x == 5
+  //   7/7 for x == 6
+
+  // inverse-cmf7(p) = {
+  //   0 for p <= 1/7
+  //   1 for p <= 2/7
+  //   2 for p <= 3/7
+  //   3 for p <= 4/7
+  //   4 for p <= 5/7
+  //   5 for p <= 6/7
+  //   6 for p <= 7/7
+
+  // If we can generate appropriate uniformly-distributed p values, then inverse-cmf7(p) is the 7-die roll result.
+  // This doesn't really solve this problem directly, since the p value is the hard part.
+
+  // Well so we could just discard bits, right?
+  // For efficiency, that might be fine.
+  // E.g. we could get 8 uniformly random bits with: rand5() & 0b11 << 4 | rand5 & 0b11
+  // We really only need 3 uniformly random bits, and rand5 generates at least 2.
+  //
+  //   int upper_bit = rand5() & 0b1;
+  //   int lower_bits = rand5() & 0b11;
+  //   int rand8 = upper_bit << 2 | lower_bits;
+  //
+  // Actually, darn. The lower bits aren't uniformly random.
+  // E.g. 4 = 0b100, so the lower bits 0b00 are more common in 5-die roll results.
+  // So discarding bits is out, unless we do it in a uniform/unbiased way. E.g. retry to ignore 4.
+  // Well that would work.
+  //
+
+  int rand7;
+  for (;;) {
+
+    int unbiased_rand4;
+    for (;;) {
+      unbiased_rand4 = rand5();
+      if (unbiased_rand4 != 4) break;
+    }
+    int unbiased_rand2;
+    for (;;) {
+      unbiased_rand2 = rand5();
+      if (unbiased_rand2 != 4) break;
+    }
+    // Discard the 2's place bit.
+    // TODO: This is wasteful; it'd be better to save that for subsequent rand7 invocations.
+    unbiased_rand2 &= 0b1;
+
+    int rand8 = unbiased_rand2 << 2 | unbiased_rand4;
+
+    // Now how do we get from rand8 to rand7?
+    // We can't force 7=0b111 into anything in [0, 6], since that would make things biased.
+    // So we do the same retry strategy, I suppose.
+    if (rand8 == 7) continue;
+
+    rand7 = rand8;
+    break;
+  }
+
+  return rand7;
+}
+
+
+
+
+
+
+
+stock purchase problem:
+given a time-indexed stock price array,
+find the maximum profit of a single purchase/sale.
+extended problem:
+find the best buy and sell time to maximize profit of a single purchase/sale.
+
+E.g.
+prices = { 10, 7, 5, 8, 11, 9 }
+you should return 6, which is 11 - 5.
+
+int Problem(
+  int* prices, // array of length N
+  int* buffer, // array of length N
+  size_t N)
+{
+  assert(N);
+  if (N == 1) {
+    return 0;
+  }
+
+  //
+  // We'll use the buffer array to pre-compute the maximums over [i+1, N).
+  // That is,
+  //   buffer[i] = max( prices[j] ) for j in [i+1, N).
+  //
+  buffer[N-1] = prices[N-1];
+  for (size_t ri = 0; ri < N - 1; ++ri) {
+    auto idx_previously_calculated = N - 1 - ri;
+    auto idx_next_calculated = idx_previously_calculated - 1;
+    buffer[idx_next_calculated] = max(prices[idx_next_calculated], buffer[idx_previously_calculated]);
+  }
+//
+//    // then find the max profit given that assumption:
+//    int max_profit = MIN_INT;
+//    for (size_t j = i + 1; j < N; ++j) {
+//      int sell_price = prices[j];
+//      auto profit = sell_price - buy_price;
+//      if (profit > max_profit) {
+//        max_profit = profit;
+//      }
+//    }
+
+  int total_max_profit = MIN_INT;
+  for (size_t i = 0; i < N - 1; ++i) {
+    // say we buy at time i.
+    int buy_price = prices[i];
+    int max_sell_price = buffer[i];
+    auto max_profit = max_sell_price - buy_price;
+    if (max_profit > total_max_profit) {
+      total_max_profit = max_profit;
+    }
+  }
+  assert(total_max_profit != MIN_INT);
+  return total_max_profit;
+}
+
+
+
 
 
 

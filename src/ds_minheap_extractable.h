@@ -29,29 +29,29 @@
 // one complication is that since we're not swapping the data array elements around,
 // we'd have to maintain another index mapping, to go from external index to offset into idxs.
 //
-// TODO: minheap that allows arbitrary insertions
-//
 
-// TODO: iterative version. tail recursion, so should be easy.
 template< typename Index, typename Data >
 Inl void
-_MinHeapifyDownRecursive( Index* idxs, Data* data, idx_t len, Index idx )
+_MinHeapifyDown( Index* idxs, Data* data, idx_t len, Index idx )
 {
-  // swap with the smaller of our two children to maintain the heap invariant.
-  // then recurse if necessary.
-  auto left = 2 * idx + 1;
-  auto rght = 2 * idx + 2;
-  auto smallest = idx;
-  if( left < len && data[ left ] < data[ smallest ] ) {
-    smallest = left;
-  }
-  if( rght < len && data[ rght ] < data[ smallest ] ) {
-    smallest = rght;
-  }
-  // TODO: could eliminate this conditional with inlining above.
-  if( smallest != idx ) {
-    SWAP( Index, idxs[ idx ], idxs[ smallest ] );
-    _MinHeapifyDownRecursive( idxs, data, len, smallest );
+  Forever {
+    // swap with the smaller of our two children to maintain the heap invariant.
+    // then recurse if necessary.
+    auto left = 2 * idx + 1;
+    auto rght = 2 * idx + 2;
+    auto smallest = idx;
+    if( left < len && data[ left ] < data[ smallest ] ) {
+      smallest = left;
+    }
+    if( rght < len && data[ rght ] < data[ smallest ] ) {
+      smallest = rght;
+    }
+    if( smallest != idx ) {
+      SWAP( Index, idxs[ idx ], idxs[ smallest ] );
+      idx = smallest;
+      continue;
+    }
+    return;
   }
 }
 
@@ -62,7 +62,7 @@ InitMinHeapInPlace( Index* idxs, Data* data, idx_t len )
 {
   auto one_past_last_idx = len / 2;
   ReverseFori( Index, i, 0, one_past_last_idx ) {
-    _MinHeapifyDownRecursive( idxs, data, len, i );
+    _MinHeapifyDown( idxs, data, len, i );
   }
 }
 
@@ -80,5 +80,5 @@ MinHeapExtract( Index* idxs, Data* data, idx_t* len_, Index* dst )
   if( !len ) return;
 
   idxs[0] = idxs[ len ];
-  _MinHeapifyDownRecursive( idxs, data, len, 0 );
+  _MinHeapifyDown( idxs, data, len, 0 );
 }
