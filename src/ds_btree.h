@@ -40,12 +40,12 @@
 
 // TODO: rename M to num_keys
 
-// TODO: implement the upwards parent traversal for pulling up the median.
-//   this should be much simpler than the downwards pre-emptive splitting, and then i'll have a correct algorithm to compare it against...
-
 // TODO: user macro type / template constant for btree_node_t?
 //   that would simplify some of the memory nonsense, and make debugging a heck of a lot better.
 //   also i'm getting memory corruption bugs that look like potential aliasing / UB problems?
+
+// TODO: B+ tree
+
 
 #define TemplTC template< typename T, idx_t C >
 
@@ -276,357 +276,705 @@ parent_info_t
   u32 idx;
 };
 
-// assumes
-// - node is the leaf part of parent_chain
-// - the key to insert belongs at idx.
-//
-// for internal nodes as we walk upwards, child_left, child_right are the result of the previous iterations's split.
-// we need to store these in the node's children to maintain the tree structure.
-//
+// TODO: parent_chain can be stack memory most likely, since the tree branches exponentially; max height is reasonable.
+
+#if 0
+    // assumes
+    // - node is the leaf part of parent_chain
+    // - the key to insert belongs at idx.
+    //
+    // for internal nodes as we walk upwards, child_left, child_right are the result of the previous iterations's split.
+    // we need to store these in the node's children to maintain the tree structure.
+    //
+    TemplTC Inl void
+    _Insert_WalkUpwardsRecur(
+      BTREE* t,
+      T key,
+      array_t<parent_info_t<T,C>>* parent_chain,
+      BTREENODE* node,
+      u32 idx,
+      BTREENODE* child_left,
+      BTREENODE* child_right
+      )
+    {
+      auto leaf = !child_left && !child_right;
+      auto nonleaf = child_left && child_right;
+      AssertCrash( leaf != nonleaf );
+
+      auto nbytes_node = t->nbytes_node;
+
+      auto M = node->M;
+      auto keys = Keys<T>( node );
+      auto children = Children<T>( node );
+
+      AssertCrash( M == C );
+
+      auto new_right = Cast( BTREENODE*, AddBackBytes( *t->mem, _SIZEOF_IDX_T, nbytes_node ) );
+      Memzero( new_right, nbytes_node );
+      auto new_right_children = Children<T>( new_right );
+      auto new_right_keys = Keys<T>( new_right );
+
+      auto left = node;
+      auto left_children = children;
+      auto left_keys = keys;
+
+      auto idx_median = M / 2;
+      T key_median;
+      if( idx == idx_median ) {
+        //
+        // keys:   1   3   5   7
+        // chil: 0   2   4   6   8
+        // idx:          ^
+        // note idx points to effectively a children slot, between the key slots.
+        // key splitting:
+        //   left  gets keys: 1 3
+        //   right gets keys: 5 7
+        //   so in general,
+        //   left  gets keys[ < idx_median ]
+        //   right gets keys[ >= idx_median ]
+        // the median key is just the key we're inserting.
+        //
+        // if leaf,
+        //   no children, so nothing to do.
+        // else nonleaf,
+        //   left  gets children: 0 2 <left>
+        //   right gets children: <new_right> 6 8
+        //   so in general,
+        //   left  gets children[ < idx_median ], plus left as the last thing.
+        //   right gets children[ > idx_median ], plus new_right as the first thing.
+        //
+        key_median = key;
+
+        auto len_right_keys = M - idx_median;
+        new_right->M = len_right_keys;
+        auto len_left_keys = idx_median;
+        left->M = len_left_keys;
+        auto len_right_children = len_right_keys + 1;
+        auto len_left_children = len_left_keys + 1;
+        {
+          auto dst = new_right_keys;
+          auto src = left_keys + idx_median;
+          auto len = len_right_keys;
+          AssertCrash( new_right_keys <= dst  &&  dst + len <= new_right_keys + len_right_keys );
+          AssertCrash( left_keys <= src  &&  src + len <= left_keys + M );
+          TMove( dst, src, len );
+          TZero( src, len );
+        }
+
+        if( nonleaf ) {
+          new_right_children[ 0 ] = child_right;
+          {
+            auto dst = new_right_children + 1;
+            auto src = left_children + idx_median;
+            auto len = M - idx_median;
+            AssertCrash( new_right_children <= dst  &&  dst + len <= new_right_children + len_right_children );
+            AssertCrash( left_children <= src  &&  src + len <= left_children + M + 1 );
+            TMove( dst, src, len );
+          }
+          AssertCrash( len_left_keys < len_left_children );
+          left_children[ len_left_keys ] = child_left;
+          {
+            auto dst = left_children + len_left_children;
+            auto len = M - len_left_children;
+            AssertCrash( left_children <= dst  &&  dst + len <= left_children + M + 1 );
+            TZero( dst, len );
+          }
+        }
+        //
+        // leaves have all-zero children, so no need to maintain the arrays.
+        //
+      }
+      elif( idx < idx_median ) {
+        //
+        // keys:   1   3   5   7   9    11
+        // chil: 0   2   4   6   8   10    12
+        // idx:      ^
+        // idx_median:         ^
+        // so the effective new keys list is: 1 <key> 3 5 7 9 11
+        // key splitting:
+        //   left  gets keys: 1 <key> 3
+        //   right gets keys; 7 9 11
+        //   median is 5
+        //   so in general,
+        //   left  gets keys[ < idx_median - 1 ], plus the key we're inserting.
+        //   right gets keys[ >= idx_median ]
+        //   the median key is keys[ idx_median - 1 ]
+        //
+        // if leaf,
+        //   no children, so nothing to do.
+        // else nonleaf,
+        //   left  gets children: 0 <left> <new_right> 4
+        //   right gets children: 6 8 10 12
+        //   so in general,
+        //   left  gets children[ < idx_median ], plus left and new_right in place at idx.
+        //   right gets children[ >= idx_median ]
+        //
+        AssertCrash( idx_median - 1 < M );
+        key_median = keys[ idx_median - 1 ];
+
+        auto len_right_keys = M - idx_median;
+        new_right->M = len_right_keys;
+        auto len_left_keys = idx_median;
+        left->M = len_left_keys;
+        auto len_right_children = len_right_keys + 1;
+        auto len_left_children = len_left_keys + 1;
+        {
+          auto dst = new_right_keys;
+          auto src = left_keys + idx_median;
+          auto len = len_right_keys;
+          AssertCrash( new_right_keys <= dst  &&  dst + len <= new_right_keys + len_right_keys );
+          AssertCrash( left_keys <= src  &&  src + len <= left_keys + M );
+          TMove( dst, src, len );
+          TZero( src, len );
+        }
+        //
+        // insert key at idx into { left_keys, len_left_keys }.
+        //
+        {
+          auto dst = left_keys + idx + 1;
+          auto src = left_keys + idx;
+          auto len = len_left_keys - idx - 1;
+          AssertCrash( left_keys <= dst  &&  dst + len <= left_keys + len_left_keys );
+          AssertCrash( left_keys <= src  &&  src + len <= left_keys + len_left_keys );
+          TMove( dst, src, len );
+        }
+        AssertCrash( idx < len_left_keys );
+        left_keys[idx] = key;
+
+        if( nonleaf ) {
+          {
+            auto dst = new_right_children;
+            auto src = left_children + idx_median;
+            auto len = M + 1 - idx_median;
+            AssertCrash( new_right_children <= dst  &&  dst + len <= new_right_children + len_right_children );
+            AssertCrash( left_children <= src  &&  src + len <= left_children + M + 1 );
+            TMove( dst, src, len );
+            TZero( src, len );
+          }
+          {
+            auto dst = left_children + idx;
+            auto src = left_children + idx + 1;
+            auto len = len_left_children - idx - 1;
+            TMove( dst, src, len );
+          }
+          left_children[ idx ] = child_left;
+          left_children[ idx + 1 ] = child_right;
+        }
+      }
+      else { // idx > idx_median
+        //
+        // keys:   1   3   5   7   9    11
+        // chil: 0   2   4   6   8   10    12
+        // idx:                       ^
+        // idx_median:         ^
+        // so the effective new keys list is: 1 3 5 7 9 <key> 11
+        // key splitting:
+        //   left  gets keys: 1 3 5
+        //   right gets keys: 9 <key> 11
+        //   median is 7
+        //   so in general,
+        //   left  gets keys[ < idx_median ]
+        //   right gets keys[ > idx_median ], plus the key we're inserting
+        //   the median key is keys[ idx_median ]
+        //
+        // if leaf,
+        //   no children, so nothing to do.
+        // else nonleaf,
+        //   left  gets children: 0 2 4 6
+        //   right gets children: 8 <left> <new_right> 12
+        //   so in general,
+        //   left  gets children[ <= idx_median ]
+        //   right gets children[ > idx_median ], plus left and new_right in place at idx.
+        //
+        key_median = keys[ idx_median ];
+
+        auto len_right_keys = M - idx_median;
+        new_right->M = len_right_keys;
+        auto len_left_keys = idx_median;
+        left->M = len_left_keys;
+        auto len_right_children = len_right_keys + 1;
+        auto len_left_children = len_left_keys + 1;
+        {
+          auto dst = new_right_keys;
+          auto src = left_keys + idx_median + 1;
+          auto len = idx - idx_median - 1;
+          AssertCrash( new_right_keys <= dst  &&  dst + len <= new_right_keys + len_right_keys );
+          AssertCrash( left_keys <= src  &&  src + len <= left_keys + M );
+          TMove( dst, src, len );
+        }
+        AssertCrash( idx - idx_median - 1 < len_right_keys );
+        new_right_keys[ idx - idx_median - 1 ] = key;
+        {
+          auto dst = new_right_keys + idx - idx_median;
+          auto src = left_keys + idx;
+          auto len = M - idx;
+          AssertCrash( new_right_keys <= dst  &&  dst + len <= new_right_keys + len_right_keys );
+          AssertCrash( left_keys <= src  &&  src + len <= left_keys + M );
+          TMove( dst, src, len );
+        }
+        {
+          auto dst = left_keys + len_left_keys;
+          auto len = M - len_left_keys;
+          AssertCrash( left_keys <= dst  &&  dst + len <= left_keys + M );
+          TZero( dst, len );
+        }
+
+        if( nonleaf ) {
+          {
+            auto dst = new_right_children;
+            auto src = left_children + idx_median + 1;
+            auto len = idx - idx_median - 1;
+            AssertCrash( new_right_children <= dst  &&  dst + len <= new_right_children + len_right_children );
+            AssertCrash( left_children <= src  &&  src + len <= left_children + M + 1 );
+            TMove( dst, src, len );
+          }
+          AssertCrash( idx - idx_median - 1 < len_right_children );
+          AssertCrash( idx - idx_median < len_right_children );
+          new_right_children[ idx - idx_median - 1 ] = child_left;
+          new_right_children[ idx - idx_median ] = child_right;
+          {
+            auto dst = new_right_children + idx - idx_median + 1;
+            auto src = left_children + idx + 1;
+            auto len = M - idx;
+            AssertCrash( new_right_children <= dst  &&  dst + len <= new_right_children + len_right_children );
+            AssertCrash( left_children <= src  &&  src + len <= left_children + M + 1 );
+            TMove( dst, src, len );
+          }
+          {
+            auto dst = left_children + len_left_children;
+            auto len = M + 1 - len_left_children;
+            AssertCrash( left_children <= dst  &&  dst + len <= left_children + M + 1 );
+            TZero( dst, len );
+          }
+        }
+      }
+
+      //
+      // now we have the modified left, and new_right nodes.
+      // we still have to pull the key_median up into the parent_chain
+      //
+
+      if( !parent_chain->len ) {
+        //
+        // we're at the root, and it's full.
+        // this means we need to make a new root, and set it's children to [ left, new_right ].
+        //
+        auto new_root = Cast( BTREENODE*, AddBackBytes( *t->mem, _SIZEOF_IDX_T, nbytes_node ) );
+        Memzero( new_root, nbytes_node );
+        new_root->M = 1;
+        auto new_root_children = Children<T>( new_root );
+        auto new_root_keys = Keys<T>( new_root );
+        new_root_keys[0] = key_median;
+        new_root_children[0] = left;
+        new_root_children[1] = new_right;
+        t->root = new_root;
+
+        return;
+      }
+
+      auto parent_info = parent_chain->mem + parent_chain->len - 1;
+      auto parent = parent_info->node;
+      auto idx_into_parent = parent_info->idx;
+      auto parent_M = parent->M;
+      if( parent_M < C ) {
+        //
+        // parent has room for the key_median.
+        //
+        auto parent_keys = Keys<T>( parent );
+        auto parent_children = Children<T>( parent );
+
+        //
+        // we need to update parent's children array to point to left, new_right.
+        //
+        //     parent
+        // C_left  C_right
+        //
+        if( idx_into_parent + 1 <= parent_M ) {
+          auto dst = parent_keys + idx_into_parent + 1;
+          auto src = parent_keys + idx_into_parent;
+          auto len = parent_M - idx_into_parent - 1;
+          AssertCrash( parent_keys <= dst  &&  dst + len <= parent_keys + parent_M );
+          AssertCrash( parent_keys <= src  &&  src + len <= parent_keys + parent_M );
+          TMove( dst, src, len );
+        }
+        {
+          auto dst = parent_children + idx_into_parent + 1;
+          auto src = parent_children + idx_into_parent;
+          auto len = parent_M - idx_into_parent;
+          AssertCrash( parent_children <= dst  &&  dst + len <= parent_children + parent_M + 1 );
+          AssertCrash( parent_children <= src  &&  src + len <= parent_children + parent_M + 1 );
+          TMove( dst, src, len );
+        }
+        parent_children[ idx_into_parent ] = left;
+        parent_children[ idx_into_parent + 1 ] = new_right;
+        parent_keys[ idx_into_parent ] = key_median;
+        parent->M += 1;
+
+        return;
+      }
+      //
+      // parent is full! we have to recurse to split the parent, and continue up the parent_chain.
+      //
+      // note we can't drop left, new_right here! we need to push these to the parent somehow.
+      // since the parent might be full and require more splitting, we can't do it here; the logic is above for nonleaf nodes.
+      //
+      // TODO: tail recursion can be unrolled.
+      //
+      RemBack( *parent_chain );
+      _Insert_WalkUpwardsRecur<T,C>( t, key_median, parent_chain, parent, idx_into_parent, left, new_right );
+    }
+
+#endif
+
 TemplTC Inl void
-_Insert_WalkUpwardsRecur(
+_Insert_WalkUpwards(
   BTREE* t,
   T key,
   array_t<parent_info_t<T,C>>* parent_chain,
   BTREENODE* node,
-  u32 idx,
-  BTREENODE* child_left,
-  BTREENODE* child_right
+  u32 idx
   )
 {
-  auto leaf = !child_left && !child_right;
-  auto nonleaf = child_left && child_right;
-  AssertCrash( leaf != nonleaf );
+  // as we walk upwards, these two children track the subtree roots we need to find parents for.
+  // since we start from a leaf, these start as empty.
+  BTREENODE* child_left = 0;
+  BTREENODE* child_right = 0;
+  Forever {
+    auto leaf = !child_left && !child_right;
+    auto nonleaf = child_left && child_right;
+    AssertCrash( leaf != nonleaf );
 
-  auto nbytes_node = t->nbytes_node;
+    auto nbytes_node = t->nbytes_node;
 
-  auto M = node->M;
-  auto keys = Keys<T>( node );
-  auto children = Children<T>( node );
+    auto M = node->M;
+    auto keys = Keys<T>( node );
+    auto children = Children<T>( node );
 
-  AssertCrash( M == C );
+    AssertCrash( M == C );
 
-  auto new_right = Cast( BTREENODE*, AddBackBytes( *t->mem, _SIZEOF_IDX_T, nbytes_node ) );
-  Memzero( new_right, nbytes_node );
-  auto new_right_children = Children<T>( new_right );
-  auto new_right_keys = Keys<T>( new_right );
+    auto new_right = Cast( BTREENODE*, AddBackBytes( *t->mem, _SIZEOF_IDX_T, nbytes_node ) );
+    Memzero( new_right, nbytes_node );
+    auto new_right_children = Children<T>( new_right );
+    auto new_right_keys = Keys<T>( new_right );
 
-  auto left = node;
-  auto left_children = children;
-  auto left_keys = keys;
+    auto left = node;
+    auto left_children = children;
+    auto left_keys = keys;
 
-  // TODO: i think this is wrong, for internal nodes as we're traversing up.
-  //       [ there's no children; this is a leaf node. so we can leave children arrays as zeroed. ]
-  // so we likely need to shuffle the children array as well below.
+    auto idx_median = M / 2;
+    T key_median;
+    if( idx == idx_median ) {
+      //
+      // keys:   1   3   5   7
+      // chil: 0   2   4   6   8
+      // idx:          ^
+      // note idx points to effectively a children slot, between the key slots.
+      // key splitting:
+      //   left  gets keys: 1 3
+      //   right gets keys: 5 7
+      //   so in general,
+      //   left  gets keys[ < idx_median ]
+      //   right gets keys[ >= idx_median ]
+      // the median key is just the key we're inserting.
+      //
+      // if leaf,
+      //   no children, so nothing to do.
+      // else nonleaf,
+      //   left  gets children: 0 2 <left>
+      //   right gets children: <new_right> 6 8
+      //   so in general,
+      //   left  gets children[ < idx_median ], plus left as the last thing.
+      //   right gets children[ > idx_median ], plus new_right as the first thing.
+      //
+      key_median = key;
 
-  auto idx_median = M / 2;
-  T key_median;
-  if( idx == idx_median ) {
-    //
-    // keys:   1   3   5   7
-    // chil: 0   2   4   6   8
-    // idx:          ^
-    // note idx points to effectively a children slot, between the key slots.
-    // key splitting:
-    //   left  gets keys: 1 3
-    //   right gets keys: 5 7
-    //   so in general,
-    //   left  gets keys[ < idx_median ]
-    //   right gets keys[ >= idx_median ]
-    // the median value is just the key we're inserting.
-    //
-    // if leaf,
-    //   no children, so nothing to do.
-    // else nonleaf,
-    //   left  gets children: 0 2 <left>
-    //   right gets children: <new_right> 6 8
-    //   so in general,
-    //   left  gets children[ < idx_median ], plus left as the last thing.
-    //   right gets children[ > idx_median ], plus new_right as the first thing.
-    //
-    key_median = key;
-
-    auto len_right_keys = M - idx_median;
-    new_right->M = len_right_keys;
-    auto len_left_keys = idx_median;
-    left->M = len_left_keys;
-    auto len_right_children = len_right_keys + 1;
-    auto len_left_children = len_left_keys + 1;
-    {
-      auto dst = new_right_keys;
-      auto src = left_keys + idx_median;
-      auto len = len_right_keys;
-      AssertCrash( new_right_keys <= dst  &&  dst + len <= new_right_keys + len_right_keys );
-      AssertCrash( left_keys <= src  &&  src + len <= left_keys + M );
-      TMove( dst, src, len );
-      TZero( src, len );
-    }
-
-    if( nonleaf ) {
-      new_right_children[ 0 ] = child_right;
+      auto len_right_keys = M - idx_median;
+      new_right->M = len_right_keys;
+      auto len_left_keys = idx_median;
+      left->M = len_left_keys;
+      auto len_right_children = len_right_keys + 1;
+      auto len_left_children = len_left_keys + 1;
       {
-        auto dst = new_right_children + 1;
-        auto src = left_children + idx_median;
-        auto len = M - idx_median;
-        AssertCrash( new_right_children <= dst  &&  dst + len <= new_right_children + len_right_children );
-        AssertCrash( left_children <= src  &&  src + len <= left_children + M + 1 );
-        TMove( dst, src, len );
-      }
-      AssertCrash( len_left_keys < len_left_children );
-      left_children[ len_left_keys ] = child_left;
-      {
-        auto dst = left_children + len_left_children;
-        auto len = M - len_left_children;
-        AssertCrash( left_children <= dst  &&  dst + len <= left_children + M + 1 );
-        TZero( dst, len );
-      }
-    }
-    //
-    // leaves have all-zero children, so no need to maintain the arrays.
-    //
-  }
-  elif( idx < idx_median ) {
-    //
-    // keys:   1   3   5   7   9    11
-    // chil: 0   2   4   6   8   10    12
-    // idx:      ^
-    // idx_median:         ^
-    // so the effective new keys list is: 1 <key> 3 5 7 9 11
-    // key splitting:
-    //   left  gets keys: 1 <key> 3
-    //   right gets keys; 7 9 11
-    //   median is 5
-    //   so in general,
-    //   left  gets keys[ < idx_median - 1 ], plus the key we're inserting.
-    //   right gets keys[ >= idx_median ]
-    //   the median value is keys[ idx_median - 1 ]
-    //
-    // if leaf,
-    //   no children, so nothing to do.
-    // else nonleaf,
-    //   left  gets children: 0 <left> <new_right> 4
-    //   right gets children: 6 8 10 12
-    //   so in general,
-    //   left  gets children[ < idx_median ], plus left and new_right in place at idx.
-    //   right gets children[ >= idx_median ]
-    //
-    AssertCrash( idx_median - 1 < M );
-    key_median = keys[ idx_median - 1 ];
-
-    auto len_right_keys = M - idx_median;
-    new_right->M = len_right_keys;
-    auto len_left_keys = idx_median;
-    left->M = len_left_keys;
-    auto len_right_children = len_right_keys + 1;
-    auto len_left_children = len_left_keys + 1;
-    {
-      auto dst = new_right_keys;
-      auto src = left_keys + idx_median;
-      auto len = len_right_keys;
-      AssertCrash( new_right_keys <= dst  &&  dst + len <= new_right_keys + len_right_keys );
-      AssertCrash( left_keys <= src  &&  src + len <= left_keys + M );
-      TMove( dst, src, len );
-      TZero( src, len );
-    }
-    //
-    // insert key at idx into { left_keys, len_left_keys }.
-    //
-    {
-      auto dst = left_keys + idx + 1;
-      auto src = left_keys + idx;
-      auto len = len_left_keys - idx - 1;
-      AssertCrash( left_keys <= dst  &&  dst + len <= left_keys + len_left_keys );
-      AssertCrash( left_keys <= src  &&  src + len <= left_keys + len_left_keys );
-      TMove( dst, src, len );
-    }
-    AssertCrash( idx < len_left_keys );
-    left_keys[idx] = key;
-
-    if( nonleaf ) {
-      {
-        auto dst = new_right_children;
-        auto src = left_children + idx_median;
-        auto len = M + 1 - idx_median;
-        AssertCrash( new_right_children <= dst  &&  dst + len <= new_right_children + len_right_children );
-        AssertCrash( left_children <= src  &&  src + len <= left_children + M + 1 );
+        auto dst = new_right_keys;
+        auto src = left_keys + idx_median;
+        auto len = len_right_keys;
+        AssertCrash( new_right_keys <= dst  &&  dst + len <= new_right_keys + len_right_keys );
+        AssertCrash( left_keys <= src  &&  src + len <= left_keys + M );
         TMove( dst, src, len );
         TZero( src, len );
       }
+
+      if( nonleaf ) {
+        new_right_children[ 0 ] = child_right;
+        {
+          auto dst = new_right_children + 1;
+          auto src = left_children + idx_median;
+          auto len = M - idx_median;
+          AssertCrash( new_right_children <= dst  &&  dst + len <= new_right_children + len_right_children );
+          AssertCrash( left_children <= src  &&  src + len <= left_children + M + 1 );
+          TMove( dst, src, len );
+        }
+        AssertCrash( len_left_keys < len_left_children );
+        left_children[ len_left_keys ] = child_left;
+        {
+          auto dst = left_children + len_left_children;
+          auto len = M - len_left_children;
+          AssertCrash( left_children <= dst  &&  dst + len <= left_children + M + 1 );
+          TZero( dst, len );
+        }
+      }
+      //
+      // leaves have all-zero children, so no need to maintain the arrays.
+      //
+    }
+    elif( idx < idx_median ) {
+      //
+      // keys:   1   3   5   7   9    11
+      // chil: 0   2   4   6   8   10    12
+      // idx:      ^
+      // idx_median:         ^
+      // so the effective new keys list is: 1 <key> 3 5 7 9 11
+      // key splitting:
+      //   left  gets keys: 1 <key> 3
+      //   right gets keys; 7 9 11
+      //   median is 5
+      //   so in general,
+      //   left  gets keys[ < idx_median - 1 ], plus the key we're inserting.
+      //   right gets keys[ >= idx_median ]
+      //   the median key is keys[ idx_median - 1 ]
+      //
+      // if leaf,
+      //   no children, so nothing to do.
+      // else nonleaf,
+      //   left  gets children: 0 <left> <new_right> 4
+      //   right gets children: 6 8 10 12
+      //   so in general,
+      //   left  gets children[ < idx_median ], plus left and new_right in place at idx.
+      //   right gets children[ >= idx_median ]
+      //
+      AssertCrash( idx_median - 1 < M );
+      key_median = keys[ idx_median - 1 ];
+
+      auto len_right_keys = M - idx_median;
+      new_right->M = len_right_keys;
+      auto len_left_keys = idx_median;
+      left->M = len_left_keys;
+      auto len_right_children = len_right_keys + 1;
+      auto len_left_children = len_left_keys + 1;
       {
-        auto dst = left_children + idx;
-        auto src = left_children + idx + 1;
-        auto len = len_left_children - idx - 1;
+        auto dst = new_right_keys;
+        auto src = left_keys + idx_median;
+        auto len = len_right_keys;
+        AssertCrash( new_right_keys <= dst  &&  dst + len <= new_right_keys + len_right_keys );
+        AssertCrash( left_keys <= src  &&  src + len <= left_keys + M );
+        TMove( dst, src, len );
+        TZero( src, len );
+      }
+      //
+      // insert key at idx into { left_keys, len_left_keys }.
+      //
+      {
+        auto dst = left_keys + idx + 1;
+        auto src = left_keys + idx;
+        auto len = len_left_keys - idx - 1;
+        AssertCrash( left_keys <= dst  &&  dst + len <= left_keys + len_left_keys );
+        AssertCrash( left_keys <= src  &&  src + len <= left_keys + len_left_keys );
         TMove( dst, src, len );
       }
-      left_children[ idx ] = child_left;
-      left_children[ idx + 1 ] = child_right;
-    }
-  }
-  else { // idx > idx_median
-    //
-    // keys:   1   3   5   7   9    11
-    // chil: 0   2   4   6   8   10    12
-    // idx:                       ^
-    // idx_median:         ^
-    // so the effective new keys list is: 1 3 5 7 9 <key> 11
-    // key splitting:
-    //   left  gets keys: 1 3 5
-    //   right gets keys: 9 <key> 11
-    //   median is 7
-    //   so in general,
-    //   left  gets keys[ < idx_median ]
-    //   right gets keys[ > idx_median ], plus the key we're inserting
-    //   the median value is keys[ idx_median ]
-    //
-    // if leaf,
-    //   no children, so nothing to do.
-    // else nonleaf,
-    //   left  gets children: 0 2 4 6
-    //   right gets children: 8 <left> <new_right> 12
-    //   so in general,
-    //   left  gets children[ <= idx_median ]
-    //   right gets children[ > idx_median ], plus left and new_right in place at idx.
-    //
-    key_median = keys[ idx_median ];
+      AssertCrash( idx < len_left_keys );
+      left_keys[idx] = key;
 
-    auto len_right_keys = M - idx_median;
-    new_right->M = len_right_keys;
-    auto len_left_keys = idx_median;
-    left->M = len_left_keys;
-    auto len_right_children = len_right_keys + 1;
-    auto len_left_children = len_left_keys + 1;
-    {
-      auto dst = new_right_keys;
-      auto src = left_keys + idx_median + 1;
-      auto len = idx - idx_median - 1;
-      AssertCrash( new_right_keys <= dst  &&  dst + len <= new_right_keys + len_right_keys );
-      AssertCrash( left_keys <= src  &&  src + len <= left_keys + M );
-      TMove( dst, src, len );
+      if( nonleaf ) {
+        {
+          auto dst = new_right_children;
+          auto src = left_children + idx_median;
+          auto len = M + 1 - idx_median;
+          AssertCrash( new_right_children <= dst  &&  dst + len <= new_right_children + len_right_children );
+          AssertCrash( left_children <= src  &&  src + len <= left_children + M + 1 );
+          TMove( dst, src, len );
+          TZero( src, len );
+        }
+        {
+          auto dst = left_children + idx;
+          auto src = left_children + idx + 1;
+          auto len = len_left_children - idx - 1;
+          TMove( dst, src, len );
+        }
+        left_children[ idx ] = child_left;
+        left_children[ idx + 1 ] = child_right;
+      }
     }
-    AssertCrash( idx - idx_median - 1 < len_right_keys );
-    new_right_keys[ idx - idx_median - 1 ] = key;
-    {
-      auto dst = new_right_keys + idx - idx_median;
-      auto src = left_keys + idx;
-      auto len = M - idx;
-      AssertCrash( new_right_keys <= dst  &&  dst + len <= new_right_keys + len_right_keys );
-      AssertCrash( left_keys <= src  &&  src + len <= left_keys + M );
-      TMove( dst, src, len );
-    }
-    {
-      auto dst = left_keys + len_left_keys;
-      auto len = M - len_left_keys;
-      AssertCrash( left_keys <= dst  &&  dst + len <= left_keys + M );
-      TZero( dst, len );
-    }
+    else { // idx > idx_median
+      //
+      // keys:   1   3   5   7   9    11
+      // chil: 0   2   4   6   8   10    12
+      // idx:                       ^
+      // idx_median:         ^
+      // so the effective new keys list is: 1 3 5 7 9 <key> 11
+      // key splitting:
+      //   left  gets keys: 1 3 5
+      //   right gets keys: 9 <key> 11
+      //   median is 7
+      //   so in general,
+      //   left  gets keys[ < idx_median ]
+      //   right gets keys[ > idx_median ], plus the key we're inserting
+      //   the median key is keys[ idx_median ]
+      //
+      // if leaf,
+      //   no children, so nothing to do.
+      // else nonleaf,
+      //   left  gets children: 0 2 4 6
+      //   right gets children: 8 <left> <new_right> 12
+      //   so in general,
+      //   left  gets children[ <= idx_median ]
+      //   right gets children[ > idx_median ], plus left and new_right in place at idx.
+      //
+      key_median = keys[ idx_median ];
 
-    if( nonleaf ) {
+      auto len_right_keys = M - idx_median;
+      new_right->M = len_right_keys;
+      auto len_left_keys = idx_median;
+      left->M = len_left_keys;
+      auto len_right_children = len_right_keys + 1;
+      auto len_left_children = len_left_keys + 1;
       {
-        auto dst = new_right_children;
-        auto src = left_children + idx_median + 1;
+        auto dst = new_right_keys;
+        auto src = left_keys + idx_median + 1;
         auto len = idx - idx_median - 1;
-        AssertCrash( new_right_children <= dst  &&  dst + len <= new_right_children + len_right_children );
-        AssertCrash( left_children <= src  &&  src + len <= left_children + M + 1 );
+        AssertCrash( new_right_keys <= dst  &&  dst + len <= new_right_keys + len_right_keys );
+        AssertCrash( left_keys <= src  &&  src + len <= left_keys + M );
         TMove( dst, src, len );
       }
-      AssertCrash( idx - idx_median - 1 < len_right_children );
-      AssertCrash( idx - idx_median < len_right_children );
-      new_right_children[ idx - idx_median - 1 ] = child_left;
-      new_right_children[ idx - idx_median ] = child_right;
+      AssertCrash( idx - idx_median - 1 < len_right_keys );
+      new_right_keys[ idx - idx_median - 1 ] = key;
       {
-        auto dst = new_right_children + idx - idx_median + 1;
-        auto src = left_children + idx + 1;
+        auto dst = new_right_keys + idx - idx_median;
+        auto src = left_keys + idx;
         auto len = M - idx;
-        AssertCrash( new_right_children <= dst  &&  dst + len <= new_right_children + len_right_children );
-        AssertCrash( left_children <= src  &&  src + len <= left_children + M + 1 );
+        AssertCrash( new_right_keys <= dst  &&  dst + len <= new_right_keys + len_right_keys );
+        AssertCrash( left_keys <= src  &&  src + len <= left_keys + M );
         TMove( dst, src, len );
       }
       {
-        auto dst = left_children + len_left_children;
-        auto len = M + 1 - len_left_children;
-        AssertCrash( left_children <= dst  &&  dst + len <= left_children + M + 1 );
+        auto dst = left_keys + len_left_keys;
+        auto len = M - len_left_keys;
+        AssertCrash( left_keys <= dst  &&  dst + len <= left_keys + M );
         TZero( dst, len );
       }
+
+      if( nonleaf ) {
+        {
+          auto dst = new_right_children;
+          auto src = left_children + idx_median + 1;
+          auto len = idx - idx_median - 1;
+          AssertCrash( new_right_children <= dst  &&  dst + len <= new_right_children + len_right_children );
+          AssertCrash( left_children <= src  &&  src + len <= left_children + M + 1 );
+          TMove( dst, src, len );
+        }
+        AssertCrash( idx - idx_median - 1 < len_right_children );
+        AssertCrash( idx - idx_median < len_right_children );
+        new_right_children[ idx - idx_median - 1 ] = child_left;
+        new_right_children[ idx - idx_median ] = child_right;
+        {
+          auto dst = new_right_children + idx - idx_median + 1;
+          auto src = left_children + idx + 1;
+          auto len = M - idx;
+          AssertCrash( new_right_children <= dst  &&  dst + len <= new_right_children + len_right_children );
+          AssertCrash( left_children <= src  &&  src + len <= left_children + M + 1 );
+          TMove( dst, src, len );
+        }
+        {
+          auto dst = left_children + len_left_children;
+          auto len = M + 1 - len_left_children;
+          AssertCrash( left_children <= dst  &&  dst + len <= left_children + M + 1 );
+          TZero( dst, len );
+        }
+      }
     }
-  }
-
-  //
-  // now we have the modified left, and new_right nodes.
-  // we still have to pull the key_median up into the parent_chain
-  //
-
-  if( !parent_chain->len ) {
-    //
-    // we're at the root, and it's full.
-    // this means we need to make a new root, and set it's children to [ left, new_right ].
-    //
-    auto new_root = Cast( BTREENODE*, AddBackBytes( *t->mem, _SIZEOF_IDX_T, nbytes_node ) );
-    Memzero( new_root, nbytes_node );
-    new_root->M = 1;
-    auto new_root_children = Children<T>( new_root );
-    auto new_root_keys = Keys<T>( new_root );
-    new_root_keys[0] = key_median;
-    new_root_children[0] = left;
-    new_root_children[1] = new_right;
-    t->root = new_root;
-
-    return;
-  }
-
-  auto parent_info = parent_chain->mem + parent_chain->len - 1;
-  auto parent = parent_info->node;
-  auto idx_into_parent = parent_info->idx;
-  auto parent_M = parent->M;
-  if( parent_M < C ) {
-    //
-    // parent has room for the key_median.
-    //
-    auto parent_keys = Keys<T>( parent );
-    auto parent_children = Children<T>( parent );
 
     //
-    // we need to update parent's children array to point to left, new_right.
+    // now we have the modified left, and new_right nodes.
+    // we still have to pull the key_median up into the parent_chain
     //
-    //     parent
-    // C_left  C_right
-    //
-    if( idx_into_parent + 1 <= parent_M ) {
-      auto dst = parent_keys + idx_into_parent + 1;
-      auto src = parent_keys + idx_into_parent;
-      auto len = parent_M - idx_into_parent - 1;
-      AssertCrash( parent_keys <= dst  &&  dst + len <= parent_keys + parent_M );
-      AssertCrash( parent_keys <= src  &&  src + len <= parent_keys + parent_M );
-      TMove( dst, src, len );
+
+    if( !parent_chain->len ) {
+      //
+      // we're at the root, and it's full.
+      // this means we need to make a new root, and set it's children to [ left, new_right ].
+      //
+      auto new_root = Cast( BTREENODE*, AddBackBytes( *t->mem, _SIZEOF_IDX_T, nbytes_node ) );
+      Memzero( new_root, nbytes_node );
+      new_root->M = 1;
+      auto new_root_children = Children<T>( new_root );
+      auto new_root_keys = Keys<T>( new_root );
+      new_root_keys[0] = key_median;
+      new_root_children[0] = left;
+      new_root_children[1] = new_right;
+      t->root = new_root;
+
+      return;
     }
-    {
-      auto dst = parent_children + idx_into_parent + 1;
-      auto src = parent_children + idx_into_parent;
-      auto len = parent_M - idx_into_parent;
-      AssertCrash( parent_children <= dst  &&  dst + len <= parent_children + parent_M + 1 );
-      AssertCrash( parent_children <= src  &&  src + len <= parent_children + parent_M + 1 );
-      TMove( dst, src, len );
-    }
-    parent_children[ idx_into_parent ] = left;
-    parent_children[ idx_into_parent + 1 ] = new_right;
-    parent_keys[ idx_into_parent ] = key_median;
-    parent->M += 1;
 
-    return;
+    auto parent_info = parent_chain->mem + parent_chain->len - 1;
+    auto parent = parent_info->node;
+    auto idx_into_parent = parent_info->idx;
+    auto parent_M = parent->M;
+    if( parent_M < C ) {
+      //
+      // parent has room for the key_median.
+      //
+      auto parent_keys = Keys<T>( parent );
+      auto parent_children = Children<T>( parent );
+
+      //
+      // we need to update parent's children array to point to left, new_right.
+      //
+      //     parent
+      // C_left  C_right
+      //
+      if( idx_into_parent + 1 <= parent_M ) {
+        auto dst = parent_keys + idx_into_parent + 1;
+        auto src = parent_keys + idx_into_parent;
+        auto len = parent_M - idx_into_parent - 1;
+        AssertCrash( parent_keys <= dst  &&  dst + len <= parent_keys + parent_M );
+        AssertCrash( parent_keys <= src  &&  src + len <= parent_keys + parent_M );
+        TMove( dst, src, len );
+      }
+      {
+        auto dst = parent_children + idx_into_parent + 1;
+        auto src = parent_children + idx_into_parent;
+        auto len = parent_M - idx_into_parent;
+        AssertCrash( parent_children <= dst  &&  dst + len <= parent_children + parent_M + 1 );
+        AssertCrash( parent_children <= src  &&  src + len <= parent_children + parent_M + 1 );
+        TMove( dst, src, len );
+      }
+      parent_children[ idx_into_parent ] = left;
+      parent_children[ idx_into_parent + 1 ] = new_right;
+      parent_keys[ idx_into_parent ] = key_median;
+      parent->M += 1;
+
+      return;
+    }
+    //
+    // parent is full! we have to recurse to split the parent, and continue up the parent_chain.
+    //
+    // note we can't drop left, new_right here! we need to push these to the parent somehow.
+    // since the parent might be full and require more splitting, we can't do it here; the logic is above for nonleaf nodes.
+    //
+    RemBack( *parent_chain );
+    // old recursion looked like:
+    // _Insert_WalkUpwardsRecur<T,C>( t, key_median, parent_chain, parent, idx_into_parent, left, new_right );
+    key = key_median;
+    node = parent;
+    idx = idx_into_parent;
+    child_left = left;
+    child_right = new_right;
+    continue;
   }
-  //
-  // parent is full! we have to recurse to split the parent, and continue up the parent_chain.
-  //
-  // note we can't drop left, new_right here! we need to push these to the parent somehow.
-  // since the parent might be full and require more splitting, we can't do it here; the logic is above for nonleaf nodes.
-  //
-  // TODO: tail recursion can be unrolled.
-  //
-  RemBack( *parent_chain );
-  _Insert_WalkUpwardsRecur<T,C>( t, key_median, parent_chain, parent, idx_into_parent, left, new_right );
 }
 
 TemplTC Inl void
-InsertRecur(
+Insert(
   BTREE* t,
   T key,
   bool* already_there,
@@ -656,7 +1004,6 @@ InsertRecur(
     //
     // TODO: binary search for large C instead ?
     //
-
     for( idx = 0; idx < M; ++idx ) {
       auto key_at_idx = keys[ idx ];
       if( key == key_at_idx ) {
@@ -693,7 +1040,7 @@ InsertRecur(
   }
 
   *already_there = 0;
-  _Insert_WalkUpwardsRecur<T,C>( t, key, parent_chain, node, idx, 0, 0 );
+  _Insert_WalkUpwards<T,C>( t, key, parent_chain, node, idx );
 
 #if DEBUGSLOW
   Validate( t );
@@ -702,8 +1049,219 @@ InsertRecur(
 
 
 
+#if 0
+
+  recursive insert:
+
+  build the node-chain from the root to the leaf node that should contain the new key.
+    if any nodes contain the identical key, exit early.
+
+  if the leaf node has room for insertion,
 
 
+TemplTC Inl void
+Insert(
+  BTREE* t,
+  T key,
+  bool* already_there
+  )
+{
+#if DEBUGSLOW
+  Validate( t );
+#endif
+
+  auto root = t->root;
+  AssertCrash( root );
+
+  auto node = root;
+  u32 idx = 0;
+  Forever {
+    auto M = node->M;
+    auto keys = Keys<T>( node );
+    auto children = Children<T>( node );
+    AssertCrash( M <= C );
+    //
+    // search for a key match in this node.
+    // if we find one, great, we're done.
+    // otherwise, we'll have to iterate into the specific, ordered child that should contain it.
+    //
+    // TODO: binary search for large C instead ?
+    //
+    for( idx = 0; idx < M; ++idx ) {
+      auto key_at_idx = keys[ idx ];
+      if( key == key_at_idx ) {
+        *already_there = 1;
+        return;
+      }
+      if( key < key_at_idx ) {
+        break;
+      }
+    }
+
+
+
+  }
+
+#if DEBUGSLOW
+  Validate( t );
+#endif
+}
+
+
+#endif
+
+#define MIN_CAPACITY ( C / 2 )
+
+// assumes
+// - node is the leaf part of parent_chain
+// - node has fewer than the minimum allowed number of keys: ( M < C / 2 )
+//
+TemplTC Inl void
+_DeleteRebalance_WalkUpwardsRecur(
+  BTREE* t,
+  array_t<parent_info_t<T,C>>* parent_chain,
+  BTREENODE* node
+  )
+{
+  Forever {
+    auto M = node->M;
+    AssertCrash( M < MIN_CAPACITY );
+
+    if( !parent_chain->len ) {
+      return;
+    }
+
+    //
+    // basic rebalancing algorithm:
+    //   if left has keys to spare, then rotate the left's last key/child over towards node.
+    //   if right has keys to spare, then rotate the right's first key/child over towards node.
+    //   else merge ( left, node ) together, or equivalently ( node, right ), stealing the parent
+    //     separator key, and then recurse on the parent if we have to.
+    //
+    // we have two independent algorithmic choices here:
+    // choice A:
+    //   1. check left for spares before right; OR,
+    //   2. check right for spares before left.
+    //
+    // choice B:
+    //   1. merge ( left, node ) together in the else-case; OR,
+    //   2. merge ( node, right ) together in the else-case.
+    //
+    // for choice A.1:
+    //   we're popping from the end of left's arrays, which is nice.
+    //   we're pushing to the front of node's arrays, which is less nice.
+    // note that choice A.2 is basically the same, by symmetry.
+    // so i think we'll do an equivalent amount of memory-moving with A.1 as with A.2.
+    //
+    // however, maybe there's a minor balancing win here?
+    // if you insert in sorted order, all insertions happen at the rightmost edge of the tree,
+    // leaving basically all nodes half-full. and there's a special bulk-loading algorithm to
+    // improve on this, making most nodes full instead of half-full.
+    //
+    // the same kind of balancing question applies to choice B.1 vs B.2, and i'm not sure.
+    //
+    // TODO: what if we opportunistically merge? e.g. check left for spares or merging, before even considering right.
+    //
+    //
+
+    auto parent_info = parent_chain->mem + parent_chain->len - 1;
+    auto parent = parent_info->node;
+    auto idx_into_parent = parent_info->idx;
+    auto parent_M = parent->M;
+    auto parent_keys = Keys<T>( parent );
+    auto parent_children = Children<T>( parent );
+    AssertCrash( parent_children[ idx_into_parent ] == node );
+
+    // keys:   1   3   5   7
+    // chil: 0   2   4   6   8
+    // node:         ^
+    // left:     ^
+    // right:            ^
+
+    if( idx_into_parent ) {
+      auto idx_left_into_parent = idx_into_parent - 1;
+      auto left = parent_children[ idx_left_into_parent ];
+      auto left_M = left->M;
+      if( left_M > MIN_CAPACITY ) {
+        // move the parent separator key into the start of node
+        // move the left's last child to the start of node
+        // move the left's last key to the parent separator
+
+        // TODO: implement
+
+        // we are now rebalanced!
+        return;
+      }
+    }
+
+    auto idx_right_into_parent = idx_into_parent + 1;
+    if( idx_right_into_parent <= parent_M ) {
+      auto right = parent_children[ idx_right_into_parent ];
+      auto right_M = right->M;
+      if( right_M > MIN_CAPACITY ) {
+        // move the parent separator key into the end of node
+        // move the right's first child into the end of node
+        // move the right's first key into the parent separator
+
+        // TODO: implement
+
+        // we are now rebalanced!
+        return;
+      }
+    }
+
+    if( idx_into_parent ) {
+      auto idx_left_into_parent = idx_into_parent - 1;
+      auto left = parent_children[ idx_left_into_parent ];
+      auto left_M = left->M;
+      // WARNING: we're tying choice A.1 with choice B.1 here.
+      AssertCrash( left_M == MIN_CAPACITY );
+
+      //
+      // conceptually we're merging ( left, node ) into one node.
+      //
+      // move the parent separator key into the end of left
+      // move all keys from node into the end of left, after the moved separator key
+      // move all children from node into the end of left
+      // delete the parent separator key
+      // delete node from the parent's children
+      // if the parent is root and is now empty, delete it and make left the new root.
+      // else, if the parent fell below min capacity, recurse on it.
+      //
+
+      // TODO: implement
+
+      return;
+    }
+
+    if( idx_right_into_parent <= parent_M ) {
+      auto right = parent_children[ idx_right_into_parent ];
+      auto right_M = right->M;
+      // WARNING: we're tying choice A.1 with choice B.1 here.
+      AssertCrash( right_M == MIN_CAPACITY );
+
+      //
+      // conceptually we're merging ( node, right ) into one node.
+      // note this is precisely the same algorithm as above.
+      //
+      // move the parent separator key into the end of node
+      // move all keys from right into the end of node, after the moved separator key
+      // move all children from right into the end of node
+      // delete the parent separator key
+      // delete right from the parent's children
+      // if the parent is root and is now empty, delete it and make node the new root.
+      // else, if the parent fell below min capacity, recurse on it.
+      //
+
+      // TODO: implement
+
+      return;
+    }
+
+    // we should have returned by now, but the logic is complicated enough that this is a safety net.
+    UnreachableCrash();
+  }
+}
 
 TemplTC Inl void
 DeleteRecur(
@@ -758,6 +1316,7 @@ DeleteRecur(
     }
 
     // TODO: store a leaf/nonleaf bit in every node?
+    //   that would let us make smaller-memory leaf nodes.
     bool nonleaf = 0;
     For( i, 0, M + 1 ) {
       if( children[i] ) {
@@ -787,8 +1346,12 @@ DeleteRecur(
         TMove( dst, src, len );
       }
 
-      // TODO: implement the rebalancing that walks upwards.
-      //_Delete_WalkUpwardsRecur<T,C>();
+      M -= 1;
+      node->M = M;
+      if( M < MIN_CAPACITY ) {
+        // deletion rebalancing that walks upwards.
+        _DeleteRebalance_WalkUpwardsRecur<T,C>( t, parent_chain, node );
+      }
       return;
     }
 
@@ -796,13 +1359,49 @@ DeleteRecur(
     // now we can assume found=true and nonleaf=true
     //
 
-    // TODO: implement.
-    // find the minimum value of the subtree to the right of our key value we're deleting
-    // then move that into the key slot we're deleting.
-    // then, implement the rebalancing that walks upwards, from the source subtree leaf node.
-    AssertCrash( child_node );
+    //
+    // we can either:
+    //   1. choose the min key of the subtree to the right; OR,
+    //   2. choose the max key of the subtree to the left.
+    // both are equivalent logically.
+    // option 1 will end up moving slightly more memory, since we're popping idx=0 from an array, effectively.
+    // so i think option 2 is slightly preferable.
+    //
+    // so that's what we're doing:
+    //   2. choose the max key of the subtree to the left.
+    //
+    // note we need to set up the parent_chain above the leaf so we can do the upwards walk later.
+    //
+    auto left_node = children[ idx ];
+    AssertCrash( left_node );
+    u32 left_M;
+    BTREENODE** left_children;
+    Forever {
+      left_M = left_node->M;
+      left_children = Children<T>( left_node );
+      auto next_left = left_children[ left_M ];
+      if( next_left ) {
+        auto parent_info = AddBack( *parent_chain );
+        parent_info->node = left_node;
+        parent_info->idx = left_M;
+        left_node = next_left;
+        continue;
+      }
+      break;
+    }
+    //
+    // now we know left_node is the leaf node.
+    // move the max key of the left subtree into this nonleaf node.
+    //
+    T* left_keys = Keys<T>( left_node );
+    keys[ idx ] = left_keys[ left_M ];
+    left_M -= 1;
+    left_node->M = left_M;
+    if( left_M < MIN_CAPACITY ) {
+      _DeleteRebalance_WalkUpwardsRecur<T,C>( t, parent_chain, left_node );
+    }
 
-    break;
+    break; // TODO: move this up?
   }
 
 #if DEBUGSLOW
@@ -828,7 +1427,7 @@ TestBtree()
   Fori( u32, i, 0, N ) {
     auto value = i + 1;
     bool already_there = 0;
-    InsertRecur( &t, value, &already_there, &infos );
+    Insert( &t, value, &already_there, &infos );
     AssertCrash( !already_there );
     flat.len = 0;
     FlattenValues( &t, &flat );
@@ -1059,3 +1658,25 @@ Insert(
 }
 
 #endif
+
+
+
+
+
+// TODO: B+ tree
+
+struct
+bptree_node_t
+{
+
+};
+
+
+
+
+
+
+
+
+
+

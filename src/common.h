@@ -174,6 +174,9 @@ typedef double   f64;
   #define _lzcnt_idx_t \
     _lzcnt_u64
 
+  #define _tzcnt_idx_t \
+    _tzcnt_u64
+
   #define _popcnt_idx_t( x ) \
     Cast( u32, _popcnt64( x ) )
 
@@ -208,6 +211,9 @@ typedef double   f64;
 
   #define _lzcnt_idx_t \
     _lzcnt_u32
+
+  #define _tzcnt_idx_t \
+    _tzcnt_u32
 
   #define _popcnt_idx_t( x ) \
     Cast( u32, _popcnt32( x ) )
@@ -331,6 +337,8 @@ u8 _addcarry_u64( u8 c_in, u64 a, u64 b, u64* out );
 u8 _addcarry_u32( u8 c_in, u32 a, u32 b, u32* out );
 u64 _lzcnt_u64( u64 a );
 u32 _lzcnt_u32( u32 a );
+u64 _tzcnt_u64( u64 a );
+u32 _tzcnt_u32( u32 a );
 s32 _popcnt64( s64 a );
 s32 _popcnt32( s32 a );
 
