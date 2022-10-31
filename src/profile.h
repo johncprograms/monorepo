@@ -382,7 +382,7 @@ prof_zone_t
 
 // TODO: output raw prof_elem_t records to a separate CSV file, not the logger .log file.
 // TODO: it might also make sense to just add a plot output function.
-//   e.g. ProfDrawThreadTimelines( array_t<u8>& stream, ... )
+//   e.g. ProfDrawThreadTimelines( stack_resizeable_cont_t<u8>& stream, ... )
 void
 ProfOutputTimeline()
 {
@@ -392,7 +392,7 @@ ProfOutputTimeline()
   // log calls are file writes, so chunk stuff together to minimize the overhead.
   // est. size per row is probably 100bytes, so we chunk ~100,000 rows at a time.
   idx_t rows_per_chunk = 100000;
-  array_t<u8> stage;
+  stack_resizeable_cont_t<u8> stage;
   Alloc( stage, 10*1000*1000 );
 
   // output column headers
@@ -417,8 +417,7 @@ ProfOutputTimeline()
     *AddBack( stage ) = ',';
     AddBackUInt( &stage, elem.tid );
     *AddBack( stage ) = ',';
-    auto file_slice = SliceFromCStr( loc.file );
-    auto file = _StandardFilename( loc.file, CsLen( loc.file ) );
+    auto file = _StandardFilename( loc.file, CstrLength( loc.file ) );
     auto filename = FileNameAndExt( ML( file ) );
     AddBackContents( &stage, filename );
     *AddBack( stage ) = ',';
@@ -504,7 +503,7 @@ ProfOutputZoneStats()
   ProfEnable();
 
   // TODO: hashset iteration so I don't have to keep an extra array in sync.
-  array_t<zoneid_t> set;
+  stack_resizeable_cont_t<zoneid_t> set;
   Alloc( set, 256 );
 
   auto nelems = MIN( g_prof_pos, g_prof_buffer_len );
@@ -522,7 +521,7 @@ ProfOutputZoneStats()
   CompileAssert( sizeof( zoneid_t ) == sizeof( u64 ) ); // we use u64 hash functions, so zoneid_t better be 64bits.
 
 #if PROF_SPLITSCOPES
-  array_t<prof_elem_t> open_scopes;
+  stack_resizeable_cont_t<prof_elem_t> open_scopes;
   Alloc( open_scopes, 32000 );
 #else
 #endif
@@ -590,7 +589,7 @@ ProfOutputZoneStats()
       auto stats = *rawstats;
 
       // calculate incrementally the total time ( using kahan summation )
-      auto time_elapsed_cor = time_elapsed - stats.time_total_err; // TODO: convert to kahan64_t
+      auto time_elapsed_cor = time_elapsed - stats.time_total_err; // TODO: convert to kahansum64_t
       auto time_total = stats.time_total + time_elapsed_cor;
       stats.time_total_err = ( time_total - stats.time_total ) - time_elapsed_cor;
       stats.time_total = time_total;
@@ -618,7 +617,7 @@ ProfOutputZoneStats()
 #else
 #endif
 
-  array_t<prof_zonestats_t> zonestats;
+  stack_resizeable_cont_t<prof_zonestats_t> zonestats;
   Alloc( zonestats, set.len );
   zonestats.len = set.len;
 
@@ -662,7 +661,7 @@ ProfOutputZoneStats()
   LogInline( "%-12s",              "SDEV(MS)" );
   LogInline( "%-12s",              "WIDTH" );
   Log( "" );
-  embeddedarray_t<u8, 4096> tmp;
+  stack_nonresizeable_stack_t<u8, 4096> tmp;
   FORLEN( pstats, i, zonestats )
     auto stats = *pstats;
     if( !stats.n_invocs ) {
@@ -674,13 +673,13 @@ ProfOutputZoneStats()
     LogInline( "%5u   ", stats.id );
     LogInline( "%7u   ", stats.tid );
 
-    u8* filename = CsScanL( ML( stats.file ), '\\' );
+    u8* filename = StringScanL( ML( stats.file ), '\\' );
     if( !filename )
-      filename = CsScanL( ML( stats.file ), '/' );
+      filename = StringScanL( ML( stats.file ), '/' );
     if( !filename )
       filename = stats.file.mem - 1;
     filename += 1; // skip slash
-    auto tmpsize = MIN( CsLen( filename ), FILE_W );
+    auto tmpsize = MIN( CstrLength( filename ), FILE_W );
     Clear( tmp );
     Memmove( AddBack( tmp, tmpsize ), filename, tmpsize );
     *AddBack( tmp ) = 0;
@@ -689,7 +688,7 @@ ProfOutputZoneStats()
 
     LogInline( "%7u   ", stats.line );
 
-    tmpsize = MIN( CsLen( stats.name ), FUNCTION_W );
+    tmpsize = MIN( CstrLength( stats.name ), FUNCTION_W );
     Clear( tmp );
     Memmove( AddBack( tmp, tmpsize ), stats.name, tmpsize );
     *AddBack( tmp ) = 0;

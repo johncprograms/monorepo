@@ -1,22 +1,40 @@
 // build:console_x64_debug
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#include "common.h"
-#include "math_vec.h"
+#define FINDLEAKS 0
+#include "core_cruntime.h"
+#include "core_types.h"
+#include "core_language_macros.h"
+#include "os_mac.h"
+#include "os_windows.h"
+#include "memory_operations.h"
+#include "asserts.h"
+#include "math_integer.h"
+#include "math_float.h"
+#include "math_lerp.h"
+#include "math_floatvec.h"
 #include "math_matrix.h"
+#include "math_kahansummation.h"
+#include "allocator_heap.h"
+#include "allocator_virtual.h"
+#include "allocator_heap_or_virtual.h"
+#include "cstr.h"
 #include "ds_slice.h"
 #include "ds_string.h"
-#include "ds_plist.h"
-#include "ds_array.h"
-#include "ds_embeddedarray.h"
-#include "ds_fixedarray.h"
-#include "ds_pagearray.h"
+#include "allocator_pagelist.h"
+#include "ds_stack_resizeable_cont.h"
+#include "ds_stack_nonresizeable_stack.h"
+#include "ds_stack_nonresizeable.h"
+#include "ds_stack_resizeable_pagelist.h"
 #include "ds_list.h"
-#include "ds_bytearray.h"
-#include "ds_hashset.h"
-#include "cstr.h"
+#include "ds_stack_cstyle.h"
+#include "ds_hashset_cstyle.h"
 #include "filesys.h"
 #include "timedate.h"
+#include "ds_mtqueue_mrmw_nonresizeable.h"
+#include "ds_mtqueue_mrsw_nonresizeable.h"
+#include "ds_mtqueue_srmw_nonresizeable.h"
+#include "ds_mtqueue_srsw_nonresizeable.h"
 #include "threading.h"
 #define LOGGER_ENABLED   0
 #include "logger.h"
@@ -24,7 +42,8 @@
 #define PROF_ENABLED_AT_LAUNCH   0
 #include "profile.h"
 #include "rand.h"
-#include "main.h"
+#include "allocator_heap_findleaks.h"
+#include "mainthread.h"
 
 
 int
@@ -34,33 +53,35 @@ Main( u8** args, idx_t args_len )
     printf( "List all files in a directory, recursively.\n" );
     printf( "Outputs full paths to the specified file.\n" );
     printf( "Ex: \"listfiles c: ./files.txt\"\n" );
-  
-  } else {
+  }
+  else {
     u8* dir = args[0];
-    idx_t dir_len = CsLen( dir );
+    idx_t dir_len = CstrLength( dir );
     u8* filename = args[1];
-    idx_t filename_len = CsLen( filename );
+    idx_t filename_len = CstrLength( filename );
 
-    array_t<fsobj_t> files;
+    stack_resizeable_cont_t<slice_t> files;
     Alloc( files, 8192 );
+    pagelist_t pagelist;
+    Init( pagelist, 64000 );
     Prof( find_files );
-    FsFindFiles( files, dir, dir_len, 1 );
+    FsFindFiles( files, pagelist, dir, dir_len, 1 );
     ProfClose( find_files );
 
-    printf( "num files: %I64u\n", Cast( u64, files.len ) );
+    printf( "num files: %llu\n", Cast( u64, files.len ) );
 
-    array_t<u8> outfile;
+    stack_resizeable_cont_t<u8> outfile;
     Alloc( outfile, ( files.len + 1 ) * c_fspath_len );
     ForLen( i, files ) {
       auto& file = files.mem[i];
-      Memmove( AddBack( outfile, file.len ), file.name, file.len );
+      Memmove( AddBack( outfile, file.len ), ML( file ) );
       Memmove( AddBack( outfile, 2 ), Str( "\r\n" ), 2 );
     }
 
     // Don't care if this fails.
     FileRecycle( filename, filename_len );
 
-    file_t file = FileOpenNew( filename, filename_len, fileop_t::RW, fileop_t::R );
+    file_t file = FileOpen( filename, filename_len, fileopen_t::only_new, fileop_t::RW, fileop_t::R );
     FileWrite( file, 0, ML( outfile ) );
     FileFree( file );
     Free( files );

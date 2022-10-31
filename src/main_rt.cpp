@@ -1,20 +1,36 @@
 // build:window_x64_debug
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#include "common.h"
-#include "math_vec.h"
+#ifdef WIN
+
+#define FINDLEAKS 0
+#include "core_cruntime.h"
+#include "core_types.h"
+#include "core_language_macros.h"
+#include "os_mac.h"
+#include "os_windows.h"
+#include "memory_operations.h"
+#include "asserts.h"
+#include "math_integer.h"
+#include "math_float.h"
+#include "math_lerp.h"
+#include "math_floatvec.h"
 #include "math_matrix.h"
+#include "math_kahansummation.h"
+#include "allocator_heap.h"
+#include "allocator_virtual.h"
+#include "allocator_heap_or_virtual.h"
+#include "cstr.h"
 #include "ds_slice.h"
 #include "ds_string.h"
-#include "ds_plist.h"
-#include "ds_array.h"
-#include "ds_embeddedarray.h"
-#include "ds_fixedarray.h"
-#include "ds_pagearray.h"
+#include "allocator_pagelist.h"
+#include "ds_stack_resizeable_cont.h"
+#include "ds_stack_nonresizeable_stack.h"
+#include "ds_stack_nonresizeable.h"
+#include "ds_stack_resizeable_pagelist.h"
 #include "ds_list.h"
-#include "ds_bytearray.h"
-#include "ds_hashset.h"
-#include "cstr.h"
+#include "ds_stack_cstyle.h"
+#include "ds_hashset_cstyle.h"
 #include "filesys.h"
 #include "timedate.h"
 #include "threading.h"
@@ -24,12 +40,9 @@
 #define PROF_ENABLED_AT_LAUNCH   0
 #include "profile.h"
 #include "rand.h"
-#include "main.h"
+#include "allocator_heap_findleaks.h"
+#include "mainthread.h"
 
-#include <gl/gl.h>
-#include "glw_glext.h"
-#include "glw_wglext.h"
-#include "glw_font_stb_truetype.h"
 #define OPENGL_INSTEAD_OF_SOFTWARE       1
 #define GLW_RAWINPUT_KEYBOARD            0
 #define GLW_RAWINPUT_KEYBOARD_NOHOTKEY   1
@@ -168,15 +181,15 @@ app_t
   u32 raster_tris_per_tile;
   raster_tiles_t raster_tiles;
 
-  array_t<f32> stream;
+  stack_resizeable_cont_t<f32> stream;
   u32 glstream;
   shader_tex2_t shader;
 
   img_t checker_tex;
   img_t white_tex;
 
-  array_t<mesh_t> meshes;
-  array_t<rtmesh_t*> lights;
+  stack_resizeable_cont_t<mesh_t> meshes;
+  stack_resizeable_cont_t<rtmesh_t*> lights;
 };
 
 Inl void
@@ -1001,11 +1014,11 @@ main( int argc, char** argv )
 {
   MainInit();
 
-  array_t<u8> cmdline;
+  stack_resizeable_cont_t<u8> cmdline;
   Alloc( cmdline, 512 );
   Fori( int, i, 1, argc ) {
     u8* arg = Cast( u8*, argv[i] );
-    idx_t arg_len = CsLen( arg );
+    idx_t arg_len = CstrLength( arg );
     Memmove( AddBack( cmdline, arg_len ), arg, arg_len );
     Memmove( AddBack( cmdline, 2 ), " ", 2 );
   }
@@ -1027,7 +1040,7 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
   MainInit();
 
   u8* cmdline = Str( prog_cmd_line );
-  idx_t cmdline_len = CsLen( Str( prog_cmd_line ) );
+  idx_t cmdline_len = CstrLength( Str( prog_cmd_line ) );
 
   AllocConsole();
   FILE* ignored = 0;
@@ -1118,3 +1131,5 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
 //    100, 10, d0,
 //    300, 50, d1,
 //    200, 100, d2 );
+
+#endif // WIN

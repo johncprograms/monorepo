@@ -13,7 +13,6 @@
 #define _mm_clamp_epi32( x, lower, upper )   ( _mm_max_epi32( lower, _mm_min_epi32( x, upper ) ) )
 
 
-
 Inl vec2<s32>
 IntegerPixelFromImagespace( f32 x, f32 y, s32 img_x_m1, s32 img_y_m1 )
 {
@@ -30,11 +29,6 @@ SameImagespacePixelY( f32 y0, f32 y1 )
 }
 
 
-
-
-
-
-
 struct
 img_t
 {
@@ -49,8 +43,6 @@ img_t
   f32 aspect_ratio;
   string_t mem;
 };
-
-
 
 Inl void
 Init( img_t& img, u32 x, u32 y, u32 stride_x, u32 bytes_per_px )

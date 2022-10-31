@@ -21,9 +21,9 @@
 //
 // what if our next model is line space favored, since that's what txt_t really wants?
 // something like:
-//   array_t<content_ptr_t> bols;
+//   stack_resizeable_cont_t<content_ptr_t> bols;
 // or
-//   array_t<slice_t> lines;
+//   stack_resizeable_cont_t<slice_t> lines;
 // to provide constant-time line space operations?
 // the bols approach would make ALL ins/dels be O( num_lines ) since we'd have to update bols.
 // the lines approach would make ONLY LINE ins/dels be O( num_lines ). that's slightly better.
@@ -39,7 +39,7 @@
 // for L1D entries that means  8byte * 65536 = 512KB
 // so in total, 1.5MB for line metadata. not too bad on modern machines.
 // with this model,
-//   char ins/del are still O( 1 ) with our leaky plist and line replacement.
+//   char ins/del are still O( 1 ) with our leaky pagelist and line replacement.
 //   line ins/del are still O( num_lines ), so it doesn't really help there.
 //
 // what about line hashing?
@@ -47,7 +47,7 @@
 // that keeps the O( 1 ) line space lookup, but it doesn't really solve the ordering problem.
 // i guess we can do something like idx_hashset_t to avoid actually moving slices.
 // that would let us just write over the line positions.
-// note we could do the same with { array_t<u32>, array_t<slice_t> }, no hashset really req'd.
+// note we could do the same with { stack_resizeable_cont_t<u32>, stack_resizeable_cont_t<slice_t> }, no hashset really req'd.
 // in either case, that gets us down to ~400KB modified memory, which is ~3x smaller.
 //
 // what about pagearrays?
@@ -69,7 +69,7 @@
 // but is it better for medium files? hard to say.
 // if we say num_lines = 1M, then log( 1M ) = 20. so if we used a binary tree, that's 20 levels deep. 
 //
-// measuring array_t<slice_t> addat(0) shows ~100K entries is fine, but ~1M is not.
+// measuring stack_resizeable_cont_t<slice_t> addat(0) shows ~100K entries is fine, but ~1M is not.
 // at that many, we've blown the last level cache size, and are presumably stalling for memory.
 // last level cache for my intel 6600K is something like 5MB, so that makes sense.
 // intel server chips have something like 15MB, which would make more of the ~100K class safe.
@@ -83,7 +83,7 @@
 // doing line streaming like this might be a pain to implement though.
 // in all, we could go from 16bytes -> 5bytes. that's ~3x increase in line capacity.
 // not bad for the simple array approach...
-// actually, much simpler, we just do the array_t<u32> indirection layer suggested above.
+// actually, much simpler, we just do the stack_resizeable_cont_t<u32> indirection layer suggested above.
 // that's 4bytes, even better. 4x increase in capacity.
 // can't really do any better than this, and keep the constant time line space lookup.
 // maybe some encoding to reduce sizes of smaller line numbers, but it couldn't be too aggressive.
@@ -125,7 +125,7 @@
 //     that's a pretty good reason to do the bidirectional permutation storage.
 //
 // or maybe we can just leave empty entries in unordered_lines.
-// make a separate array_t<u32> of unused entries, so we don't have to compact unordered_lines at all?
+// make a separate stack_resizeable_cont_t<u32> of unused entries, so we don't have to compact unordered_lines at all?
 // then we can avoid all fixups of internal pointers, which is nice.
 //
 // i've gone with this design for now.
@@ -151,7 +151,7 @@
 //   // so the u32 len's can be packed tightly.
 //   // or, maybe we want a u32 worth of flags per line!
 //   // already had the idea to store 'is_nontrivial_toplevel' per-line, for easier custom toplevel editing view.
-//   // also had the idea of a fundamental 'edited' flag to indicate the line is an sarray_t into the plist, for better memory usage.
+//   // also had the idea of a fundamental 'edited' flag to indicate the line is an stack_implicitcapacity_t into the pagelist, for better memory usage.
 //   // i can also imagine 'unsaved_changes', which we render somehow to show what's locally changed.
 //   // maybe we render 'edited' too; VS does this with a yellow for 'unsaved_changes', green for 'edited', blank else.
 //   // something like: struct line_t { u8* mem;  u32 len;  u32 flags; };
@@ -184,7 +184,7 @@
 //   auto lineaddr  = internal_idx % c_lineblock_size;
 //   auto entry = AccessLastLevelPage( &buf->internal_lineblocks, blockaddr );
 //   if( !*entry ) {
-//     *entry = AddPlist( buf->plist, lineblock_t, _SIZEOF_IDX_T, 1 );
+//     *entry = AddPagelist( buf->pagelist, lineblock_t, _SIZEOF_IDX_T, 1 );
 //     Memzero( *entry, sizeof( lineblock_t ) );
 //   }
 //   auto block = Cast( lineblock_t*, *entry );
@@ -195,14 +195,14 @@
 // struct
 // buf_t
 // {
-//   array32_t<u32> internal_idx_from_line;
+//   stack_resizeable_cont_t<u32> internal_idx_from_line;
 //   pagetree_16x2_t internal_lineblocks;
-//   array32_t<u32> unused_internal_idxs;
+//   stack_resizeable_cont_t<u32> unused_internal_idxs;
 // };
 //
 // OPEN QUESTION:
 // should we routinely use AccessLine to lookup lines, or TryAccessLine ?
-// since we're likely to inline the AddPlist code to initialize pages, probably best to use TryAccessLine.
+// since we're likely to inline the AddPagelist code to initialize pages, probably best to use TryAccessLine.
 // we just need to do an AccessLine on first use of any new line.
 //
 
@@ -267,10 +267,10 @@
 // assuming 1 cycle per byte, that's roughly 1 microsecond. not unreasonable.
 //
 // alternately, we could just reload the file at idle time or something if we see too much wasted memory.
-// keeping track of a content_len and a plist userbytes would let us check a ratio.
+// keeping track of a content_len and a pagelist userbytes would let us check a ratio.
 // not sure if it's worth writing memory->memory functionality for this reload, or if existing save->load is fine.
 // actually doing this would throw away all ability to undo, which isn't ideal.
-// we could walk the history chains and save/copy everything to a new plist, but i want to avoid history traversals.
+// we could walk the history chains and save/copy everything to a new pagelist, but i want to avoid history traversals.
 // i'd prefer to do better core datastructure design and caching to help with memory usage.
 //
 // with our current model i'm seeing on the order of ~10MB usage increase while just typing into files over an hour or so.
@@ -280,10 +280,10 @@
 //
 // since most typing takes place on a single line, make sure continuous typing into one line reuses the same region.
 // maybe we do something like over-allocate the current line contents, and then do the usual array geometric growth.
-// this could be an ideal candidate for sarray_t actually, which does the capacity = power-of-2-round-up-length thing.
+// this could be an ideal candidate for stack_implicitcapacity_t actually, which does the capacity = power-of-2-round-up-length thing.
 // we have two options:
-// - do the sarray_t thing on all lines, recently-edited or not. we'll waste at most file.size bytes, on average file.size / 2 bytes.
-// - store an 'edited' flag on each line, and only do the sarray_t thing on those lines. from-file lines stay exact-bounded.
+// - do the stack_implicitcapacity_t thing on all lines, recently-edited or not. we'll waste at most file.size bytes, on average file.size / 2 bytes.
+// - store an 'edited' flag on each line, and only do the stack_implicitcapacity_t thing on those lines. from-file lines stay exact-bounded.
 // note we'd have to be careful about when we set/reset line flags.
 //
 // we'd also need to change how we store line modify undos, since right now it's an entire-line swap.
@@ -295,20 +295,20 @@
 // the key idea being, the number of diff slices back when we had slice-space favoring was in the thousands.
 // that's small enough that maybe we didn't really need constant-time line lookups.
 //
-// if we need to speed this up further, we could use skiplists. although maintaining those are no fun.
+// if we need to speed this up further, we could use skipagelists. although maintaining those are no fun.
 //
 // struct
 // diff_t
 // {
 //   slice_t slice;
-//   array32_t<u32> line_starts;
+//   stack_resizeable_cont_t<u32> line_starts;
 // };
 //
 // struct
 // buf_t
 // {
-//   array32_t<diff_t> diffs;
-//   plist_t mem;
+//   stack_resizeable_cont_t<diff_t> diffs;
+//   pagelist_t mem;
 // };
 //
 
@@ -319,7 +319,7 @@
 // chunk_t
 // {
 //   u8 data[chunk_size];
-//   array32_t<u16> line_starts;
+//   stack_resizeable_cont_t<u16> line_starts;
 // };
 // struct
 // buf_t
@@ -365,7 +365,7 @@
 //   it's still acceptably fast; cpu rasterization is dominant, not buf_t issues.
 //   the theoretical benefit is really for increasing our linecount cliff.
 //   but we have other issues capping us at lower linecounts, so i haven't quite tested massive files yet.
-//   e.g. a ~5M line file will cause us to try to alloc space for ~7M lines, which blows past array_t limits.
+//   e.g. a ~5M line file will cause us to try to alloc space for ~7M lines, which blows past stack_resizeable_cont_t limits.
 //   that puts the max filesize on LB=0 to roughly 200MB, assuming our test file has usual line lens.
 //   that's lower than i'd want, so maybe that alone is enough to justify getting rid of LB=0.
 #define LB   1
@@ -373,7 +373,7 @@
 
 
 // already had the idea to store 'is_nontrivial_toplevel' per-line, for easier custom toplevel editing view.
-// also had the idea of a fundamental 'edited' flag to indicate the line is an sarray_t into the plist, for better memory usage.
+// also had the idea of a fundamental 'edited' flag to indicate the line is an stack_implicitcapacity_t into the pagelist, for better memory usage.
 // i can also imagine 'unsaved_changes', which we render somehow to show what's locally changed.
 // maybe we render 'edited' too; VS does this with a yellow for 'unsaved_changes', green for 'edited', blank else.
 constant u32 lineflag_bit_arrayline = 0;
@@ -399,7 +399,7 @@ Enumc( undoableopertype_t )
 #define PAGEHISTORY   0
 // TODO: for massive copy/paste, we generate separate opers for each line.
 // this leads to massive expansion of the buf's history.
-// undoableoper_t is ~40bytes right now, so we can have ~2M of them before we blow up the array_t len threshold.
+// undoableoper_t is ~40bytes right now, so we can have ~2M of them before we blow up the stack_resizeable_cont_t len threshold.
 // we should consider ways to cut down on the history size in that case.
 // we may also have to convert history to be a pagearray or something else.
 // linkedlist structures are totally fine, since we only iterate element at a time. no random accessing.
@@ -410,10 +410,10 @@ Enumc( undoableopertype_t )
 // that's kind of a lot, relative to ~40bytes. so i think i'd prefer pagearray.
 // pagearray has more complicated iteration, but it's likely worth it here.
 //
-// one more question is: should we use the buf_t plist, or make another plist on the buf_t for these opers?
-// i think we're already copying lines to the existing plist, so probably that's fine.
-// indeed, line edits always create new contents in the existing plist, preserving the old one in place.
-// if we ever want to allow dynamic history deletion, then a separate plist might be nice to have.
+// one more question is: should we use the buf_t pagelist, or make another pagelist on the buf_t for these opers?
+// i think we're already copying lines to the existing pagelist, so probably that's fine.
+// indeed, line edits always create new contents in the existing pagelist, preserving the old one in place.
+// if we ever want to allow dynamic history deletion, then a separate pagelist might be nice to have.
 //
 // another size optimization we could do is one-line diffing, for oper type mod.
 // when we're replacing a subset of the line, we don't need to preserve the old line in it's entirety.
@@ -452,23 +452,23 @@ lineblock_t
 struct
 buf_t
 {
-  plist_t plist;
+  pagelist_t pagelist;
   // TODO: we hit array limits on internal_idx_from_line.
   //   our current limit is 100MB for regular arrays, which is 25M lines.
   // this is what's encoding line ordering, so we can't use an unordered hash map for example.
   // one interesting idea is maybe to use a linked list, so we don't have to slide array elements over.
   // 
   // 
-  array32_t<u32> internal_idx_from_line; // len = number of actual lines.
-  array32_t<u32> unused_internal_idxs; // len = O( max len of internal_idx_from_line )
+  stack_resizeable_cont_t<u32> internal_idx_from_line; // len = number of actual lines.
+  stack_resizeable_cont_t<u32> unused_internal_idxs; // len = O( max len of internal_idx_from_line )
 #if LB
-  pagetree_11x2_t internal_lineblocks;
+  pagetree_11x2_t<allocator_pagelist_t, allocation_pagelist_t> internal_lineblocks;
 #else
-  array32_t<line_t> unordered_lines; // TODO: do something different. see above comment blocks.
+  stack_resizeable_cont_t<line_t> unordered_lines; // TODO: do something different. see above comment blocks.
 #endif
 #if PAGEHISTORY
 #else
-  array_t<undoableoper_t> history; // TODO: do something different. this can blow past array_t limits.
+  stack_resizeable_cont_t<undoableoper_t> history; // TODO: do something different. this can blow past stack_resizeable_cont_t limits.
   idx_t history_idx;
 #endif
   string_t orig_file_contents;
@@ -477,7 +477,9 @@ buf_t
 Inl u32
 NLines( buf_t* buf )
 {
-  return buf->internal_idx_from_line.len;
+  auto r = buf->internal_idx_from_line.len;
+  AssertCrash( r <= MAX_u32 );
+  return Cast( u32, r );
 }
 
 Inl u32
@@ -512,7 +514,7 @@ AccessLine( buf_t* buf, u32 internal_idx )
   auto lineaddr  = internal_idx % c_lineblock_size;
   auto entry = AccessLastLevelPage( &buf->internal_lineblocks, blockaddr );
   if( !*entry ) {
-    *entry = AddPlist( buf->plist, lineblock_t, _SIZEOF_IDX_T, 1 );
+    *entry = AddPagelist( buf->pagelist, lineblock_t, _SIZEOF_IDX_T, 1 );
     Memzero( *entry, sizeof( lineblock_t ) );
   }
   auto block = Cast( lineblock_t*, *entry );
@@ -609,7 +611,7 @@ _CheckNoDupes(
 #if DEBUGSLOW
   auto nlines = NLines( buf );
   AssertCrash( nlines );
-  array_t<u8> counts;
+  stack_resizeable_cont_t<u8> counts;
 #if LB
   auto nlines_conservative = nlines + buf->unused_internal_idxs.len;
   Alloc( counts, nlines_conservative );
@@ -775,11 +777,11 @@ Zero( buf_t* buf )
   Zero( buf->internal_idx_from_line );
   Zero( buf->unused_internal_idxs );
 #if LB
-  buf->internal_lineblocks = {};
+  Zero( &buf->internal_lineblocks );
 #else
   Zero( buf->unordered_lines );
 #endif
-  Zero( buf->plist );
+  Zero( buf->pagelist );
 #if PAGEHISTORY
 #else
   Zero( buf->history );
@@ -800,11 +802,11 @@ Kill( buf_t* buf )
   Free( buf->internal_idx_from_line );
   Free( buf->unused_internal_idxs );
 #if LB
-  Kill( &buf->internal_lineblocks );
+  Zero( &buf->internal_lineblocks ); // uses buf->pagelist as its allocator, so no need to free.
 #else
   Free( buf->unordered_lines );
 #endif
-  Kill( buf->plist );
+  Kill( buf->pagelist );
 #if PAGEHISTORY
 #else
   Free( buf->history );
@@ -844,12 +846,12 @@ EolString( eoltype_t type )
 void
 BufLoadEmpty( buf_t* buf )
 {
-  Init( buf->plist, 4000 );
+  Init( buf->pagelist, 4000 );
   Alloc( buf->internal_idx_from_line, 8 );
   *AddBack( buf->internal_idx_from_line ) = 0;
   Alloc( buf->unused_internal_idxs, 8 );
 #if LB
-  Init( &buf->internal_lineblocks, &buf->plist );
+  Init( &buf->internal_lineblocks, allocator_pagelist_t{ &buf->pagelist } );
   auto first_line = AccessLine( buf, 0 );
   *first_line = {};
 #else
@@ -871,7 +873,7 @@ BufLoad( buf_t* buf, file_t* file, eoltype_t* eoltype_detected )
   AssertCrash( file->size < MAX_idx );
 
   constant u64 c_chunk_size = 200*1000*1000;
-  Init( buf->plist, CLAMP( Cast( idx_t, file->size ), 4000, c_chunk_size ) );
+  Init( buf->pagelist, CLAMP( Cast( idx_t, file->size ), 4000, c_chunk_size ) );
 
   Prof( BufLoad_FileAlloc );
   buf->orig_file_contents = FileAlloc( *file );
@@ -879,9 +881,9 @@ BufLoad( buf_t* buf, file_t* file, eoltype_t* eoltype_detected )
   ProfClose( BufLoad_FileAlloc );
 
 #if LB
-  pagearray_t<slice32_t> lines;
+  stack_resizeable_pagelist_t<slice32_t> lines;
   Init( lines, 65000 );
-  Init( &buf->internal_lineblocks, &buf->plist );
+  Init( &buf->internal_lineblocks, allocator_pagelist_t{ &buf->pagelist } );
   idx_t num_cr = 0;
   idx_t num_lf = 0;
   idx_t num_crlf = 0;
@@ -930,7 +932,7 @@ BufLoad( buf_t* buf, file_t* file, eoltype_t* eoltype_detected )
   auto nlines_alloc = ( 4 * nlines ) / 3;
   ProfClose( BufLoad_CountNewlines );
 
-  array32_t<slice32_t> lines;
+  stack_resizeable_cont_t<slice32_t> lines;
   Alloc( lines, nlines );
   SplitIntoLines( &lines, ML( filemem ) );
   // PERF: not ideal to copy array like this. unordered_lines is going away soon anyways, so leave this here for now.
@@ -969,8 +971,7 @@ BufSave( buf_t* buf, file_t* file, eoltype_t eoltype )
 
   slice_t eol = EolString( eoltype );
   constant idx_t c_chunk_size = 200*1024*1024;
-  string_t chunk;
-  Alloc( chunk, c_chunk_size );
+  auto chunk = AllocString<u8, allocator_virtual_t, allocation_virtual_t>( c_chunk_size );
   idx_t chunkpos = 0;
   idx_t bytepos = 0;
   auto last_line = LastLine( buf );
@@ -1146,7 +1147,7 @@ FindFirstInlineR(
   auto x = x_start;
   FORLINES( buf, line, y, y_start, nlines )
     AssertCrash( x <= line->len );
-    auto f = CsIdxScanR( x_result, line->mem, line->len, x, str, str_len, case_sensitive, word_boundary );
+    auto f = StringIdxScanR( x_result, line->mem, line->len, x, str, str_len, case_sensitive, word_boundary );
     x = 0;
     if( f ) {
       *found = 1;
@@ -1186,7 +1187,7 @@ FindFirstInlineL(
     else {
       x = line->len;
     }
-    auto f = CsIdxScanL( x_result, line->mem, line->len, x, str, str_len, case_sensitive, word_boundary );
+    auto f = StringIdxScanL( x_result, line->mem, line->len, x, str, str_len, case_sensitive, word_boundary );
     if( f ) {
       *found = 1;
       *y_result = y;
@@ -1315,7 +1316,7 @@ Replace(
   // TODO: see if we can merge some of the 4 cases here.
   AssertCrash( y_end < NLines( buf ) );
   auto nlines = CountNewlines( str, str_len ) + 1;
-  array32_t<slice32_t> lines;
+  stack_resizeable_cont_t<slice32_t> lines;
   Alloc( lines, nlines );
   SplitIntoLines( &lines, str, str_len );
   if( y_start == y_end  &&  lines.len == 1 ) {
@@ -1336,7 +1337,7 @@ Replace(
     //   at minimum we could likely avoid allocing the line contents up to x.
     line_t line_new;
     line_new.len = line->len - len_x + add.len;
-    line_new.mem = AddPlist( buf->plist, u8, 1, line_new.len );
+    line_new.mem = AddPagelist( buf->pagelist, u8, 1, line_new.len );
     line_new.flags = 0;
     Memmove( line_new.mem, line->mem, x_start );
     Memmove( line_new.mem + x_start, ML( add ) );
@@ -1364,7 +1365,7 @@ Replace(
     }
     line_t line_new;
     line_new.len = x_start + add.len + line_end->len - x_end;
-    line_new.mem = AddPlist( buf->plist, u8, 1, line_new.len );
+    line_new.mem = AddPagelist( buf->pagelist, u8, 1, line_new.len );
     line_new.flags = 0;
     Memmove( line_new.mem, line_start->mem, x_start );
     Memmove( line_new.mem + x_start, ML( add ) );
@@ -1402,7 +1403,7 @@ Replace(
     }
     line_t line_new;
     line_new.len = x_start + add_first.len;
-    line_new.mem = AddPlist( buf->plist, u8, 1, line_new.len );
+    line_new.mem = AddPagelist( buf->pagelist, u8, 1, line_new.len );
     line_new.flags = 0;
     Memmove( line_new.mem, line->mem, x_start );
     Memmove( line_new.mem + x_start, ML( add_first ) );
@@ -1416,7 +1417,7 @@ Replace(
     Fori( u32, i, 1, lines.len - 1 ) {
       auto add = lines.mem[i];
       line_new.len = add.len;
-      line_new.mem = AddPlist( buf->plist, u8, 1, line_new.len );
+      line_new.mem = AddPagelist( buf->pagelist, u8, 1, line_new.len );
       line_new.flags = 0;
       Memmove( line_new.mem, ML( add ) );
       ForwardLineOper(
@@ -1428,7 +1429,7 @@ Replace(
         );
     }
     line_new.len = add_last.len + line_orig.len - x_end;
-    line_new.mem = AddPlist( buf->plist, u8, 1, line_new.len );
+    line_new.mem = AddPagelist( buf->pagelist, u8, 1, line_new.len );
     line_new.flags = 0;
     Memmove( line_new.mem, ML( add_last ) );
     Memmove( line_new.mem + add_last.len, line_orig.mem + x_end, line_orig.len - x_end );
@@ -1455,7 +1456,7 @@ Replace(
     }
     line_t line_new;
     line_new.len = x_start + add_first.len;
-    line_new.mem = AddPlist( buf->plist, u8, 1, line_new.len );
+    line_new.mem = AddPagelist( buf->pagelist, u8, 1, line_new.len );
     line_new.flags = 0;
     Memmove( line_new.mem, line_start->mem, x_start );
     Memmove( line_new.mem + x_start, ML( add_first ) );
@@ -1481,7 +1482,7 @@ Replace(
     Fori( u32, i, 1, lines.len - 1 ) {
       auto add = lines.mem[i];
       line_new.len = add.len;
-      line_new.mem = AddPlist( buf->plist, u8, 1, line_new.len );
+      line_new.mem = AddPagelist( buf->pagelist, u8, 1, line_new.len );
       line_new.flags = 0;
       Memmove( line_new.mem, ML( add ) );
       ForwardLineOper(
@@ -1493,7 +1494,7 @@ Replace(
         );
     }
     line_new.len = add_last.len + line_end->len - x_end;
-    line_new.mem = AddPlist( buf->plist, u8, 1, line_new.len );
+    line_new.mem = AddPagelist( buf->pagelist, u8, 1, line_new.len );
     line_new.flags = 0;
     Memmove( line_new.mem, ML( add_last ) );
     Memmove( line_new.mem + add_last.len, line_end->mem + x_end, line_end->len - x_end );
@@ -1857,8 +1858,7 @@ AllocContents( buf_t* buf, eoltype_t eoltype )
   }
   bytepos += last_line * eol.len;
 
-  string_t r;
-  Alloc( r, bytepos );
+  auto r = AllocString( bytepos );
 
   bytepos = 0;
   FORALLLINES( buf, line, i )
@@ -1892,8 +1892,7 @@ AllocContents(
     AssertCrash( x_start <= x_end );
     AssertCrash( x_end <= line->len );
     auto len_x = x_end - x_start;
-    string_t r;
-    Alloc( r, len_x );
+    auto r = AllocString( len_x );
     Memmove( r.mem, line->mem + x_start, len_x );
     return r;
   }
@@ -1912,8 +1911,7 @@ AllocContents(
   }
   bytecount += x_end;
 
-  string_t r;
-  Alloc( r, bytecount );
+  auto r = AllocString( bytecount );
 
   idx_t bytepos = 0;
   Memmove( r.mem + bytepos, line_start->mem + x_start, line_start->len - x_start );
@@ -1946,7 +1944,7 @@ Inl void
 AssertCrashBuf( buf_t& buf, u8* str, eoltype_t eoltype )
 {
   auto state = AllocContents( &buf, eoltype );
-  AssertCrash( MemEqual( ML( state ), str, CsLen( str ) ) );
+  AssertCrash( MemEqual( ML( state ), str, CstrLength( str ) ) );
   Free( state );
 }
 Inl void
@@ -1958,7 +1956,6 @@ AssertCrashBuf( buf_t& buf, u8* str )
 static void
 TestBuf()
 {
-  static u8 dump[4096];
   static u8 dump2[4096];
 
   buf_t buf;
@@ -1978,14 +1975,14 @@ TestBuf()
         Insert( &buf, i, 0, &chr, 1 );
       }
       For( i, 0, historycount ) {
-        string_t str = AllocContents( &buf, eoltype_t::crlf );
+        auto str = AllocContents( &buf, eoltype_t::crlf );
         AssertCrash( MemEqual( dump2, historycount - i, ML( str ) ) );
         Undo( &buf );
         Free( str );
       }
       For( i, 0, historycount ) {
         Redo( &buf );
-        string_t str = AllocContents( &buf, eoltype_t::crlf );
+        auto str = AllocContents( &buf, eoltype_t::crlf );
         AssertCrash( MemEqual( dump2, 1 + i, ML( str ) ) );
         Free( str );
       }
@@ -1999,7 +1996,7 @@ TestBuf()
   {
     auto VerifyChange = [&]( slice_t& str_old, slice_t& str_new )
     {
-      string_t str = AllocContents( &buf, eoltype_t::crlf );
+      auto str = AllocContents( &buf, eoltype_t::crlf );
       AssertCrash( MemEqual( ML( str ), ML( str_new ) ) );
       Free( str );
       Undo( &buf );
@@ -2417,7 +2414,7 @@ TestBuf()
           // we can use the expected string's index-of-char to find the expected dst location.
           idx_t expected_ptr;
           AssertCrash( j < 10 );
-          bool found = CsIdxScanR( &expected_ptr, expected[i], tmp_len, 0, '0' + Cast( u8, j ) );
+          bool found = StringIdxScanR( &expected_ptr, expected[i], tmp_len, 0, '0' + Cast( u8, j ) );
           AssertCrash( found );
           AssertCrash( test_ptr == expected_ptr );
         }

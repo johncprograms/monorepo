@@ -36,8 +36,8 @@ fontlinespan_t
 struct
 fontlayout_t
 {
-  array_t<fontadvance_t> raw_advances;
-  array_t<fontlinespan_t> advances_per_ln;
+  stack_resizeable_cont_t<fontadvance_t> raw_advances;
+  stack_resizeable_cont_t<fontlinespan_t> advances_per_ln;
 };
 
 Inl void
@@ -69,8 +69,8 @@ font_t
 {
   string_t ttf;
   stbtt_fontinfo info;
-  array_t<idx_t> glyph_from_codept;
-  array_t<fontglyph_t> glyphs;
+  stack_resizeable_cont_t<idx_t> glyph_from_codept;
+  stack_resizeable_cont_t<fontglyph_t> glyphs;
   u32 texid;
   f32 scale;
   f32 ascent;
@@ -724,7 +724,7 @@ FontLoadAscii( font_t& font )
 {
   ProfFunc();
 
-  array_t<fontglyphimg_t> glyphimgs;
+  stack_resizeable_cont_t<fontglyphimg_t> glyphimgs;
   Alloc( glyphimgs, 128 );
 
   // TODO: load extended chars that we want.
@@ -757,8 +757,8 @@ FontLoadAscii( font_t& font )
     font.glyph_from_codept.mem[codept] = glyph_idx;
   }
 
-  kahan32_t x = {};
-  kahan32_t y = {};
+  kahansum32_t x = {};
+  kahansum32_t y = {};
   f32 delta_y = 0;
 
   static const auto maxdim = _vec2<f32>( 512, 4096 );
@@ -893,7 +893,7 @@ FontAddLayoutLine(
   auto linespan = AddBack( layout.advances_per_ln );
   linespan->pos = layout.raw_advances.len;
   linespan->len = 0;
-  kahan32_t x = {};
+  kahansum32_t x = {};
   For( i, 0, text_len ) {
     u32 codept = text[i];
     if( codept == '\t' ) {
@@ -961,11 +961,11 @@ charspan_t
 Inl void
 FontGetCharSpans(
   fontlayout_t& layout,
-  idx_t line, // TODO: convert txt.linespans/charspans/etc. to array32_t.
-  idx_t char_offset, // TODO: convert txt.linespans/charspans/etc. to array32_t.
-  idx_t char_len, // TODO: convert txt.linespans/charspans/etc. to array32_t.
+  idx_t line, // TODO: convert txt.linespans/charspans/etc. to u32 sizes?
+  idx_t char_offset, // TODO: convert txt.linespans/charspans/etc. to u32 sizes?
+  idx_t char_len, // TODO: convert txt.linespans/charspans/etc. to u32 sizes?
   f32 x0,
-  array_t<charspan_t>* charspans
+  stack_resizeable_cont_t<charspan_t>* charspans
   )
 {
 //  ProfFunc();
@@ -980,12 +980,12 @@ FontGetCharSpans(
   AssertCrash( linespan->pos + char_offset < layout.raw_advances.len );
   auto first = layout.raw_advances.mem + linespan->pos + char_offset;
   auto dx_from_first = -first->xl_within_entire_line;
-  For( i, 0, char_len ) { // TODO: convert txt.linespans/charspans/etc. to array32_t.
+  For( i, 0, char_len ) { // TODO: convert txt.linespans/charspans/etc. to u32 sizes?
     auto raw_idx = linespan->pos + i + char_offset;
     auto adv = layout.raw_advances.mem + raw_idx;
     auto span = AddBack( *charspans );
     span->xl = x0 + adv->xl_within_entire_line + dx_from_first;
     span->xr = x0 + adv->xr_within_entire_line + dx_from_first;
-    span->char_idx_in_line = Cast( u32, i + char_offset ); // TODO: convert txt.linespans/charspans/etc. to array32_t.
+    span->char_idx_in_line = Cast( u32, i + char_offset ); // TODO: convert txt.linespans/charspans/etc. to u32 sizes?
   }
 }

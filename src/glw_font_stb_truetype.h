@@ -423,7 +423,7 @@ int main(int arg, char **argv)
    #endif
 
    #ifndef STBTT_strlen
-   #define STBTT_strlen(x)    CsLen(x)
+   #define STBTT_strlen(x)    CstrLength(x)
    #endif
 
    #ifndef STBTT_memcpy
@@ -2543,16 +2543,21 @@ static void stbtt__handle_clipped_edge(float *scanline, int x, stbtt__active_edg
       y1 = e->ey;
    }
 
-   if (x0 == x)
+   if (x0 == x) {
       STBTT_assert(x1 <= x+1);
-   elif (x0 == x+1)
+   }
+   elif (x0 == x+1) {
       STBTT_assert(x1 >= x);
-   elif (x0 <= x)
+   }
+   elif (x0 <= x) {
       STBTT_assert(x1 <= x);
-   elif (x0 >= x+1)
+   }
+   elif (x0 >= x+1) {
       STBTT_assert(x1 >= x+1);
-   else
+   }
+   else {
       STBTT_assert(x1 >= x && x1 <= x+1);
+   }
 
    if (x0 <= x && x1 <= x)
       scanline[x] += e->direction * (y1-y0);

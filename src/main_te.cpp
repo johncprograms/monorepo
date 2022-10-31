@@ -4,29 +4,46 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
 void
-LogUI( void* cstr ... );
+LogUI( const void* cstr ... );
 
 #define FINDLEAKS   0
 #define WEAKINLINING   1
 #define LOGASYNCTASKS   0   // logger is global, and i was seeing lock contention, so disable this.
-#include "common.h"
-#include "math_vec.h"
+#include "core_cruntime.h"
+#include "core_types.h"
+#include "core_language_macros.h"
+#include "os_mac.h"
+#include "os_windows.h"
+#include "memory_operations.h"
+#include "asserts.h"
+#include "math_integer.h"
+#include "math_float.h"
+#include "math_lerp.h"
+#include "math_floatvec.h"
 #include "math_matrix.h"
+#include "math_kahansummation.h"
+#include "allocator_heap.h"
+#include "allocator_virtual.h"
+#include "allocator_heap_or_virtual.h"
+#include "cstr.h"
 #include "ds_slice.h"
 #include "ds_string.h"
-#include "ds_plist.h"
-#include "ds_array.h"
-#include "ds_embeddedarray.h"
-#include "ds_fixedarray.h"
-#include "ds_pagearray.h"
+#include "allocator_pagelist.h"
+#include "ds_stack_resizeable_cont.h"
+#include "ds_stack_nonresizeable_stack.h"
+#include "ds_stack_nonresizeable.h"
+#include "ds_stack_resizeable_pagelist.h"
 #include "ds_pagetree.h"
 #include "ds_list.h"
-#include "ds_bytearray.h"
-#include "ds_hashset.h"
-#include "ds_embeddedbitbuffer.h"
-#include "cstr.h"
+#include "ds_stack_cstyle.h"
+#include "ds_hashset_cstyle.h"
+#include "ds_bitarray_nonresizeable_stack.h"
 #include "filesys.h"
 #include "timedate.h"
+#include "ds_mtqueue_mrmw_nonresizeable.h"
+#include "ds_mtqueue_mrsw_nonresizeable.h"
+#include "ds_mtqueue_srmw_nonresizeable.h"
+#include "ds_mtqueue_srsw_nonresizeable.h"
 #include "threading.h"
 #define LOGGER_ENABLED   1
 #include "logger.h"
@@ -34,7 +51,13 @@ LogUI( void* cstr ... );
 #define PROF_ENABLED_AT_LAUNCH   0
 #include "profile.h"
 #include "rand.h"
-#include "main.h"
+#include "allocator_heap_findleaks.h"
+#include "mainthread.h"
+#include "cstr_integer.h"
+#include "cstr_float.h"
+#include "ds_hashset_complexkey.h"
+#include "text_parsing.h"
+#include "ds_stack_resizeable_cont_addbacks.h"
 
 #define RENDER_UNPACKED   0
 
@@ -59,15 +82,15 @@ struct
 notify_t
 {
   slice_t msg;
-  kahan32_t t;
+  kahansum32_t t;
 };
 
 struct
 notifyui_t
 {
-  plist_t mem;
-  listwalloc_t<notify_t> msgs;
-  plist_t lmem; // TODO: why do we crash w/ 1 plist?
+  pagelist_t mem;
+  listwalloc_t<notify_t, allocator_pagelist_t, allocation_pagelist_t> msgs;
+  pagelist_t lmem; // TODO: why do we crash w/ 1 pagelist?
   bool fadedin;
 };
 
@@ -76,7 +99,7 @@ Init( notifyui_t& ui )
 {
   Init( ui.mem, 65536 );
   Init( ui.lmem, 65536 );
-  Init( ui.msgs, &ui.lmem );
+  Init( ui.msgs, allocator_pagelist_t{ &ui.lmem } );
   ui.fadedin = 0;
 }
 
@@ -140,18 +163,18 @@ app_t
   bool show_debugmode;
   debugmode_t debugmode;
   bool kb_command; // else edit.
-  array_t<f32> stream;
+  stack_resizeable_cont_t<f32> stream;
 
 #if OPENGL_INSTEAD_OF_SOFTWARE
   u32 glstream;
   shader_tex2_t shader;
 #endif // !OPENGL_INSTEAD_OF_SOFTWARE
 
-  array_t<font_t> fonts;
+  stack_resizeable_cont_t<font_t> fonts;
   notifyui_t notifyui;
 
 #if PROF_ENABLED
-  array_t<prof_renderedscope_t> prof_renderedscopes;
+  stack_resizeable_cont_t<prof_renderedscope_t> prof_renderedscopes;
 #endif // PROF_ENABLED
 };
 
@@ -176,13 +199,20 @@ AppInit( app_t* app )
   EditInit( app->edit );
   CmdInit( app->cmd );
 
-  embeddedarray_t<u8, c_fspath_len> exe;
+  stack_nonresizeable_stack_t<u8, c_fspath_len> exe;
   FsGetExe( exe.mem, Capacity( exe ), &exe.len );
   auto exe_name = FileNameOnly( ML( exe ) );
 
+// TODO: do this better when version is not defined? or make it always defined?
+// this should be defined to a "yy.mm.dd.hh.mm.ss" datetime string by the build system.
+// this is how we know what version to display, to allow matching of .exe to source code.
+#ifndef JCVERSION
+#define JCVERSION "unknown_version"
+#endif
+
   auto version = SliceFromCStr( JCVERSION );
 
-  array_t<u8> window_name;
+  stack_resizeable_cont_t<u8> window_name;
   Alloc( window_name, exe_name.len + version.len + 1 );
   AddBackContents( &window_name, exe_name );
   AddBackCStr( &window_name, " " );
@@ -264,10 +294,10 @@ AppKill( app_t* app )
 
 
 void
-LogUI( void* cstr ... )
+LogUI( const void* cstr ... )
 {
   auto app = &g_app;
-  static embeddedarray_t<u8, 32768> buffer;
+  static stack_nonresizeable_stack_t<u8, 32768> buffer;
 
   va_list args;
   va_start( args, cstr );
@@ -283,7 +313,7 @@ LogUI( void* cstr ... )
 
   auto notify_elem = AddLast( app->notifyui.msgs );
   auto notify = &notify_elem->value;
-  notify->msg.mem = AddPlist( app->notifyui.mem, u8, 1, buffer.len );
+  notify->msg.mem = AddPagelist( app->notifyui.mem, u8, 1, buffer.len );
   notify->msg.len = buffer.len;
   Memmove( notify->msg.mem, ML( buffer ) );
   notify->t = {};
@@ -352,8 +382,8 @@ Enumc( applayer_t )
 
   Inl void
   RenderThreadTimelineElem(
-    array_t<prof_renderedscope_t>& prof_renderedscopes,
-    array_t<f32>& stream,
+    stack_resizeable_cont_t<prof_renderedscope_t>& prof_renderedscopes,
+    stack_resizeable_cont_t<f32>& stream,
     vec2<f32> zrange,
     font_t& font,
     u8 spaces_per_tab,
@@ -367,8 +397,8 @@ Enumc( applayer_t )
     u32 id,
     u32 tid,
     u32 scope_depth,
-    array_t<u32>& threadids,
-    array_t<perthread_t>& per_thread,
+    stack_resizeable_cont_t<u32>& threadids,
+    stack_resizeable_cont_t<perthread_t>& per_thread,
     idx_t thread_count
     )
   {
@@ -404,7 +434,7 @@ Enumc( applayer_t )
       );
 
     idx_t thread_idx;
-    auto found = IdxScanR( &thread_idx, ML( threadids ), tid );
+    auto found = TIdxScanR( &thread_idx, ML( threadids ), tid );
     AssertCrash( found );
 
     auto perthread = per_thread.mem[ thread_idx ];
@@ -492,7 +522,7 @@ Enumc( applayer_t )
     }
 
     {
-      embeddedarray_t<u8, 32> tmp;
+      stack_nonresizeable_stack_t<u8, 32> tmp;
       CsFrom_u64( tmp.mem, Capacity( tmp ), &tmp.len, num_prof_elems, 1 );
       DrawString(
         app->stream,
@@ -514,11 +544,11 @@ Enumc( applayer_t )
 
       Reserve( app->prof_renderedscopes, num_prof_elems / 100 );
 
-      array_t<u32> threadids;
+      stack_resizeable_cont_t<u32> threadids;
       Alloc( threadids, 10 );
 
       // TODO: we only want to know the max depth of visible elems.
-      array_t<perthread_t> per_thread;
+      stack_resizeable_cont_t<perthread_t> per_thread;
       Alloc( per_thread, 10 );
 
       // TODO: bake in the time_first calculation into actual prof_elem_t data ?
@@ -540,7 +570,7 @@ Enumc( applayer_t )
       // interleaving concern about when we do the atomic inc vs. when we take the time.
       // so i think fundamentally we just have to do a search, unless we use a more complicated model than
       // the simple atomic inc.
-      // something like a lock-free queue, i.e. use queue_srmw_t<prof_elem_t> for example.
+      // something like a lock-free queue, i.e. use mtqueue_srmw_t<prof_elem_t> for example.
       // that would give slower instrumentation, since it requires retries.
       // i don't know that we care enough about the strict ordering, but we do care about the cost of retries.
       // so for now i think we'll stick with searches for first/last.
@@ -573,12 +603,12 @@ Enumc( applayer_t )
   #endif
 
   #if PROF_SPLITSCOPES
-        if( elem->start  &&  !ArrayContains( ML( threadids ), &elem->tid ) ) {
+        if( elem->start  &&  !TContains( ML( threadids ), &elem->tid ) ) {
           *AddBack( threadids ) = elem->tid;
         }
   #else
         idx_t thread_idx;
-        auto found = IdxScanR( &thread_idx, ML( threadids ), elem->tid );
+        auto found = TIdxScanR( &thread_idx, ML( threadids ), elem->tid );
         if( !found ) {
           *AddBack( threadids ) = elem->tid;
           auto perthread = AddBack( per_thread );
@@ -603,7 +633,7 @@ Enumc( applayer_t )
       // reserve space at the left side for thread id headers.
       f32 threadid_w = 0.0f;
       FORLEN( tid, thread_idx, threadids )
-        embeddedarray_t<u8, 32> tmp;
+        stack_nonresizeable_stack_t<u8, 32> tmp;
         CsFrom_u64( tmp.mem, Capacity( tmp ), &tmp.len, *tid, 0 );
         auto w = LayoutString( font, spaces_per_tab, ML( tmp ) );
         threadid_w = MAX( threadid_w, w );
@@ -617,7 +647,7 @@ Enumc( applayer_t )
       // draw thread id headers
       auto dy_thread = ( bounds_prof.p1.y - bounds_prof.p0.y ) / thread_count;
       FORLEN( tid, thread_idx, threadids )
-        embeddedarray_t<u8, 32> tmp;
+        stack_nonresizeable_stack_t<u8, 32> tmp;
         CsFrom_u64( tmp.mem, Capacity( tmp ), &tmp.len, *tid, 0 );
         auto w = LayoutString( font, spaces_per_tab, ML( tmp ) );
         auto hdr_p0 = bounds_thread_hdrs.p0 + _vec2( 0.0f, dy_thread * thread_idx );
@@ -659,7 +689,7 @@ Enumc( applayer_t )
       //   or at least get the z-order right.
 
   #if PROF_SPLITSCOPES
-      array_t<prof_elem_t> open_scopes;
+      stack_resizeable_cont_t<prof_elem_t> open_scopes;
       Alloc( open_scopes, 32000 );
   #else
   #endif
@@ -780,15 +810,15 @@ Enumc( applayer_t )
         auto scope_file = SliceFromCStr( closest->loc.file );
         auto file_w = LayoutString( font, spaces_per_tab, ML( scope_file ) );
         auto lineno = closest->loc.line;
-        embeddedarray_t<u8, 256> scope_lineno;
+        stack_nonresizeable_stack_t<u8, 256> scope_lineno;
         CsFrom_u64( scope_lineno.mem, Capacity( scope_lineno ), &scope_lineno.len, lineno, 1 );
         auto lineno_w = LayoutString( font, spaces_per_tab, ML( scope_lineno ) );
         auto time_duration = closest->time_duration;
-        embeddedarray_t<u8, 256> scope_duration;
+        stack_nonresizeable_stack_t<u8, 256> scope_duration;
         CsFrom_u64( scope_duration.mem, Capacity( scope_duration ), &scope_duration.len, time_duration, 1 );
         auto duration_w = LayoutString( font, spaces_per_tab, ML( scope_duration ) );
         auto tid = closest->tid;
-        embeddedarray_t<u8, 256> scope_tid;
+        stack_nonresizeable_stack_t<u8, 256> scope_tid;
         CsFrom_u64( scope_tid.mem, Capacity( scope_tid ), &scope_tid.len, tid, 0 );
         auto tid_w = LayoutString( font, spaces_per_tab, ML( scope_tid ) );
         auto colon = SliceFromCStr( " : " );
@@ -941,7 +971,7 @@ __OnRender( AppOnRender )
     // it's because the debugmode.display has enough scroll_vel as we keep adding stuff to keep rendering.
     // so for now, turn this off.
 #if 0
-    array_t<u8> line;
+    stack_resizeable_cont_t<u8> line;
     Alloc( line, 1024 );
     AddBackCStr( &line, "bounds{ " );
     AddBackF32( &line, bounds.p0.x, 1 );
@@ -997,7 +1027,7 @@ __OnRender( AppOnRender )
   #if PROF_ENABLED
     DrawProfiler(
       );
-  #endif PROF_ENABLED
+  #endif // PROF_ENABLED
 
     switch( app->active ) {
 
@@ -1089,7 +1119,7 @@ __OnRender( AppOnRender )
 
       f32 count_w = 0.0f;
       if( notifyui->msgs.len > 1 ) {
-        auto count = AllocString( " %d left ", notifyui->msgs.len - 1 );
+        auto count = AllocFormattedString( " %d left ", notifyui->msgs.len - 1 );
         count_w = LayoutString( font, spaces_per_tab, ML( count ) );
         DrawString(
           app->stream,
@@ -1124,7 +1154,7 @@ __OnRender( AppOnRender )
 
   if( 0 )
   { // display timestep_realtime, as a way of tracking how long rendering takes.
-    embeddedarray_t<u8, 64> tmp;
+    stack_nonresizeable_stack_t<u8, 64> tmp;
     CsFrom_f64( tmp.mem, Capacity( tmp ), &tmp.len, 1000 * timestep_realtime );
     auto w = LayoutString( font, spaces_per_tab, ML( tmp ) );
     DrawString(
@@ -1692,7 +1722,7 @@ __OnKeyEvent( AppOnKeyEvent )
 
   if( app->show_debugmode ) {
     auto keylocks = GlwKeylocks();
-    array_t<u8> line;
+    stack_resizeable_cont_t<u8> line;
     Alloc( line, 1024 );
     AddBackCStr( &line, "bounds{ " );
     AddBackF32( &line, bounds.p0.x, 1 );
@@ -1922,7 +1952,7 @@ __OnMouseEvent( AppOnMouseEvent )
   auto& font = GetFont( app, Cast( enum_t, fontid_t::normal ) );
 
   if( app->show_debugmode ) {
-    array_t<u8> line;
+    stack_resizeable_cont_t<u8> line;
     Alloc( line, 1024 );
     AddBackCStr( &line, "bounds{ " );
     AddBackF32( &line, bounds.p0.x, 1 );
@@ -2051,7 +2081,7 @@ __OnWindowEvent( AppOnWindowEvent )
   auto app = Cast( app_t*, misc );
 
   if( app->show_debugmode ) {
-    array_t<u8> line;
+    stack_resizeable_cont_t<u8> line;
     Alloc( line, 1024 );
     AddBackCStr( &line, "dim{ " );
     AddBackUInt( &line, dim.x );
@@ -2115,7 +2145,7 @@ __OnWindowEvent( AppOnWindowEvent )
 }
 
 int
-Main( array_t<slice_t>& args )
+Main( stack_resizeable_cont_t<slice_t>& args )
 {
 //  PinThreadToOneCore();
 
@@ -2139,7 +2169,7 @@ Main( array_t<slice_t>& args )
       auto gotoline = args.mem[1];
       bool valid = 1;
       For( i, 0, gotoline.len ) {
-        if( !IsNumber( gotoline.mem[i] ) ) {
+        if( !AsciiIsNumber( gotoline.mem[i] ) ) {
           valid = 0;
           break;
         }
@@ -2167,7 +2197,7 @@ Main( array_t<slice_t>& args )
       }
     } else {
       u8 tmp[1024];
-      CsCopy( tmp, filename.mem, MIN( filename.len, _countof( tmp ) - 1 ) );
+      CstrCopy( tmp, filename.mem, MIN( filename.len, _countof( tmp ) - 1 ) );
       MessageBoxA(
         0,
         Cast( LPCSTR, tmp ),
@@ -2223,12 +2253,12 @@ Main( array_t<slice_t>& args )
 Inl void
 IgnoreSurroundingSpaces( u8*& a, idx_t& a_len )
 {
-  while( a_len  &&  IsWhitespace( a[0] ) ) {
+  while( a_len  &&  AsciiIsWhitespace( a[0] ) ) {
     a += 1;
     a_len -= 1;
   }
   // TODO: prog_cmd_line actually has two 0-terms!
-  while( a_len  &&  ( !a[a_len - 1]  ||  IsWhitespace( a[a_len - 1] ) ) ) {
+  while( a_len  &&  ( !a[a_len - 1]  ||  AsciiIsWhitespace( a[a_len - 1] ) ) ) {
     a_len -= 1;
   }
 }
@@ -2239,9 +2269,9 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
   MainInit();
 
   u8* cmdline = Str( prog_cmd_line );
-  idx_t cmdline_len = CsLen( Str( prog_cmd_line ) );
+  idx_t cmdline_len = CstrLength( Str( prog_cmd_line ) );
 
-  array_t<slice_t> args;
+  stack_resizeable_cont_t<slice_t> args;
   Alloc( args, 64 );
 
   while( cmdline_len ) {
@@ -2254,11 +2284,11 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
     auto quoted = cmdline[0] == '"';
     if( quoted ) {
       arg = cmdline + 1;
-      auto end = CsScanR( arg, cmdline_len - 1, '"' );
+      auto end = StringScanR( arg, cmdline_len - 1, '"' );
       arg_len = !end  ?  0  :  end - arg;
       IgnoreSurroundingSpaces( arg, arg_len );
     } else {
-      auto end = CsScanR( arg, cmdline_len - 1, ' ' );
+      auto end = StringScanR( arg, cmdline_len - 1, ' ' );
       arg_len = !end  ?  cmdline_len  :  end - arg;
       IgnoreSurroundingSpaces( arg, arg_len );
     }
@@ -2340,7 +2370,7 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
     we should probably add some scroll debug output to make this easier to figure out.
     test coverage would also be super cool, we don't have any rendering tests yet.
 
-  // TODO: convert txt.linespans/charspans/etc. to array32_t.
+  // TODO: convert txt.linespans/charspans/etc. to u32 sizes?
 
   update profiler to record absolute time in prof_elem_t
   then make a per-thread timeline view.
@@ -2571,25 +2601,25 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
 
   reduce heap allocations per-tick.
 
-    change array_t to delay-alloc until add/reserve
+    change stack_resizeable_cont_t to delay-alloc until add/reserve
       nuances here around not adding more code to arrays we always add to.
       maybe add a lazyarray_t ?
 
     change to keep this array alive longer than just TxtRender?
 
-        array_t<wordspan_t> spans;
+        stack_resizeable_cont_t<wordspan_t> spans;
         Alloc( spans, 64 );
 
       proj64d.exe!MemHeapAllocBytes(unsigned __int64 nbytes) Line 1135	C++
-      proj64d.exe!Alloc<wordspan_t>(array_t<wordspan_t> & array, unsigned __int64 nelems) Line 39	C++
-      proj64d.exe!TxtRender(txt_t & txt, bool & target_valid, array_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, bool draw_cursor, bool draw_cursorline, bool draw_cursorwordmatch, bool allow_scrollbar) Line 4481	C++
-      proj64d.exe!_RenderTxt(txt_t & txt, bool & target_valid, array_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed, bool draw_cursor, bool draw_cursorline, bool draw_cursorwordmatch, bool allow_scrollbar) Line 2677	C++
-      proj64d.exe!_RenderBothSides(edit_t & edit, bool & target_valid, array_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 2846	C++
-      proj64d.exe!EditRender(edit_t & edit, bool & target_valid, array_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 3311	C++
+      proj64d.exe!Alloc<wordspan_t>(stack_resizeable_cont_t<wordspan_t> & array, unsigned __int64 nelems) Line 39	C++
+      proj64d.exe!TxtRender(txt_t & txt, bool & target_valid, stack_resizeable_cont_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, bool draw_cursor, bool draw_cursorline, bool draw_cursorwordmatch, bool allow_scrollbar) Line 4481	C++
+      proj64d.exe!_RenderTxt(txt_t & txt, bool & target_valid, stack_resizeable_cont_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed, bool draw_cursor, bool draw_cursorline, bool draw_cursorwordmatch, bool allow_scrollbar) Line 2677	C++
+      proj64d.exe!_RenderBothSides(edit_t & edit, bool & target_valid, stack_resizeable_cont_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 2846	C++
+      proj64d.exe!EditRender(edit_t & edit, bool & target_valid, stack_resizeable_cont_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 3311	C++
       proj64d.exe!AppOnRender(void * misc, vec2<float> origin, vec2<float> dim, double timestep_realtime, double timestep_fixed, bool & target_valid) Line 293	C++
       proj64d.exe!_Render(glwclient_t & client) Line 1378	C++
       proj64d.exe!GlwMainLoop(glwclient_t & client) Line 2375	C++
-      proj64d.exe!Main(array_t<slice_t> & args) Line 1198	C++
+      proj64d.exe!Main(stack_resizeable_cont_t<slice_t> & args) Line 1198	C++
       proj64d.exe!WinMain(HINSTANCE__ * prog_inst, HINSTANCE__ * prog_inst_prev, char * prog_cmd_line, int prog_cmd_show) Line 1262	C++
 
 
@@ -2622,13 +2652,13 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
 
       proj64d.exe!AllocContents(buf_t & buf, content_ptr_t start, content_ptr_t end) Line 3204	C++
       proj64d.exe!TxtUpdateScrolling(txt_t & txt, font_t & font, vec2<float> origin, vec2<float> dim, double timestep_realtime, double timestep_fixed) Line 3854	C++
-      proj64d.exe!_RenderTxt(txt_t & txt, bool & target_valid, array_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed, bool draw_cursor, bool draw_cursorline, bool draw_cursorwordmatch, bool allow_scrollbar) Line 2660	C++
-      proj64d.exe!_RenderBothSides(edit_t & edit, bool & target_valid, array_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 2846	C++
-      proj64d.exe!EditRender(edit_t & edit, bool & target_valid, array_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 3311	C++
+      proj64d.exe!_RenderTxt(txt_t & txt, bool & target_valid, stack_resizeable_cont_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed, bool draw_cursor, bool draw_cursorline, bool draw_cursorwordmatch, bool allow_scrollbar) Line 2660	C++
+      proj64d.exe!_RenderBothSides(edit_t & edit, bool & target_valid, stack_resizeable_cont_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 2846	C++
+      proj64d.exe!EditRender(edit_t & edit, bool & target_valid, stack_resizeable_cont_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 3311	C++
       proj64d.exe!AppOnRender(void * misc, vec2<float> origin, vec2<float> dim, double timestep_realtime, double timestep_fixed, bool & target_valid) Line 293	C++
       proj64d.exe!_Render(glwclient_t & client) Line 1378	C++
       proj64d.exe!GlwMainLoop(glwclient_t & client) Line 2375	C++
-      proj64d.exe!Main(array_t<slice_t> & args) Line 1198	C++
+      proj64d.exe!Main(stack_resizeable_cont_t<slice_t> & args) Line 1198	C++
       proj64d.exe!WinMain(HINSTANCE__ * prog_inst, HINSTANCE__ * prog_inst_prev, char * prog_cmd_line, int prog_cmd_show) Line 1262	C++
 
 
@@ -2637,14 +2667,14 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
         auto word = AllocContents( txt.buf, word_l, word_r );
 
       proj64d.exe!AllocContents(buf_t & buf, content_ptr_t start, content_ptr_t end) Line 3204	C++
-      proj64d.exe!TxtRender(txt_t & txt, bool & target_valid, array_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, bool draw_cursor, bool draw_cursorline, bool draw_cursorwordmatch, bool allow_scrollbar) Line 4424	C++
-      proj64d.exe!_RenderTxt(txt_t & txt, bool & target_valid, array_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed, bool draw_cursor, bool draw_cursorline, bool draw_cursorwordmatch, bool allow_scrollbar) Line 2677	C++
-      proj64d.exe!_RenderBothSides(edit_t & edit, bool & target_valid, array_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 2846	C++
-      proj64d.exe!EditRender(edit_t & edit, bool & target_valid, array_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 3311	C++
+      proj64d.exe!TxtRender(txt_t & txt, bool & target_valid, stack_resizeable_cont_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, bool draw_cursor, bool draw_cursorline, bool draw_cursorwordmatch, bool allow_scrollbar) Line 4424	C++
+      proj64d.exe!_RenderTxt(txt_t & txt, bool & target_valid, stack_resizeable_cont_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed, bool draw_cursor, bool draw_cursorline, bool draw_cursorwordmatch, bool allow_scrollbar) Line 2677	C++
+      proj64d.exe!_RenderBothSides(edit_t & edit, bool & target_valid, stack_resizeable_cont_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 2846	C++
+      proj64d.exe!EditRender(edit_t & edit, bool & target_valid, stack_resizeable_cont_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 3311	C++
       proj64d.exe!AppOnRender(void * misc, vec2<float> origin, vec2<float> dim, double timestep_realtime, double timestep_fixed, bool & target_valid) Line 293	C++
       proj64d.exe!_Render(glwclient_t & client) Line 1378	C++
       proj64d.exe!GlwMainLoop(glwclient_t & client) Line 2375	C++
-      proj64d.exe!Main(array_t<slice_t> & args) Line 1198	C++
+      proj64d.exe!Main(stack_resizeable_cont_t<slice_t> & args) Line 1198	C++
       proj64d.exe!WinMain(HINSTANCE__ * prog_inst, HINSTANCE__ * prog_inst_prev, char * prog_cmd_line, int prog_cmd_show) Line 1262	C++
 
 
@@ -2655,23 +2685,23 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
         Contents( txt.buf, span->l, tmp, span_len );
 
       proj64d.exe!MemHeapAllocBytes(unsigned __int64 nbytes) Line 1135	C++
-      proj64d.exe!TxtRender(txt_t & txt, bool & target_valid, array_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, bool draw_cursor, bool draw_cursorline, bool draw_cursorwordmatch, bool allow_scrollbar) Line 4529	C++
-      proj64d.exe!_RenderTxt(txt_t & txt, bool & target_valid, array_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed, bool draw_cursor, bool draw_cursorline, bool draw_cursorwordmatch, bool allow_scrollbar) Line 2677	C++
-      proj64d.exe!_RenderBothSides(edit_t & edit, bool & target_valid, array_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 2846	C++
-      proj64d.exe!EditRender(edit_t & edit, bool & target_valid, array_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 3311	C++
+      proj64d.exe!TxtRender(txt_t & txt, bool & target_valid, stack_resizeable_cont_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, bool draw_cursor, bool draw_cursorline, bool draw_cursorwordmatch, bool allow_scrollbar) Line 4529	C++
+      proj64d.exe!_RenderTxt(txt_t & txt, bool & target_valid, stack_resizeable_cont_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed, bool draw_cursor, bool draw_cursorline, bool draw_cursorwordmatch, bool allow_scrollbar) Line 2677	C++
+      proj64d.exe!_RenderBothSides(edit_t & edit, bool & target_valid, stack_resizeable_cont_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 2846	C++
+      proj64d.exe!EditRender(edit_t & edit, bool & target_valid, stack_resizeable_cont_t<float> & stream, font_t & font, vec2<float> origin, vec2<float> dim, vec2<float> zrange, double timestep_realtime, double timestep_fixed) Line 3311	C++
       proj64d.exe!AppOnRender(void * misc, vec2<float> origin, vec2<float> dim, double timestep_realtime, double timestep_fixed, bool & target_valid) Line 293	C++
       proj64d.exe!_Render(glwclient_t & client) Line 1378	C++
       proj64d.exe!GlwMainLoop(glwclient_t & client) Line 2375	C++
-      proj64d.exe!Main(array_t<slice_t> & args) Line 1198	C++
+      proj64d.exe!Main(stack_resizeable_cont_t<slice_t> & args) Line 1198	C++
       proj64d.exe!WinMain(HINSTANCE__ * prog_inst, HINSTANCE__ * prog_inst_prev, char * prog_cmd_line, int prog_cmd_show) Line 1262	C++
 
 
 
     hundreds of 192 byte allocations via:
       proj64d.exe!MemHeapAllocBytes(unsigned __int64 nbytes) Line 1140	C++
-      proj64d.exe!Alloc<slice_t>(array_t<slice_t> & array, unsigned __int64 nelems) Line 39	C++
+      proj64d.exe!Alloc<slice_t>(stack_resizeable_cont_t<slice_t> & array, unsigned __int64 nelems) Line 39	C++
       proj64d.exe!Init(statement_t & stm) Line 201	C++
-      proj64d.exe!Parse(ast_t & ast, array_t<token_t> & tokens, slice_t & src) Line 271	C++
+      proj64d.exe!Parse(ast_t & ast, stack_resizeable_cont_t<token_t> & tokens, slice_t & src) Line 271	C++
       proj64d.exe!_LoadFromMem(propdb_t & db, slice_t & mem) Line 340	C++
       proj64d.exe!_Init(propdb_t & db) Line 631	C++
       proj64d.exe!_InitPropdb() Line 672	C++
@@ -2679,12 +2709,12 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
       proj64d.exe!TxtLoadEmpty(txt_t & txt) Line 199	C++
       proj64d.exe!EditInit(edit_t & edit) Line 1523	C++
       proj64d.exe!AppInit(app_t * app) Line 125	C++
-      proj64d.exe!Main(array_t<slice_t> & args) Line 1148	C++
+      proj64d.exe!Main(stack_resizeable_cont_t<slice_t> & args) Line 1148	C++
       proj64d.exe!WinMain(HINSTANCE__ * prog_inst, HINSTANCE__ * prog_inst_prev, char * prog_cmd_line, int prog_cmd_show) Line 1262	C++
 
     hundreds of 164 byte allocations via:
       proj64d.exe!MemHeapAllocBytes(unsigned __int64 nbytes) Line 1136	C++
-      proj64d.exe!Alloc<unsigned char>(array_t<unsigned char> & array, unsigned __int64 nelems) Line 39	C++
+      proj64d.exe!Alloc<unsigned char>(stack_resizeable_cont_t<unsigned char> & array, unsigned __int64 nelems) Line 39	C++
       proj64d.exe!Init(num_t & num, unsigned __int64 size) Line 1072	C++
       proj64d.exe!CsToFloat32(unsigned char * src, unsigned __int64 src_len, float & dst) Line 1509	C++
       proj64d.exe!_LoadFromMem(propdb_t & db, slice_t & mem) Line 419	C++
@@ -2694,7 +2724,7 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
       proj64d.exe!TxtLoadEmpty(txt_t & txt) Line 199	C++
       proj64d.exe!EditInit(edit_t & edit) Line 1523	C++
       proj64d.exe!AppInit(app_t * app) Line 125	C++
-      proj64d.exe!Main(array_t<slice_t> & args) Line 1148	C++
+      proj64d.exe!Main(stack_resizeable_cont_t<slice_t> & args) Line 1148	C++
       proj64d.exe!WinMain(HINSTANCE__ * prog_inst, HINSTANCE__ * prog_inst_prev, char * prog_cmd_line, int prog_cmd_show) Line 1262	C++
 
     thousands of allocations via stb truetype, e.g.
@@ -2709,7 +2739,7 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
       proj64d.exe!FontLoadGlyphImage(font_t & font, unsigned int codept, vec2<float> & dimf, vec2<float> & offsetf) Line 500	C++
       proj64d.exe!FontLoadAscii(font_t & font) Line 735	C++
       proj64d.exe!LoadFont(app_t * app, unsigned int fontid, unsigned char * filename_ttf, unsigned __int64 filename_ttf_len, float char_h) Line 215	C++
-      proj64d.exe!Main(array_t<slice_t> & args) Line 1186	C++
+      proj64d.exe!Main(stack_resizeable_cont_t<slice_t> & args) Line 1186	C++
       proj64d.exe!WinMain(HINSTANCE__ * prog_inst, HINSTANCE__ * prog_inst_prev, char * prog_cmd_line, int prog_cmd_show) Line 1262	C++
 
       proj64d.exe!MemHeapAllocBytes(unsigned __int64 nbytes) Line 1136	C++
@@ -2720,7 +2750,7 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
       proj64d.exe!FontLoadGlyphImage(font_t & font, unsigned int codept, vec2<float> & dimf, vec2<float> & offsetf) Line 526	C++
       proj64d.exe!FontLoadAscii(font_t & font) Line 735	C++
       proj64d.exe!LoadFont(app_t * app, unsigned int fontid, unsigned char * filename_ttf, unsigned __int64 filename_ttf_len, float char_h) Line 215	C++
-      proj64d.exe!Main(array_t<slice_t> & args) Line 1186	C++
+      proj64d.exe!Main(stack_resizeable_cont_t<slice_t> & args) Line 1186	C++
       proj64d.exe!WinMain(HINSTANCE__ * prog_inst, HINSTANCE__ * prog_inst_prev, char * prog_cmd_line, int prog_cmd_show) Line 1262	C++
 
 

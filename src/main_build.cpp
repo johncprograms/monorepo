@@ -2,23 +2,38 @@
 // build:console_x64_optimized
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
+#ifdef WIN
+
 #define FINDLEAKS   0
 #define WEAKINLINING   0
-#include "common.h"
-#include "math_vec.h"
+#include "core_cruntime.h"
+#include "core_types.h"
+#include "core_language_macros.h"
+#include "os_mac.h"
+#include "os_windows.h"
+#include "memory_operations.h"
+#include "asserts.h"
+#include "math_integer.h"
+#include "math_float.h"
+#include "math_lerp.h"
+#include "math_floatvec.h"
 #include "math_matrix.h"
+#include "math_kahansummation.h"
+#include "allocator_heap.h"
+#include "allocator_virtual.h"
+#include "allocator_heap_or_virtual.h"
+#include "cstr.h"
 #include "ds_slice.h"
 #include "ds_string.h"
-#include "ds_plist.h"
-#include "ds_array.h"
-#include "ds_embeddedarray.h"
-#include "ds_fixedarray.h"
-#include "ds_pagearray.h"
+#include "allocator_pagelist.h"
+#include "ds_stack_resizeable_cont.h"
+#include "ds_stack_nonresizeable_stack.h"
+#include "ds_stack_nonresizeable.h"
+#include "ds_stack_resizeable_pagelist.h"
 #include "ds_pagetree.h"
 #include "ds_list.h"
-#include "ds_bytearray.h"
-#include "ds_hashset.h"
-#include "cstr.h"
+#include "ds_stack_cstyle.h"
+#include "ds_hashset_cstyle.h"
 #include "filesys.h"
 #include "timedate.h"
 #include "threading.h"
@@ -28,7 +43,8 @@
 #define PROF_ENABLED_AT_LAUNCH   0
 #include "profile.h"
 #include "rand.h"
-#include "main.h"
+#include "allocator_heap_findleaks.h"
+#include "mainthread.h"
 
 
 #define PRINT_TOOL_COMMANDS   0
@@ -73,7 +89,7 @@ __ExecuteOutput( OutputForToolExecute )
 }
 
 int
-Main( array_t<slice_t>& args )
+Main( stack_resizeable_cont_t<slice_t>& args )
 {
   printf( "[Build started]\n" );
   auto t0 = TimeTSC();
@@ -85,7 +101,7 @@ Main( array_t<slice_t>& args )
   auto name = args.mem + 0;
   auto cpp_prefix = SliceFromCStr( "src/main_" );
   auto cpp_suffix = SliceFromCStr( ".cpp" );
-  embeddedarray_t<u8, 1024> filename_cpp;
+  stack_nonresizeable_stack_t<u8, 1024> filename_cpp;
   filename_cpp.len = 0;
   Memmove( AddBack( filename_cpp, cpp_prefix.len ), ML( cpp_prefix ) );
   Memmove( AddBack( filename_cpp, name->len ), ML( *name ) );
@@ -94,7 +110,7 @@ Main( array_t<slice_t>& args )
   // note this is tied to compiler options below which direct where the obj file goes.
   auto obj_prefix = SliceFromCStr( "exe/main_" );
   auto obj_suffix = SliceFromCStr( ".obj" );
-  embeddedarray_t<u8, 1024> filename_obj;
+  stack_nonresizeable_stack_t<u8, 1024> filename_obj;
   filename_obj.len = 0;
   Memmove( AddBack( filename_obj, obj_prefix.len ), ML( obj_prefix ) );
   Memmove( AddBack( filename_obj, name->len ), ML( *name ) );
@@ -207,7 +223,7 @@ Main( array_t<slice_t>& args )
 
   auto toolchain_path = Str( "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.28.29333/bin/Hostx64/" );
 
-  array_t<u8> compile;
+  stack_resizeable_cont_t<u8> compile;
   Alloc( compile, 64000 );
   AddBackCStr( &compile, "\"" );
   AddBackCStr( &compile, toolchain_path );
@@ -220,7 +236,7 @@ Main( array_t<slice_t>& args )
   AddBackCStr( &compile, "\"" );
   AddBackCStr( &compile, " " );
 
-  array_t<u8> link;
+  stack_resizeable_cont_t<u8> link;
   Alloc( link, 64000 );
   AddBackCStr( &link, "\"" );
   AddBackCStr( &link, toolchain_path );
@@ -235,11 +251,11 @@ Main( array_t<slice_t>& args )
 
   // use the current datetime, since we're building right now.
   auto time = LocalTimeDate();
-  embeddedarray_t<u8, 64> now;
+  stack_nonresizeable_stack_t<u8, 64> now;
   FormatTimeDate( now.mem, Capacity( now ), &now.len, &time );
 
   // generate the string macro defn /DJCVERSION="yyyy.mm.dd.hh.mm.ss"
-  embeddedarray_t<u8, 128> define_version;
+  stack_nonresizeable_stack_t<u8, 128> define_version;
   define_version.len = 0;
   auto ver_prefix = SliceFromCStr( "/DJCVERSION=\\\"" );
   auto ver_suffix = SliceFromCStr( "\\\"" );
@@ -262,7 +278,7 @@ Main( array_t<slice_t>& args )
   // since i update VS probably once a year or less, i'll wait on doing this work.
   // it'd also be annoying to have to test VS updates.
 
-  fixedarray_t<u8> path;
+  stack_nonresizeable_t<u8> path;
   Alloc( path, 32768 );
   path.len = GetEnvironmentVariableA( "Path", Cast( LPSTR, path.mem ), Cast( DWORD, Capacity( path ) ) );
   AssertCrash( path.len );
@@ -465,7 +481,7 @@ Main( array_t<slice_t>& args )
     return 1;
   }
   AssertCrash( vcount > 0 );
-  vs_install_dir.len = CsLen( vs_install_dir.mem );
+  vs_install_dir.len = CstrLength( vs_install_dir.mem );
 
   printf( "[Environment] %.3f seconds\n", TimeSecFromTSC32( TimeTSC() - t0 ) );
 
@@ -487,7 +503,7 @@ Main( array_t<slice_t>& args )
   auto sec = time.tm_sec;
   auto last_section = 1000 * hour + 10 * min + sec / 10;
 
-  array_t<u8> winver_comma;
+  stack_resizeable_cont_t<u8> winver_comma;
   Alloc( winver_comma, 64 );
   AddBackSInt( &winver_comma, year );
   AddBackCStr( &winver_comma, "," );
@@ -497,7 +513,7 @@ Main( array_t<slice_t>& args )
   AddBackCStr( &winver_comma, "," );
   AddBackSInt( &winver_comma, last_section );
 
-  array_t<u8> winver_period;
+  stack_resizeable_cont_t<u8> winver_period;
   Alloc( winver_period, 64 );
   AddBackSInt( &winver_period, year );
   AddBackCStr( &winver_period, "." );
@@ -507,7 +523,7 @@ Main( array_t<slice_t>& args )
   AddBackCStr( &winver_period, "." );
   AddBackSInt( &winver_period, last_section );
 
-  array_t<u8> rs;
+  stack_resizeable_cont_t<u8> rs;
   Alloc( rs, 1024 );
   AddBackCStr( &rs, "1 VERSIONINFO" );
   AddBackCStr( &rs, "\r\n" );
@@ -669,7 +685,7 @@ Main( array_t<slice_t>& args )
   FileSetEOF( rs_file, rs.len );
   FileFree( rs_file );
 
-  array_t<u8> resource_compile;
+  stack_resizeable_cont_t<u8> resource_compile;
   Alloc( resource_compile, 64000 );
   AddBackCStr( &resource_compile, "\"" );
   AddBackCStr( &resource_compile, rc_exe );
@@ -1055,7 +1071,7 @@ Main( array_t<slice_t>& args )
     }
   }
 
-  array_t<u8> natvis;
+  stack_resizeable_cont_t<u8> natvis;
   Alloc( natvis, 32000 );
   AddBackCStr( &natvis, "cmd.exe /c mklink" );
   AddBackCStr( &natvis, " " );
@@ -1101,7 +1117,7 @@ Main( array_t<slice_t>& args )
     case target_flavor_t::optimized: {
     } break;
     case target_flavor_t::releaseversion: {
-      array_t<u8> zip;
+      stack_resizeable_cont_t<u8> zip;
       Alloc( zip, 32000 );
       AddBackCStr( &zip, "\"" );
       AddBackCStr( &zip, "C:/Program Files/7-Zip/7z.exe" );
@@ -1154,12 +1170,12 @@ Main( array_t<slice_t>& args )
 Inl void
 IgnoreSurroundingSpaces( u8*& a, idx_t& a_len )
 {
-  while( a_len  &&  IsWhitespace( a[0] ) ) {
+  while( a_len  &&  AsciiIsWhitespace( a[0] ) ) {
     a += 1;
     a_len -= 1;
   }
   // TODO: prog_cmd_line actually has two 0-terms!
-  while( a_len  &&  ( !a[a_len - 1]  ||  IsWhitespace( a[a_len - 1] ) ) ) {
+  while( a_len  &&  ( !a[a_len - 1]  ||  AsciiIsWhitespace( a[a_len - 1] ) ) ) {
     a_len -= 1;
   }
 }
@@ -1169,12 +1185,12 @@ main( int argc, char** argv )
 {
   MainInit();
 
-  array_t<slice_t> args;
+  stack_resizeable_cont_t<slice_t> args;
   Alloc( args, 512 );
   Fori( int, i, 1, argc ) {
     auto arg = AddBack( args );
     arg->mem = Cast( u8*, argv[i] );
-    arg->len = CsLen( arg->mem );
+    arg->len = CstrLength( arg->mem );
   }
   int r = Main( args );
   Free( args );
@@ -1183,3 +1199,5 @@ main( int argc, char** argv )
   MainKill();
   return r;
 }
+
+#endif // WIN

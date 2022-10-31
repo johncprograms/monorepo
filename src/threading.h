@@ -1,6 +1,35 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
 
+#if _SIZEOF_IDX_T == 4
+
+  #ifdef WIN
+    #define GetThreadIdFast() \
+      ( *Cast( u32*, Cast( u8*, __readfsdword( 0x18 ) ) + 0x24 ) )
+  #elifdef MAC
+    #define GetThreadIdFast()   (0)
+  #else
+    #error Unsupported platform
+  #endif
+
+#elif _SIZEOF_IDX_T == 8
+
+  #ifdef WIN
+    #define GetThreadIdFast() \
+      ( *Cast( u32*, Cast( u8*, __readgsqword( 0x30 ) ) + 0x48 ) )
+  #elifdef MAC
+    #define GetThreadIdFast()   (0)
+  #else
+    #error Unsupported platform
+  #endif
+
+#else
+  #error Unexpected _SIZEOF_IDX_T value!
+#endif
+
+
+
+
 // TODO: this is a dumb way of doing TLS.
 #if BADTLS
 static volatile s32 g_tls_handle = 0;
@@ -8,7 +37,7 @@ static volatile s32 g_tls_handle = 0;
 struct
 tls_t
 {
-  plist_t temp;
+  pagelist_t temp;
 };
 
 void
@@ -81,6 +110,7 @@ Execute(
   void* misc1
   )
 {
+#ifdef WIN
   HANDLE child_stdout_r = INVALID_HANDLE_VALUE;
   HANDLE child_stdout_w = INVALID_HANDLE_VALUE;
   HANDLE child_stdin_r = INVALID_HANDLE_VALUE;
@@ -129,7 +159,7 @@ Execute(
     return err;
   }
 
-  embeddedarray_t<u8, 32767> com;
+  stack_nonresizeable_stack_t<u8, 32767> com;
   com.len = 0;
   if( command.len + 1 >= Capacity( com ) ) {
     auto str = SliceFromCStr( "input command is too long!\r\n" );
@@ -222,12 +252,18 @@ Execute(
   CloseHandle( process.hProcess );
   CloseHandle( process.hThread );
   return exit;
+#elifdef MAC
+  return 0;
+#else
+#error Unsupported platform
+#endif
 }
 
 
 Inl void
 PinThreadToOneCore()
 {
+#ifdef WIN
   DWORD_PTR process_mask, system_mask;
   CompileAssert( sizeof( DWORD_PTR ) == sizeof( sidx_t ) );
   AssertWarn( GetProcessAffinityMask( GetCurrentProcess(), &process_mask, &system_mask ) );
@@ -247,12 +283,24 @@ PinThreadToOneCore()
 
   u64 prev_thread_mask = SetThreadAffinityMask( GetCurrentThread(), process_mask );
   AssertWarn( prev_thread_mask );
+#elifdef MAC
+#else
+#error Unsupported platform
+#endif
 }
 
+
+u32 InterlockedCompareExchange( volatile u32* dst, u32 exchange, u32 compare );
+u64 InterlockedCompareExchange( volatile u64* dst, u64 exchange, u64 compare );
+void _mm_pause();
+void _ReadWriteBarrier();
 
 #define CAS( dst, compare, exchange ) \
   ( compare == InterlockedCompareExchange( dst, exchange, compare ) )
 
+
+u32 InterlockedIncrement( volatile u32* x );
+u64 InterlockedIncrement( volatile u64* x );
 
 #define GetValueBeforeAtomicInc( dst ) \
   ( InterlockedIncrement( dst ) - 1 )
@@ -281,314 +329,14 @@ Unlock( lock_t* lock )
 
 
 
-
+#ifdef WIN
+#define STDCALLWIN __stdcall
+#else
+#define STDCALLWIN
+#endif
 
 // Can't do this the normal way, since function pointer syntax is stupid.
-typedef u32 ( __stdcall *pfn_threadproc_t )( void* misc );
-
-
-
-
-
-
-
-// multi-reader, multi-writer circular queue, fixed elemsize.
-Templ struct
-queue_mrmw_t
-{
-  T* mem;
-  volatile idx_t pos_rd;
-  volatile idx_t pos_wr;
-  volatile idx_t pos_wr_advance;
-  idx_t capacity;
-};
-
-Templ Inl void
-Zero( queue_mrmw_t<T>& queue )
-{
-  queue.mem = 0;
-  queue.pos_rd = 0;
-  queue.pos_wr = 0;
-  queue.pos_wr_advance = 0;
-  queue.capacity = 0;
-}
-
-Templ Inl void
-Alloc( queue_mrmw_t<T>& queue, idx_t size )
-{
-  Zero( queue );
-  queue.mem = MemHeapAlloc( T, size );
-  queue.capacity = size;
-}
-
-Templ Inl void
-Free( queue_mrmw_t<T>& queue )
-{
-  MemHeapFree( queue.mem  );
-  Zero( queue );
-}
-
-Templ Inl void
-EnqueueM( queue_mrmw_t<T>& queue, T* src, bool* success )
-{
-  Forever {
-    idx_t local_wr = queue.pos_wr;
-    idx_t local_wr_advance = queue.pos_wr_advance;
-    if( local_wr_advance != local_wr ) {
-      continue;
-    }
-    idx_t new_wr = ( local_wr + 1 ) % queue.capacity;
-    idx_t new_wr_advance = ( local_wr_advance + 1 ) % queue.capacity;
-    if( new_wr == queue.pos_rd ) {
-      *success = 0;
-      return;
-    }
-    if( CAS( &queue.pos_wr_advance, local_wr_advance, new_wr_advance ) ) {
-      queue.mem[new_wr] = *src;
-      _ReadWriteBarrier();
-      AssertCrash( queue.pos_wr == local_wr );
-      queue.pos_wr = new_wr;
-      break;
-    }
-  }
-  *success = 1;
-}
-
-Templ Inl void
-DequeueM( queue_mrmw_t<T>& queue, T* dst, bool* success )
-{
-  Forever {
-    idx_t local_rd = queue.pos_rd;
-    if( local_rd == queue.pos_wr ) {
-      *success = 0;
-      return;
-    }
-    idx_t new_rd = ( local_rd + 1 ) % queue.capacity;
-    *dst = queue.mem[new_rd];
-    if( CAS( &queue.pos_rd, local_rd, new_rd ) ) {
-      break;
-    }
-  }
-  *success = 1;
-}
-
-
-
-
-// multi-reader, single-writer circular queue, fixed elemsize.
-Templ struct
-queue_mrsw_t
-{
-  T* mem;
-  volatile idx_t pos_rd;
-  volatile idx_t pos_wr;
-  idx_t capacity;
-};
-
-Templ Inl void
-Zero( queue_mrsw_t<T>& queue )
-{
-  queue.mem = 0;
-  queue.pos_rd = 0;
-  queue.pos_wr = 0;
-  queue.capacity = 0;
-}
-
-Templ Inl void
-Alloc( queue_mrsw_t<T>& queue, idx_t size )
-{
-  Zero( queue );
-  queue.mem = MemHeapAlloc( T, size );
-  queue.capacity = size;
-}
-
-Templ Inl void
-Free( queue_mrsw_t<T>& queue )
-{
-  MemHeapFree( queue.mem );
-  Zero( queue );
-}
-
-Templ Inl void
-EnqueueS( queue_mrsw_t<T>& queue, T* src, bool* success )
-{
-  idx_t local_wr = queue.pos_wr;
-  local_wr = ( local_wr + 1 ) % queue.capacity;
-  if( local_wr == queue.pos_rd ) {
-    *success = 0;
-    return;
-  }
-  queue.mem[local_wr] = *src;
-  _ReadWriteBarrier();
-  queue.pos_wr = local_wr;
-  *success = 1;
-}
-
-Templ Inl void
-DequeueM( queue_mrsw_t<T>& queue, T* dst, bool* success )
-{
-  Forever {
-    idx_t local_rd = queue.pos_rd;
-    if( local_rd == queue.pos_wr ) {
-      *success = 0;
-      return;
-    }
-    idx_t new_rd = ( local_rd + 1 ) % queue.capacity;
-    *dst = queue.mem[new_rd];
-    if( CAS( &queue.pos_rd, local_rd, new_rd ) ) {
-      break;
-    }
-  }
-  *success = 1;
-}
-
-
-
-
-// single-reader, multi-writer circular queue, fixed elemsize.
-Templ struct
-queue_srmw_t
-{
-  T* mem;
-  volatile idx_t pos_rd;
-  volatile idx_t pos_wr;
-  volatile idx_t pos_wr_advance;
-  idx_t capacity;
-};
-
-Templ Inl void
-Zero( queue_srmw_t<T>& queue )
-{
-  queue.mem = 0;
-  queue.pos_rd = 0;
-  queue.pos_wr = 0;
-  queue.pos_wr_advance = 0;
-  queue.capacity = 0;
-}
-
-Templ Inl void
-Alloc( queue_srmw_t<T>& queue, idx_t size )
-{
-  Zero( queue );
-  queue.mem = MemHeapAlloc( T, size );
-  queue.capacity = size;
-}
-
-Templ Inl void
-Free( queue_srmw_t<T>& queue )
-{
-  MemHeapFree( queue.mem );
-  Zero( queue );
-}
-
-Templ Inl void
-EnqueueM( queue_srmw_t<T>& queue, T* src, bool* success )
-{
-  Forever {
-    idx_t local_wr = queue.pos_wr;
-    idx_t local_wr_advance = queue.pos_wr_advance;
-    if( local_wr_advance != local_wr ) {
-      continue;
-    }
-    idx_t new_wr = ( local_wr + 1 ) % queue.capacity;
-    idx_t new_wr_advance = ( local_wr_advance + 1 ) % queue.capacity;
-    if( new_wr == queue.pos_rd ) {
-      *success = 0;
-      return;
-    }
-    if( CAS( &queue.pos_wr_advance, local_wr_advance, new_wr_advance ) ) {
-      queue.mem[new_wr] = *src;
-      _ReadWriteBarrier();
-      AssertCrash( queue.pos_wr == local_wr );
-      queue.pos_wr = new_wr;
-      break;
-    }
-  }
-  *success = 1;
-}
-
-Templ Inl void
-DequeueS( queue_srmw_t<T>& queue, T* dst, bool* success )
-{
-  idx_t local_rd = queue.pos_rd;
-  if( local_rd == queue.pos_wr ) {
-    *success = 0;
-    return;
-  }
-  local_rd = ( local_rd + 1 ) % queue.capacity;
-  *dst = queue.mem[local_rd];
-  _ReadWriteBarrier();
-  queue.pos_rd = local_rd;
-  *success = 1;
-}
-
-
-
-
-// single-reader, single-writer circular queue, fixed elemsize.
-Templ struct
-queue_srsw_t
-{
-  T* mem;
-  volatile idx_t pos_rd;
-  volatile idx_t pos_wr;
-  idx_t capacity;
-};
-
-Templ Inl void
-Zero( queue_srsw_t<T>& queue )
-{
-  queue.mem = 0;
-  queue.pos_rd = 0;
-  queue.pos_wr = 0;
-  queue.capacity = 0;
-}
-
-Templ Inl void
-Alloc( queue_srsw_t<T>& queue, idx_t size )
-{
-  Zero( queue );
-  queue.mem = MemHeapAlloc( T, size );
-  queue.capacity = size;
-}
-
-Templ Inl void
-Free( queue_srsw_t<T>& queue )
-{
-  MemHeapFree( queue.mem );
-  Zero( queue );
-}
-
-Templ Inl void
-EnqueueS( queue_srsw_t<T>& queue, T* src, bool* success )
-{
-  idx_t local_wr = queue.pos_wr;
-  local_wr = ( local_wr + 1 ) % queue.capacity;
-  if( local_wr == queue.pos_rd ) {
-    *success = 0;
-    return;
-  }
-  queue.mem[local_wr] = *src;
-  _ReadWriteBarrier();
-  queue.pos_wr = local_wr;
-  *success = 1;
-}
-
-Templ Inl void
-DequeueS( queue_srsw_t<T>& queue, T* dst, bool* success )
-{
-  idx_t local_rd = queue.pos_rd;
-  if( local_rd == queue.pos_wr ) {
-    *success = 0;
-    return;
-  }
-  local_rd = ( local_rd + 1 ) % queue.capacity;
-  *dst = queue.mem[local_rd];
-  _ReadWriteBarrier();
-  queue.pos_rd = local_rd;
-  *success = 1;
-}
-
+typedef u32 ( STDCALLWIN *pfn_threadproc_t )( void* misc );
 
 
 
@@ -697,14 +445,20 @@ maincompletedqueue_entry_t
 struct
 taskthread_t
 {
+#ifdef WIN
   HANDLE wake;
+#elifdef MAC
+#else
+#error Unsupported platform
+#endif
+
 #if PULLMODEL
 #else
-  queue_srsw_t<asyncqueue_entry_t> input;
+  mtqueue_srsw_t<asyncqueue_entry_t> input;
 #endif
-  queue_srsw_t<maincompletedqueue_entry_t> output;
+  mtqueue_srsw_t<maincompletedqueue_entry_t> output;
 
-  u8 cache_line_padding_to_avoid_thrashing[64]; // last thing, since this type is packed into an array_t
+  u8 cache_line_padding_to_avoid_thrashing[64]; // last thing, since this type is packed into an stack_resizeable_cont_t
 };
 
 Inl void
@@ -722,27 +476,40 @@ Kill( taskthread_t& t )
 struct
 mainthread_t
 {
+#ifdef WIN
   volatile HANDLE wake_asynctaskscompleted;
+#elifdef MAC
+#else
+#error Unsupported platform
+#endif
+
   volatile bool signal_quit;
 
 #if PULLMODEL
-  queue_mrsw_t<asyncqueue_entry_t> tasks;
+  mtqueue_mrsw_t<asyncqueue_entry_t> tasks;
 #else
 #endif
 
-  array_t<HANDLE> taskthread_handles; // TODO: fixedarray_t / buffer_t
-  array_t<taskthread_t> taskthreads;  // TODO: fixedarray_t / buffer_t
+#ifdef WIN
+  stack_resizeable_cont_t<HANDLE> taskthread_handles; // TODO: stack_nonresizeable_t / buffer_t
+#elifdef MAC
+#else
+#error Unsupported platform
+#endif
+
+  stack_resizeable_cont_t<taskthread_t> taskthreads;  // TODO: stack_nonresizeable_t / buffer_t
 };
 
 static mainthread_t g_mainthread = {};
 
 
 
-u32 __stdcall
+u32 STDCALLWIN
 TaskThread( void* misc )
 {
   ThreadInit();
 
+#ifdef WIN
 // Only supported on Win10+.
 //  HRESULT hr = SetThreadDescription( GetCurrentThread(), L"TaskThread" );
 //  AssertWarn( SUCCEEDED( hr ) );
@@ -777,6 +544,10 @@ TaskThread( void* misc )
       Log( "Task thread failed WaitForSingleObject with %d", wait );
     }
   }
+#elifdef MAC
+#else
+#error Unsupported platform
+#endif
 
   ThreadKill();
   return 0;
@@ -786,7 +557,7 @@ TaskThread( void* misc )
 //
 // note this is intentionally a 'construct the thing you want first, then we'll add it' convention.
 // usually i avoid this, to save encoding a memory copy, but here we have to be careful.
-// we're adding the thing to a queue_srsw_t, so we have to do the copy under a locking mechanism.
+// we're adding the thing to a mtqueue_srsw_t, so we have to do the copy under a locking mechanism.
 // i'm sure i could come up with queue code that could handle this, but it's not important right now.
 // something like: add another volatile idx that blocks reads from advancing over allocated but
 //   unitialized entries in the queue.
@@ -819,10 +590,15 @@ PushAsyncTask( idx_t taskthreadidx, asyncqueue_entry_t* entry )
   // note that we kind of need to ensure at least one thread gets woken up.
   // i probably need to do more reading/testing of SetEvent/WaitFor calls to make sure we're doing this right.
   //
+#ifdef WIN
   FORLEN( t, i, g_mainthread.taskthreads )
     auto r = SetEvent( t->wake );
     AssertCrash( r );
   }
+#elifdef MAC
+#else
+#error Unsupported platform
+#endif
 
 #else
   AssertCrash( g_mainthread.taskthreads.len );
@@ -859,8 +635,13 @@ PushMainTaskCompleted( taskthread_t* t, maincompletedqueue_entry_t* me )
     EnqueueS( t->output, me, &success );
   }
 
+#ifdef WIN
   auto r = SetEvent( g_mainthread.wake_asynctaskscompleted );
   AssertCrash( r );
+#elifdef MAC
+#else
+#error Unsupported platform
+#endif
 
 #if LOGASYNCTASKS
   Log( "maincompletedqueue_entry_t generated" );
@@ -879,6 +660,7 @@ MainThreadInit()
 
   ThreadInit();
 
+#ifdef WIN
   SYSTEM_INFO si = { 0 };
   GetSystemInfo( &si );
   AssertCrash( si.dwNumberOfProcessors > 0 );
@@ -918,6 +700,10 @@ MainThreadInit()
     *handle = Cast( HANDLE, _beginthreadex( 0, 0, TaskThread, t, 0, 0 ) );
     AssertCrash( *handle );
   }
+#elifdef MAC
+#else
+#error Unsupported platform
+#endif
 }
 
 void
@@ -926,6 +712,7 @@ SignalQuitAndWaitForTaskThreads()
   g_mainthread.signal_quit = 1;
   _ReadWriteBarrier();
 
+#ifdef WIN
   ForLen( i, g_mainthread.taskthreads ) {
     auto taskthread = g_mainthread.taskthreads.mem + i;
     auto r = SetEvent( taskthread->wake );
@@ -941,12 +728,21 @@ SignalQuitAndWaitForTaskThreads()
     );
   AssertCrash( waitres != WAIT_FAILED );
   AssertCrash( waitres != WAIT_TIMEOUT );
+#elifdef MAC
+#else
+#error Unsupported platform
+#endif
 }
 
 void
 MainThreadKill()
 {
+#ifdef WIN
   Free( g_mainthread.taskthread_handles );
+#elifdef MAC
+#else
+#error Unsupported platform
+#endif
 
   FORLEN( t, i, g_mainthread.taskthreads )
     Kill( *t );
@@ -971,14 +767,15 @@ MainThreadKill()
 
 __ExecuteOutput( OutputForExecute )
 {
-  auto pa = Cast( pagearray_t<u8>*, misc0 );
+  using pa_t = stack_resizeable_pagelist_t<u8>;
+  auto pa = Cast( pa_t*, misc0 );
   auto dst = AddBack( *pa, message->len );
   Memmove( dst, ML( *message ) );
 }
 Inl void
 TestExecute()
 {
-  pagearray_t<u8> output;
+  stack_resizeable_pagelist_t<u8> output;
   Init( output, 64 );
   auto cmd = SliceFromCStr( "cmd.exe /c echo hello world!" );
   s32 r = Execute( cmd, 0, OutputForExecute, &output, 0 );

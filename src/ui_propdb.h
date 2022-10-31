@@ -12,7 +12,7 @@ propdb_t
 {
   fsobj_t filename;
   hashset_t set;
-  plist_t strdata;
+  pagelist_t strdata;
   u64 time_lastwrite;
 };
 
@@ -57,14 +57,14 @@ pdbtoken_t
 Inl bool
 IsNumeralStart( u8 c )
 {
-  bool r = IsNumber( c )  |  ( c == '-' );
+  bool r = AsciiIsNumber( c )  |  ( c == '-' );
   return r;
 }
 
 
 
 bool
-Tokenize( array_t<pdbtoken_t>& tokens, slice_t& src )
+Tokenize( stack_resizeable_cont_t<pdbtoken_t>& tokens, slice_t& src )
 {
   idx_t pos = 0;
   pdbtoken_t last_tkn;
@@ -131,10 +131,10 @@ Tokenize( array_t<pdbtoken_t>& tokens, slice_t& src )
   ForLen( i, tokens ) {
     auto tkn = tokens.mem + i;
     if( tkn->type == pdbtokentype_t::expr ) {
-      while( tkn->l < tkn->r  &&  IsWhitespace( src.mem[tkn->l] ) ) {
+      while( tkn->l < tkn->r  &&  AsciiIsWhitespace( src.mem[tkn->l] ) ) {
         tkn->l += 1;
       }
-      while( tkn->l < tkn->r  &&  IsWhitespace( src.mem[tkn->r - 1] ) ) {
+      while( tkn->l < tkn->r  &&  AsciiIsWhitespace( src.mem[tkn->r - 1] ) ) {
         tkn->r -= 1;
       }
     }
@@ -165,7 +165,7 @@ StringOfTokenType( pdbtokentype_t type )
 
 #if 0
 Inl void
-PrintTokenStream( array_t<pdbtoken_t>& tokens, slice_t& src )
+PrintTokenStream( stack_resizeable_cont_t<pdbtoken_t>& tokens, slice_t& src )
 {
   ForLen( i, tokens ) {
     auto tkn = tokens.mem + i;
@@ -190,7 +190,7 @@ struct
 statement_t
 {
   slice_t lhs;
-  array_t<slice_t> rhs;
+  stack_resizeable_cont_t<slice_t> rhs;
 };
 
 Inl void
@@ -210,7 +210,7 @@ Kill( statement_t& stm )
 struct
 ast_t
 {
-  array_t<statement_t> stms;
+  stack_resizeable_cont_t<statement_t> stms;
 };
 
 Inl void
@@ -231,7 +231,7 @@ Kill( ast_t& ast )
 
 
 Inl pdbtoken_t*
-ExpectToken( array_t<pdbtoken_t>& tokens, idx_t i )
+ExpectToken( stack_resizeable_cont_t<pdbtoken_t>& tokens, idx_t i )
 {
   if( i >= tokens.len ) {
     Log( "Expected a token, but hit EOF instead!" );
@@ -241,7 +241,7 @@ ExpectToken( array_t<pdbtoken_t>& tokens, idx_t i )
 }
 
 Inl pdbtoken_t*
-ExpectTokenOfType( array_t<pdbtoken_t>& tokens, idx_t i, pdbtokentype_t type )
+ExpectTokenOfType( stack_resizeable_cont_t<pdbtoken_t>& tokens, idx_t i, pdbtokentype_t type )
 {
   auto tkn = ExpectToken( tokens, i );
   if( !tkn ) return 0;
@@ -253,7 +253,7 @@ ExpectTokenOfType( array_t<pdbtoken_t>& tokens, idx_t i, pdbtokentype_t type )
 }
 
 bool
-Parse( ast_t& ast, array_t<pdbtoken_t>& tokens, slice_t& src )
+Parse( ast_t& ast, stack_resizeable_cont_t<pdbtoken_t>& tokens, slice_t& src )
 {
   idx_t i = 0;
   Forever {
@@ -321,7 +321,7 @@ _AddToDb( propdb_t& db, slice_t& lhs, T& val )
   Memmove( propmem, &val, sizeof( val ) );
   slice_t name;
   name.len = lhs.len;
-  name.mem = AddPlist( db.strdata, u8, 1, name.len );
+  name.mem = AddPagelist( db.strdata, u8, 1, name.len );
   Memmove( name.mem, lhs.mem, name.len );
   Add( db.set, &name, propmem, 0, 0, 1 );
 }
@@ -331,7 +331,7 @@ Inl bool
 _LoadFromMem( propdb_t& db, slice_t& mem )
 {
   idx_t statement_estimate = mem.len / 10;
-  array_t<pdbtoken_t> tokens;
+  stack_resizeable_cont_t<pdbtoken_t> tokens;
   Alloc( tokens, statement_estimate );
   ast_t ast;
   bool r = Tokenize( tokens, mem );
@@ -388,7 +388,7 @@ _LoadFromMem( propdb_t& db, slice_t& mem )
             } else {
               slice_t val;
               val.len = rhs->len - 2;
-              val.mem = AddPlist( db.strdata, u8, 1, val.len );
+              val.mem = AddPagelist( db.strdata, u8, 1, val.len );
               Memmove( val.mem, rhs->mem + 1, val.len );
               _AddToDb( db, stm->lhs, val );
             }
@@ -592,12 +592,9 @@ _Init( propdb_t& db )
 
   db.time_lastwrite = 0;
 
-  // TODO: OS abstraction.
-  db.filename.len = GetModuleFileName( 0, Cast( LPSTR, db.filename.mem ), Cast( DWORD, Capacity( db.filename ) ) );
-  db.filename = _StandardFilename( ML( db.filename ) );
-
+  db.filename = FsGetExe();
   if( db.filename.len ) {
-    auto last_dot = CsScanL( ML( db.filename ), '.' );
+    auto last_dot = StringScanL( ML( db.filename ), '.' );
     AssertCrash( last_dot );
     db.filename.len = ( last_dot - db.filename.mem );
     db.filename.len += 1; // include dot.

@@ -1,21 +1,40 @@
 // build:console_x64_debug
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#include "math_vec.h"
+#define FINDLEAKS 0
+#include "core_cruntime.h"
+#include "core_types.h"
+#include "core_language_macros.h"
+#include "os_mac.h"
+#include "os_windows.h"
+#include "memory_operations.h"
+#include "asserts.h"
+#include "math_integer.h"
+#include "math_float.h"
+#include "math_lerp.h"
+#include "math_floatvec.h"
 #include "math_matrix.h"
+#include "math_kahansummation.h"
+#include "allocator_heap.h"
+#include "allocator_virtual.h"
+#include "allocator_heap_or_virtual.h"
+#include "cstr.h"
 #include "ds_slice.h"
 #include "ds_string.h"
-#include "ds_plist.h"
-#include "ds_array.h"
-#include "ds_embeddedarray.h"
-#include "ds_fixedarray.h"
-#include "ds_pagearray.h"
+#include "allocator_pagelist.h"
+#include "ds_stack_resizeable_cont.h"
+#include "ds_stack_nonresizeable_stack.h"
+#include "ds_stack_nonresizeable.h"
+#include "ds_stack_resizeable_pagelist.h"
 #include "ds_list.h"
-#include "ds_bytearray.h"
-#include "ds_hashset.h"
-#include "cstr.h"
+#include "ds_stack_cstyle.h"
+#include "ds_hashset_cstyle.h"
 #include "filesys.h"
 #include "timedate.h"
+#include "ds_mtqueue_mrmw_nonresizeable.h"
+#include "ds_mtqueue_mrsw_nonresizeable.h"
+#include "ds_mtqueue_srmw_nonresizeable.h"
+#include "ds_mtqueue_srsw_nonresizeable.h"
 #include "threading.h"
 #define LOGGER_ENABLED   0
 #include "logger.h"
@@ -23,8 +42,11 @@
 #define PROF_ENABLED_AT_LAUNCH   0
 #include "profile.h"
 #include "rand.h"
-#include "main.h"
+#include "allocator_heap_findleaks.h"
+#include "mainthread.h"
 
+
+#ifdef WIN
 
 // TODO: move this to test!
 
@@ -61,15 +83,15 @@ worker_t
   u32 tidx;
 
 #if SINGLEm2w
-  queue_srsw_t<m2w_t> m2w;
+  mtqueue_srsw_t<m2w_t> m2w;
 #else
-  queue_mrsw_t<m2w_t>* m2w;
+  mtqueue_mrsw_t<m2w_t>* m2w;
 #endif
 
 #if SINGLEw2m
-  queue_srsw_t<w2m_t> w2m;
+  mtqueue_srsw_t<w2m_t> w2m;
 #else
-  queue_srmw_t<w2m_t>* w2m;
+  mtqueue_srmw_t<w2m_t>* w2m;
 #endif
 };
 
@@ -157,7 +179,7 @@ MainWorker( LPVOID data )
 void
 TestThreadedQueues()
 {
-  array_t<u32*> threaddata;
+  stack_resizeable_cont_t<u32*> threaddata;
   Alloc( threaddata, num_threads );
   threaddata.len = num_threads;
   for( idx_t tidx = 0;  tidx < num_threads;  ++tidx ) {
@@ -170,11 +192,11 @@ TestThreadedQueues()
   Prof( queue_init );
   worker_t workers[num_threads];
 #if !SINGLEm2w
-  queue_mrsw_t<m2w_t> qm2w;
+  mtqueue_mrsw_t<m2w_t> qm2w;
   AllocQueue( qm2w, num_threads * 8 );
 #endif
 #if !SINGLEw2m
-  queue_srmw_t<w2m_t> qw2m;
+  mtqueue_srmw_t<w2m_t> qw2m;
   AllocQueue( qw2m, num_threads * 8 );
 #endif
 
@@ -344,8 +366,8 @@ TestTimerDelayThenPeriodic()
   bool success = !!SetWaitableTimer( timer, Cast( LARGE_INTEGER*, &delay ), period_millisec, 0, 0, 0 );
   AssertWarn( success );
 
-  kahan32_t fdelay = {};
-  kahan32_t fperiod = {};
+  kahansum32_t fdelay = {};
+  kahansum32_t fperiod = {};
 
   f32 test_timeout_sec = 5;
   u64 time0 = TimeClock();
@@ -404,8 +426,8 @@ TestMultiplePeriodicTimers()
   success = !!SetWaitableTimer( timer1, Cast( LARGE_INTEGER*, &delay ), period_millisec, 0, 0, 0 );
   AssertWarn( success );
 
-  kahan32_t fdelay[2] = {};
-  kahan32_t fperiod[2] = {};
+  kahansum32_t fdelay[2] = {};
+  kahansum32_t fperiod[2] = {};
 
   f32 test_timeout_sec = 15;
   u64 time_start = TimeClock();
@@ -481,11 +503,11 @@ main( int argc, char** argv )
 {
   MainInit();
 
-  array_t<u8> cmdline;
+  stack_resizeable_cont_t<u8> cmdline;
   Alloc( cmdline, 512 );
   for( int i = 1;  i < argc;  ++i ) {
     u8* arg = Cast( u8*, argv[i] );
-    idx_t arg_len = CsLen( arg );
+    idx_t arg_len = CstrLength( arg );
     Memmove( AddBack( cmdline, arg_len ), arg, arg_len );
     Memmove( AddBack( cmdline, 2 ), " ", 2 );
   }
@@ -508,7 +530,7 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
   MainInit();
 
   u8* cmdline = Str( prog_cmd_line );
-  idx_t cmdline_len = CsLen( Str( prog_cmd_line ) );
+  idx_t cmdline_len = CstrLength( Str( prog_cmd_line ) );
 
   AllocConsole();
   freopen("CONOUT$", "wb", stdout);
@@ -525,3 +547,4 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
 
 #endif
 
+#endif // WIN

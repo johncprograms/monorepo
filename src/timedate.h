@@ -3,9 +3,9 @@
 Inl void
 LogAddIndent( s32 delta );
 void
-Log( void* cstr ... );
+Log( const void* cstr ... );
 void
-LogInline( void* cstr ... );
+LogInline( const void* cstr ... );
 
 
 static f32 g_sec_per_tsc32;
@@ -21,6 +21,8 @@ static u32 g_sleep_prec_period_min;
 // TODO: define struct types around cycle_t and clock_t so we can't mix up the apis.
 //   already had one bug like that.
 
+u64 __rdtsc();
+
 Inl u64
 TimeTSC()
 {
@@ -31,13 +33,19 @@ TimeTSC()
 Inl void
 TimeSleep( u32 milliseconds )
 {
+#ifdef WIN
   Sleep( milliseconds ); // arg, winAPI! let me have a nano TimeSleep!
+#elifdef MAC
+#else
+#error Unsupported platform
+#endif
 }
 
 
 void
 TimeInit()
 {
+#ifdef WIN
   u64 t0 = __rdtsc();
 
   u64 qpc_per_sec;
@@ -56,7 +64,7 @@ TimeInit()
   __cpuid( tmp, 1 << 31 );
   auto max_extid = tmp[0];
 
-  array_t<s32> info, extinfo;
+  stack_resizeable_cont_t<s32> info, extinfo;
   Alloc( info, 256 );
   Alloc( extinfo, 256 );
   Fori( s32, i, 0, max_id + 1 ) {
@@ -67,7 +75,7 @@ TimeInit()
   tmp[2] = info.mem[2];
   slice_t vendor;
   vendor.mem = Cast( u8*, tmp );
-  vendor.len = CsLenOrMax( Cast( u8*, tmp ), _countof( tmp ) * sizeof( tmp[0] ) );
+  vendor.len = CstrLengthOrMax( Cast( u8*, tmp ), _countof( tmp ) * sizeof( tmp[0] ) );
   {
     auto cs = AllocCstr( vendor );
     Log( "vendor: %s", cs );
@@ -79,9 +87,9 @@ TimeInit()
   if( extinfo.len > 16 ) {
     auto brand = SliceFromCStr( extinfo.mem + 8 );
     Log( "brand: %s", brand.mem );
-    auto space = CsScanL( ML( brand ), ' ' );
-    auto decimal = CsScanL( ML( brand ), '.' );
-    auto ghz = CsScanL( ML( brand ), 'G' );
+    auto space = StringScanL( ML( brand ), ' ' );
+    auto decimal = StringScanL( ML( brand ), '.' );
+    auto ghz = StringScanL( ML( brand ), 'G' );
     if( space  &&  decimal  &&  ghz ) {
       auto integer = CsToIntegerU<u32>( space + 1, decimal - ( space + 1 ) );
       auto frac = CsToIntegerU<u32>( decimal + 1, ghz - ( decimal + 1 ) );
@@ -273,6 +281,10 @@ TimeInit()
 
   LogAddIndent( -1 );
   Log( "" );
+#elifdef MAC
+#else
+#error Unsupported platform
+#endif
 }
 
 
@@ -301,6 +313,7 @@ FormatTimeDate( u8* dst, idx_t dst_len, idx_t* written_size, struct tm* time_dat
     );
   *written_size = written;
 }
+void localtime_s( struct tm* time_data, time_t* dst );
 Inl struct tm
 LocalTimeDate()
 {
@@ -343,9 +356,16 @@ TimeSecFromTSC64( u64 delta )
 Inl u64
 TimeClock()
 {
+#ifdef WIN
   u64 qpc;
   QueryPerformanceCounter( Cast( LARGE_INTEGER*, &qpc ) );
   return qpc;
+#elifdef MAC
+  ImplementCrash();
+  return 0;
+#else
+#error Unsupported platform
+#endif
 }
 
 

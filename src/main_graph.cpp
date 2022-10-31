@@ -1,24 +1,42 @@
 // build:window_x64_debug
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
+#ifdef WIN
+
 #define FINDLEAKS   0
-#include "common.h"
-#include "math_vec.h"
+#include "core_cruntime.h"
+#include "core_types.h"
+#include "core_language_macros.h"
+#include "os_mac.h"
+#include "os_windows.h"
+#include "memory_operations.h"
+#include "asserts.h"
+#include "math_integer.h"
+#include "math_float.h"
+#include "math_lerp.h"
+#include "math_floatvec.h"
 #include "math_matrix.h"
+#include "math_kahansummation.h"
+#include "allocator_heap.h"
+#include "allocator_virtual.h"
+#include "allocator_heap_or_virtual.h"
+#include "cstr.h"
 #include "ds_slice.h"
 #include "ds_string.h"
-#include "ds_plist.h"
-#include "ds_array.h"
-#include "ds_embeddedarray.h"
-#include "ds_fixedarray.h"
-#include "ds_pagearray.h"
+#include "allocator_pagelist.h"
+#include "ds_stack_resizeable_cont.h"
+#include "ds_stack_nonresizeable_stack.h"
+#include "ds_stack_nonresizeable.h"
+#include "ds_stack_resizeable_pagelist.h"
 #include "ds_list.h"
-#include "ds_bytearray.h"
-#include "ds_hashset.h"
-#include "ds_queue.h"
+#include "ds_stack_cstyle.h"
+#include "ds_hashset_cstyle.h"
+#include "ds_queue_nonresizeable.h"
+#include "rand.h"
 #include "ds_minheap_extractable.h"
 #include "ds_minheap_decreaseable.h"
-#include "cstr.h"
+#include "cstr_integer.h"
+#include "cstr_float.h"
 #include "filesys.h"
 #include "timedate.h"
 #include "threading.h"
@@ -27,9 +45,10 @@
 #define PROF_ENABLED   0
 #define PROF_ENABLED_AT_LAUNCH   0
 #include "profile.h"
+#include "ds_bitarray_nonresizeable_stack.h"
 #include "ds_graph.h"
-#include "rand.h"
-#include "main.h"
+#include "allocator_heap_findleaks.h"
+#include "mainthread.h"
 
 #define OPENGL_INSTEAD_OF_SOFTWARE       0
 #define GLW_RAWINPUT_KEYBOARD            0
@@ -49,9 +68,9 @@ app_t
 {
   glwclient_t client;
   bool fullscreen;
-  array_t<f32> stream;
+  stack_resizeable_cont_t<f32> stream;
 
-  array_t<font_t> fonts;
+  stack_resizeable_cont_t<font_t> fonts;
 
   idx_t m = 1;
   f32 factor = 1.0f;
@@ -147,7 +166,7 @@ CalcA(
   f32 t
   )
 {
-  kahan32_t sum = {};
+  kahansum32_t sum = {};
   AssertCrash( N );
   sum.sum = A[0];
   Fori( u32, i, 1, N ) {
@@ -165,7 +184,7 @@ CalcTotalErrRenormalization(
   u32 N
   )
 {
-  kahan32_t total_err = {};
+  kahansum32_t total_err = {};
   For( i, 0, t_tests_len ) {
     auto t = t_tests[i];
     // we're storing alpha as A[ N - 1 ]
@@ -235,7 +254,7 @@ __OnRender( AppOnRender )
   auto timestep = MIN( timestep_realtime, timestep_fixed );
 
   { // display timestep_realtime, as a way of tracking how long rendering takes.
-    embeddedarray_t<u8, 64> tmp;
+    stack_nonresizeable_stack_t<u8, 64> tmp;
     CsFrom_f64( tmp.mem, Capacity( tmp ), &tmp.len, 1000 * timestep_realtime );
     auto tmp_w = LayoutString( font, spaces_per_tab, ML( tmp ) );
     DrawString(
@@ -335,7 +354,7 @@ __OnRender( AppOnRender )
 //      f32 a = 1.0f;
 //      t = 1.001f + t * 100.0f;
 //      auto lnt = Ln32( t );
-//      auto disc = ( Sq( A ) - B ) * Sq( t ) + t / lnt + 1 / Sq( lnt );
+//      auto disc = ( Square( A ) - B ) * Square( t ) + t / lnt + 1 / Square( lnt );
 //      if( disc < 0 ) {
 //        y[i] = a * lnt * Exp32( -A * t - 1 / lnt ) * Cos32( +Sqrt32( -disc ) );
 //        y[i] = a * lnt * Exp32( -A * t - 1 / lnt ) * Cos32( -Sqrt32( -disc ) );
@@ -879,7 +898,7 @@ __OnWindowEvent( AppOnWindowEvent )
 
 
 int
-Main( array_t<slice_t>& args )
+Main( stack_resizeable_cont_t<slice_t>& args )
 {
   PinThreadToOneCore();
 
@@ -926,12 +945,12 @@ Main( array_t<slice_t>& args )
 Inl void
 IgnoreSurroundingSpaces( u8*& a, idx_t& a_len )
 {
-  while( a_len  &&  IsWhitespace( a[0] ) ) {
+  while( a_len  &&  AsciiIsWhitespace( a[0] ) ) {
     a += 1;
     a_len -= 1;
   }
   // TODO: prog_cmd_line actually has two 0-terms!
-  while( a_len  &&  ( !a[a_len - 1]  ||  IsWhitespace( a[a_len - 1] ) ) ) {
+  while( a_len  &&  ( !a[a_len - 1]  ||  AsciiIsWhitespace( a[a_len - 1] ) ) ) {
     a_len -= 1;
   }
 }
@@ -942,9 +961,9 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
   MainInit();
 
   u8* cmdline = Str( prog_cmd_line );
-  idx_t cmdline_len = CsLen( Str( prog_cmd_line ) );
+  idx_t cmdline_len = CstrLength( Str( prog_cmd_line ) );
 
-  array_t<slice_t> args;
+  stack_resizeable_cont_t<slice_t> args;
   Alloc( args, 64 );
 
   while( cmdline_len ) {
@@ -957,11 +976,11 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
     auto quoted = cmdline[0] == '"';
     if( quoted ) {
       arg = cmdline + 1;
-      auto end = CsScanR( arg, cmdline_len - 1, '"' );
+      auto end = StringScanR( arg, cmdline_len - 1, '"' );
       arg_len = !end  ?  0  :  end - arg;
       IgnoreSurroundingSpaces( arg, arg_len );
     } else {
-      auto end = CsScanR( arg, cmdline_len - 1, ' ' );
+      auto end = StringScanR( arg, cmdline_len - 1, ' ' );
       arg_len = !end  ?  cmdline_len  :  end - arg;
       IgnoreSurroundingSpaces( arg, arg_len );
     }
@@ -985,3 +1004,5 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
   MainKill();
   return r;
 }
+
+#endif // WIN

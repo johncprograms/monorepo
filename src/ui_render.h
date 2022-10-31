@@ -138,7 +138,7 @@ UnpackColorForShader( f32 colorf )
 
 Inl void
 OutputQuad(
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   vec2<f32> p0,
   vec2<f32> p1,
   f32 z,
@@ -293,7 +293,7 @@ DrawLine(
 
 Inl void
 RenderLine(
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   vec4<f32> color,
   vec2<f32> p0,
   vec2<f32> p1,
@@ -309,7 +309,7 @@ RenderLine(
 
 Inl void
 RenderTri(
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   vec4<f32>& color,
   vec2<f32> p0,
   vec2<f32> p1,
@@ -342,7 +342,7 @@ RenderTri(
 
 Inl void
 RenderQuad(
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   vec4<f32>& color,
   vec2<f32> p0,
   vec2<f32> p1,
@@ -373,7 +373,7 @@ RenderQuad(
 }
 Inl void
 RenderQuad(
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   vec4<f32>& color,
   vec2<f32> p0,
   vec2<f32> p1,
@@ -393,7 +393,7 @@ RenderQuad(
 }
 Inl void
 RenderQuad(
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   vec4<f32>& color,
   rectf32_t bounds,
   rectf32_t clip,
@@ -414,7 +414,7 @@ RenderQuad(
 // for when you're sure p0,p1 are already properly clipped.
 Inl void
 RenderQuad(
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   vec4<f32>& color,
   vec2<f32> p0,
   vec2<f32> p1,
@@ -433,7 +433,7 @@ RenderQuad(
 }
 Inl void
 RenderQuad(
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   vec4<f32>& color,
   rectf32_t bounds,
   f32 z
@@ -450,7 +450,7 @@ RenderQuad(
 
 Inl void
 RenderTQuad(
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   vec4<f32>& color,
   vec2<f32> p0,
   vec2<f32> p1,
@@ -487,7 +487,7 @@ RenderTQuad(
 
 Inl void
 RenderCodept(
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   font_t& font,
   vec2<f32> pos,
   f32 z,
@@ -550,7 +550,7 @@ LayoutString(
 
 void
 DrawString(
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   font_t& font,
   vec2<f32> pos,
   f32 z,
@@ -608,7 +608,7 @@ DrawString(
 
 void
 DrawString(
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   font_t& font,
   vec2<f32> pos,
   f32 z,
@@ -635,7 +635,7 @@ DrawString(
 
 void
 RenderText(
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   font_t& font,
   fontlayout_t& layout,
   vec2<f32> pos,
@@ -680,7 +680,7 @@ RenderText(
 
 void
 RenderText(
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   font_t& font,
   fontlayout_t& layout,
   vec2<f32> pos,

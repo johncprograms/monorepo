@@ -1,33 +1,45 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-Templ struct
+#define LISTELEM   listelem_t<T, Allocation>
+template< typename T, typename Allocation = allocation_heap_or_virtual_t >
+struct
 listelem_t
 {
-  listelem_t<T>* prev;
-  listelem_t<T>* next;
+  Allocation allocn;
+  LISTELEM* prev;
+  LISTELEM* next;
   T value;
 };
+TEA Inl LISTELEM*
+AllocateListelem( Allocator& alloc )
+{
+  Allocation allocn = {};
+  auto elem = Allocate<LISTELEM>( alloc, allocn, 1 );
+  elem->allocn = allocn;
+  elem->prev = 0;
+  elem->next = 0;
+  return elem;
+}
 
-
+#define LIST   list_t<T, Allocator, Allocation>
 // note this is zero-initialized
-Templ struct
+TEA struct
 list_t
 {
   idx_t len; // number of elements currently in the list.
-  listelem_t<T>* first;
-  listelem_t<T>* last;
+  LISTELEM* first;
+  LISTELEM* last;
+  Allocator alloc;
 };
-
-Templ Inl void
-Zero( list_t<T>& list )
+TEA Inl void
+Zero( LIST& list )
 {
   list.len = 0;
   list.first = 0;
   list.last = 0;
 }
-
-Templ Inl void
-_InitialInsert( list_t<T>& list, listelem_t<T>* elem )
+TEA Inl void
+_InitialInsert( LIST& list, LISTELEM* elem )
 {
   AssertCrash( !list.len );
   elem->prev = 0;
@@ -36,15 +48,15 @@ _InitialInsert( list_t<T>& list, listelem_t<T>* elem )
   list.last = elem;
   list.len = 1;
 }
-
-Templ Inl void
-InsertBefore( list_t<T>& list, listelem_t<T>* elem, listelem_t<T>* place )
+TEA Inl void
+InsertBefore( LIST& list, LISTELEM* elem, LISTELEM* place )
 {
   AssertCrash( elem );
   if( !list.len ) {
     AssertCrash( !place );
     _InitialInsert( list, elem );
-  } else {
+  }
+  else {
     AssertCrash( list.len );
     AssertCrash( place );
     auto prev = place->prev;
@@ -62,15 +74,15 @@ InsertBefore( list_t<T>& list, listelem_t<T>* elem, listelem_t<T>* place )
   }
   AssertCrash( elem->prev != elem  &&  elem->next != elem );
 }
-
-Templ Inl void
-InsertAfter( list_t<T>& list, listelem_t<T>* elem, listelem_t<T>* place )
+TEA Inl void
+InsertAfter( LIST& list, LISTELEM* elem, LISTELEM* place )
 {
   AssertCrash( elem );
   if( !list.len ) {
     AssertCrash( !place );
     _InitialInsert( list, elem );
-  } else {
+  }
+  else {
     AssertCrash( list.len );
     AssertCrash( place );
     auto prev = place;
@@ -88,21 +100,18 @@ InsertAfter( list_t<T>& list, listelem_t<T>* elem, listelem_t<T>* place )
   }
   AssertCrash( elem->prev != elem  &&  elem->next != elem );
 }
-
-Templ Inl void
-InsertFirst( list_t<T>& list, listelem_t<T>* elem )
+TEA Inl void
+InsertFirst( LIST& list, LISTELEM* elem )
 {
   InsertBefore( list, elem, list.first );
 }
-
-Templ Inl void
-InsertLast( list_t<T>& list, listelem_t<T>* elem )
+TEA Inl void
+InsertLast( LIST& list, LISTELEM* elem )
 {
   InsertAfter( list, elem, list.last );
 }
-
-Templ Inl void
-Rem( list_t<T>& list, listelem_t<T>* elem )
+TEA Inl void
+Rem( LIST& list, LISTELEM* elem )
 {
   AssertCrash( list.len );
   auto prev = elem->prev;
@@ -123,93 +132,73 @@ Rem( list_t<T>& list, listelem_t<T>* elem )
   }
   list.len -= 1;
 }
-
-Templ Inl void
-RemFirst( list_t<T>& list )
+TEA Inl void
+RemFirst( LIST& list )
 {
   Rem( list, list.first );
 }
-
-Templ Inl void
-RemLast( list_t<T>& list )
+TEA Inl void
+RemLast( LIST& list )
 {
   Rem( list, list.last );
 }
 
 
+#define LISTWALLOC   listwalloc_t<T, Allocator, Allocation>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Templ struct
+// TODO: make this have a list_t field instead of duplicating the code?
+TEA struct
 listwalloc_t
 {
   idx_t len; // number of elements currently in the list.
-  listelem_t<T>* first;
-  listelem_t<T>* last;
-  plist_t* elems;
-  embeddedarray_t<listelem_t<T>*, 128> free_elems; // indices into listwalloc_t.elems.
+  LISTELEM* first;
+  LISTELEM* last;
+  stack_nonresizeable_stack_t<LISTELEM*, 128> free_elems; // indices into listwalloc_t.elems.
+  Allocator alloc;
 };
-
-
-Templ Inl void
-Init( listwalloc_t<T>& list, plist_t* elems )
-{
-  list.len = 0;
-  list.first = 0;
-  list.last = 0;
-  list.elems = elems;
-  list.free_elems.len = 0;
-}
-
-Templ Inl void
-Kill( listwalloc_t<T>& list )
+TEA Inl void
+Init( LISTWALLOC& list, Allocator alloc = {} )
 {
   list.len = 0;
   list.first = 0;
   list.last = 0;
   list.free_elems.len = 0;
+  list.alloc = alloc;
 }
-
-Templ void
-Clear( listwalloc_t<T>& list )
+TEA Inl void
+Kill( LISTWALLOC& list )
+{
+  list.len = 0;
+  list.first = 0;
+  list.last = 0;
+  list.free_elems.len = 0;
+  list.alloc = {};
+}
+TEA void
+Clear( LISTWALLOC& list )
 {
   list.len = 0;
   list.first = 0;
   list.last = 0;
   list.free_elems.len = 0;
 }
-
-Templ Inl listelem_t<T>*
-_GetNewElem( listwalloc_t<T>& list )
+TEA Inl LISTELEM*
+_GetNewElem( LISTWALLOC& list )
 {
-  listelem_t<T>* elem;
+  LISTELEM* elem;
   if( list.free_elems.len ) {
     elem = list.free_elems.mem[ list.free_elems.len - 1 ];
     RemBack( list.free_elems );
-  } else {
+  }
+  else {
     // TODO: should allow customization of the alignment here!
-    elem = AddPlist( *list.elems, listelem_t<T>, _SIZEOF_IDX_T, 1 );
+    elem = AllocateListelem<T, Allocator, Allocation>( list.alloc );
   }
   AssertCrash( elem );
   return elem;
 }
-
-Templ Inl void
-_InitialInsert( listwalloc_t<T>& list, listelem_t<T>* elem )
+TEA Inl void
+_InitialInsert( LISTWALLOC& list, LISTELEM* elem )
 {
   AssertCrash( !list.len );
   elem->prev = 0;
@@ -218,15 +207,15 @@ _InitialInsert( listwalloc_t<T>& list, listelem_t<T>* elem )
   list.last = elem;
   list.len = 1;
 }
-
-Templ Inl void
-InsertBefore( listwalloc_t<T>& list, listelem_t<T>* elem, listelem_t<T>* place )
+TEA Inl void
+InsertBefore( LISTWALLOC& list, LISTELEM* elem, LISTELEM* place )
 {
   AssertCrash( elem );
   if( !list.len ) {
     AssertCrash( !place );
     _InitialInsert( list, elem );
-  } else {
+  }
+  else {
     AssertCrash( list.len );
     AssertCrash( place );
     auto prev = place->prev;
@@ -244,15 +233,15 @@ InsertBefore( listwalloc_t<T>& list, listelem_t<T>* elem, listelem_t<T>* place )
   }
   AssertCrash( elem->prev != elem  &&  elem->next != elem );
 }
-
-Templ Inl void
-InsertAfter( listwalloc_t<T>& list, listelem_t<T>* elem, listelem_t<T>* place )
+TEA Inl void
+InsertAfter( LISTWALLOC& list, LISTELEM* elem, LISTELEM* place )
 {
   AssertCrash( elem );
   if( !list.len ) {
     AssertCrash( !place );
     _InitialInsert( list, elem );
-  } else {
+  }
+  else {
     AssertCrash( list.len );
     AssertCrash( place );
     auto prev = place;
@@ -270,49 +259,42 @@ InsertAfter( listwalloc_t<T>& list, listelem_t<T>* elem, listelem_t<T>* place )
   }
   AssertCrash( elem->prev != elem  &&  elem->next != elem );
 }
-
-Templ Inl void
-InsertFirst( listwalloc_t<T>& list, listelem_t<T>* elem )
+TEA Inl void
+InsertFirst( LISTWALLOC& list, LISTELEM* elem )
 {
   InsertBefore( list, elem, list.first );
 }
-
-Templ Inl void
-InsertLast( listwalloc_t<T>& list, listelem_t<T>* elem )
+TEA Inl void
+InsertLast( LISTWALLOC& list, LISTELEM* elem )
 {
   InsertAfter( list, elem, list.last );
 }
-
-Templ Inl listelem_t<T>*
-AddBefore( listwalloc_t<T>& list, listelem_t<T>* place )
+TEA Inl LISTELEM*
+AddBefore( LISTWALLOC& list, LISTELEM* place )
 {
   auto elem = _GetNewElem( list );
   InsertBefore( list, elem, place );
   return elem;
 }
-
-Templ Inl listelem_t<T>*
-AddAfter( listwalloc_t<T>& list, listelem_t<T>* place )
+TEA Inl LISTELEM*
+AddAfter( LISTWALLOC& list, LISTELEM* place )
 {
   auto elem = _GetNewElem( list );
   InsertAfter( list, elem, place );
   return elem;
 }
-
-Templ Inl listelem_t<T>*
-AddFirst( listwalloc_t<T>& list )
+TEA Inl LISTELEM*
+AddFirst( LISTWALLOC& list )
 {
   return AddBefore( list, list.first );
 }
-
-Templ Inl listelem_t<T>*
-AddLast( listwalloc_t<T>& list )
+TEA Inl LISTELEM*
+AddLast( LISTWALLOC& list )
 {
   return AddAfter( list, list.last );
 }
-
-Templ Inl void
-Rem( listwalloc_t<T>& list, listelem_t<T>* elem )
+TEA Inl void
+Rem( LISTWALLOC& list, LISTELEM* elem )
 {
   AssertCrash( list.len );
   auto prev = elem->prev;
@@ -333,21 +315,18 @@ Rem( listwalloc_t<T>& list, listelem_t<T>* elem )
   }
   list.len -= 1;
 }
-
-Templ Inl void
-RemFirst( listwalloc_t<T>& list )
+TEA Inl void
+RemFirst( LISTWALLOC& list )
 {
   Rem( list, list.first );
 }
-
-Templ Inl void
-RemLast( listwalloc_t<T>& list )
+TEA Inl void
+RemLast( LISTWALLOC& list )
 {
   Rem( list, list.last );
 }
-
-Templ Inl void
-Reclaim( listwalloc_t<T>& list, listelem_t<T>* elem )
+TEA Inl void
+Reclaim( LISTWALLOC& list, LISTELEM* elem )
 {
   if( list.free_elems.len < Capacity( list.free_elems ) ) {
     *AddBack( list.free_elems ) = elem;

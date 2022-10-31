@@ -83,4 +83,30 @@ Slice32FromSlice( tslice_t<T> a )
   return r;
 }
 
+Inl slice_t
+SliceFromCStr( const void* str )
+{
+  slice_t r;
+  r.mem = Cast( u8*, str );
+  r.len = CstrLength( r.mem );
+  return r;
+}
+
+Inl slice32_t
+Slice32FromCStr( const void* str )
+{
+  slice32_t r;
+  r.mem = Cast( u8*, str );
+  auto len = CstrLength( r.mem );
+  AssertCrash( len <= MAX_u32 );
+  r.len = Cast( u32, len );
+  return r;
+}
+
+Inl u8*
+AllocCstr( slice_t& str )
+{
+  return AllocCstr( ML( str ) );
+}
+
 #define SliceFromCArray( T, carray )   tslice_t<T>{ AL( carray ) }

@@ -1,22 +1,38 @@
 // build:window_x64_debug
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
+#ifdef WIN
+
 #define FINDLEAKS   0
-#include "common.h"
-#include "math_vec.h"
+#include "core_cruntime.h"
+#include "core_types.h"
+#include "core_language_macros.h"
+#include "os_mac.h"
+#include "os_windows.h"
+#include "memory_operations.h"
+#include "asserts.h"
+#include "math_integer.h"
+#include "math_float.h"
+#include "math_lerp.h"
+#include "math_floatvec.h"
 #include "math_matrix.h"
+#include "math_kahansummation.h"
+#include "allocator_heap.h"
+#include "allocator_virtual.h"
+#include "allocator_heap_or_virtual.h"
+#include "cstr.h"
 #include "ds_slice.h"
 #include "ds_string.h"
-#include "ds_plist.h"
-#include "ds_array.h"
-#include "ds_embeddedarray.h"
-#include "ds_fixedarray.h"
-#include "ds_pagearray.h"
+#include "ds_stack_resizeable_cont.h"
+#include "ds_stack_nonresizeable_stack.h"
+#include "ds_stack_nonresizeable.h"
+#include "ds_stack_resizeable_pagelist.h"
 #include "ds_list.h"
-#include "ds_bytearray.h"
-#include "ds_hashset.h"
+#include "ds_stack_cstyle.h"
+#include "ds_hashset_cstyle.h"
+#include "ds_hashset_complexkey.h"
 #include "ds_pagetree.h"
-#include "cstr.h"
+#include "allocator_pagelist.h"
 #include "filesys.h"
 #include "timedate.h"
 #include "threading.h"
@@ -26,7 +42,11 @@
 #define PROF_ENABLED_AT_LAUNCH   0
 #include "profile.h"
 #include "rand.h"
-#include "main.h"
+#include "allocator_heap_findleaks.h"
+#include "mainthread.h"
+#include "text_parsing.h"
+#include "cstr_integer.h"
+#include "cstr_float.h"
 
 #define OPENGL_INSTEAD_OF_SOFTWARE       0
 #define GLW_RAWINPUT_KEYBOARD            0
@@ -36,8 +56,8 @@
 #include "ui_propdb.h"
 #include "ui_font.h"
 #include "ui_render.h"
-#include "ui_buf.h"
-#include "ui_txt.h"
+#include "ui_buf2.h"
+#include "ui_txt2.h"
 
 Enumc( applayer_t )
 {
@@ -329,7 +349,7 @@ absoluterect_t
 };
 
 using
-absoluterectlist_t = array_t<absoluterect_t>;
+absoluterectlist_t = stack_resizeable_cont_t<absoluterect_t>;
 
 Inl bool
 PtOverlapsInterval( u32 x, u32 x0, u32 x1 )
@@ -824,15 +844,15 @@ struct
 grid_t
 {
   // core data
-  plist_t cellmem;
+  pagelist_t cellmem;
 #if PT
-  pagetree_16x4_t cellblock_tree;
+  tpagetree_16x4_t<allocator_pagelist_t, allocation_pagelist_t> cellblock_tree;
 #else
   listwalloc_t<cellblock_t> cellblocks;
 #endif
-  array_t<graphedge_t> graph_edges;
-  array_t<custom_dim_x_t> custom_dim_xs; // TODO: implement
-  array_t<custom_dim_y_t> custom_dim_ys;
+  stack_resizeable_cont_t<graphedge_t> graph_edges;
+  stack_resizeable_cont_t<custom_dim_x_t> custom_dim_xs; // TODO: implement
+  stack_resizeable_cont_t<custom_dim_y_t> custom_dim_ys;
   gridfocus_t focus;
   u32 eval_generation;
 
@@ -851,7 +871,7 @@ grid_t
 //  txt_t txt_error;
 
   // render data
-  array_t<rendered_cell_t> rendered_cells;
+  stack_resizeable_cont_t<rendered_cell_t> rendered_cells;
   absolutepos_t scroll_absolutepos;
 };
 
@@ -863,7 +883,7 @@ Init( grid_t* grid )
 {
   Init( grid->cellmem, 32000 );
 #if PT
-  Init( &grid->cellblock_tree, &grid->cellmem );
+  Init( &grid->cellblock_tree, allocator_pagelist_t{ &grid->cellmem } );
 #else
   Init( grid->cellblocks, &grid->cellmem );
 #endif
@@ -919,9 +939,9 @@ LoadCSV(
   )
 {
   u32 nlines = CountNewlines( ML( csv ) ) + 1;
-  array32_t<slice32_t> lines;
+  stack_resizeable_cont_t<slice32_t> lines;
   Alloc( lines, nlines );
-  array_t<slice_t> entries;
+  stack_resizeable_cont_t<slice_t> entries;
   Alloc( entries, 32 );
   SplitIntoLines( &lines, ML( csv ) );
   absoluterectlist_t rectlist;
@@ -938,7 +958,7 @@ LoadCSV(
       rect->p0 = abspos;
       rect->p1 = abspos + _vec2<u32>( 1, 1 );
       AssertCrash( entry->len <= MAX_u32 );
-      auto copied = AddPlistSlice32( grid->cellmem, u8, 1, Cast( u32, entry->len ) );
+      auto copied = AddPagelistSlice32( grid->cellmem, u8, 1, Cast( u32, entry->len ) );
       Memmove( copied.mem, ML( *entry ) );
       InsertOrSetCellContents( grid, &rectlist, copied );
     }
@@ -985,7 +1005,7 @@ AccessCellBlock(
   auto blockaddr = PagetreeAddressFromBlockpos( blockpos );
   auto entry = AccessLastLevelPage( &grid->cellblock_tree, blockaddr );
   if( !*entry ) {
-    *entry = AddPlist( grid->cellmem, cellblock_t, _SIZEOF_IDX_T, 1 );
+    *entry = AddPagelist( grid->cellmem, cellblock_t, _SIZEOF_IDX_T, 1 );
     Memzero( *entry, sizeof( cellblock_t ) );
   }
   auto block = Cast( cellblock_t*, *entry );
@@ -1200,8 +1220,8 @@ IsIdentChar( u8 c )
 {
   bool r =
     ( c == '_' )  |
-    IsAlpha( c )  |
-    IsNumber( c );
+    AsciiIsAlpha( c )  |
+    AsciiIsNumber( c );
   return r;
 }
 
@@ -1241,7 +1261,7 @@ static slice32_t Sym_semicolon        = Slice32FromCStr( ";" );
 Inl void
 Tokenize(
   slice32_t src,
-  array_t<token_t>* tokens,
+  stack_resizeable_cont_t<token_t>* tokens,
   compileerror_t* error
   )
 {
@@ -1257,12 +1277,12 @@ Tokenize(
     }
 
     // tokenize numbers.
-    if( IsNumber( curr[0] ) ) {
+    if( AsciiIsNumber( curr[0] ) ) {
       // TODO: allow scientific notation, ie 1.2e9 syntax.
       u32 offset = 1;
       u32 ndots = 0;
       while( pos + offset < src.len ) {
-        if( IsNumber( curr[offset] ) ) {
+        if( AsciiIsNumber( curr[offset] ) ) {
           offset += 1;
           continue;
         }
@@ -1289,7 +1309,7 @@ Tokenize(
     }
 
     // toeknize idents.
-    if( IsAlpha( curr[0] ) ) {
+    if( AsciiIsAlpha( curr[0] ) ) {
       u32 offset = 1;
       while( pos + offset < src.len ) {
         if( IsIdentChar( curr[offset] ) ) {
@@ -1304,7 +1324,7 @@ Tokenize(
       #define TOKENIZE_KEYWORD( tokenname ) \
         if( MemEqual( curr, offset, ML( NAMEJOIN( Sym_, tokenname ) ) ) ) { \
           auto tkn = AddBack( *tokens ); \
-          tkn->type = NAMEJOIN( tokentype_t::, tokenname ); \
+          tkn->type = tokentype_t::tokenname; \
           tkn->slice.mem = curr; \
           tkn->slice.len = NAMEJOIN( Sym_, tokenname ).len; \
           tkn->offset_into_input = pos; \
@@ -1340,7 +1360,7 @@ Tokenize(
     #define TOKENIZE_SYMBOL( tokenname ) \
       if( MemEqual( curr, MIN( curr_len, NAMEJOIN( Sym_, tokenname ).len ), ML( NAMEJOIN( Sym_, tokenname ) ) ) ) { \
         auto tkn = AddBack( *tokens ); \
-        tkn->type = NAMEJOIN( tokentype_t::, tokenname ); \
+        tkn->type = tokentype_t::tokenname; \
         tkn->slice.mem = curr; \
         tkn->slice.len = NAMEJOIN( Sym_, tokenname ).len; \
         tkn->offset_into_input = pos; \
@@ -1396,15 +1416,15 @@ StringFromNodeType( nodetype_t type )
 }
 
 Templ Inl T*
-_AddNode( plist_t* nodemem, nodetype_t nodetype )
+_AddNode( pagelist_t* nodemem, nodetype_t nodetype )
 {
-  auto r = AddPlist( *nodemem, T, _SIZEOF_IDX_T, 1 );
+  auto r = AddPagelist( *nodemem, T, _SIZEOF_IDX_T, 1 );
   r->nodetype = nodetype;
   return r;
 }
 
 #define ADD_NODE( nodemem, nodetypet ) \
-  _AddNode<NAMEJOIN( NAMEJOIN( node_, nodetypet ), _t )>( nodemem, NAMEJOIN( nodetype_t::, nodetypet ) )
+  _AddNode<NAMEJOIN( NAMEJOIN( node_, nodetypet ), _t )>( nodemem, nodetype_t::nodetypet )
 
 struct
 node_expr_t;
@@ -1490,7 +1510,7 @@ Inl fncalltype_t
 FncalltypeFromTokentype( tokentype_t type )
 {
   switch( type ) {
-    #define CASE( x )   case NAMEJOIN( tokentype_t::, x ): { return NAMEJOIN( fncalltype_t::, x ); } break;
+    #define CASE( x )   case tokentype_t::x: { return fncalltype_t::x; } break;
     FNCALLTYPES( CASE )
     #undef CASE
     default: UnreachableCrash();
@@ -1570,7 +1590,7 @@ node_expr_t
 Inl void
 PrintNode(
   void* node,
-  array_t<u8>* dst
+  stack_resizeable_cont_t<u8>* dst
   )
 {
   auto type = *Cast( nodetype_t*, node );
@@ -1638,7 +1658,7 @@ PrintNode(
 
 Inl token_t*
 ExpectToken(
-  array_t<token_t>* tokens,
+  stack_resizeable_cont_t<token_t>* tokens,
   idx_t pos,
   compileerror_t* error
   )
@@ -1658,9 +1678,9 @@ ExpectToken(
 
 Inl token_t*
 ExpectTokenOfType(
-  array_t<token_t>* tokens,
+  stack_resizeable_cont_t<token_t>* tokens,
   tokentype_t type,
-  plist_t* errortextmem,
+  pagelist_t* errortextmem,
   idx_t* pos,
   compileerror_t* error
   )
@@ -1675,7 +1695,7 @@ ExpectTokenOfType(
     auto s2 = Slice32FromCStr( "', but hit EOF first." );
     slice32_t errortext;
     errortext.len = s0.len + s1.len + s2.len;
-    errortext.mem = AddPlist( *errortextmem, u8, 1, errortext.len );
+    errortext.mem = AddPagelist( *errortextmem, u8, 1, errortext.len );
     auto mem = errortext.mem;
     Memmove( mem, ML( s0 ) ); mem += s0.len;
     Memmove( mem, ML( s1 ) ); mem += s1.len;
@@ -1693,7 +1713,7 @@ ExpectTokenOfType(
     auto s4 = Slice32FromCStr( "' instead." );
     slice32_t errortext;
     errortext.len = s0.len + s1.len + s2.len + s3.len + s4.len;
-    errortext.mem = AddPlist( *errortextmem, u8, 1, errortext.len );
+    errortext.mem = AddPagelist( *errortextmem, u8, 1, errortext.len );
     auto mem = errortext.mem;
     Memmove( mem, ML( s0 ) ); mem += s0.len;
     Memmove( mem, ML( s1 ) ); mem += s1.len;
@@ -1710,10 +1730,10 @@ ExpectTokenOfType(
 struct
 parse_input_t
 {
-  array_t<token_t>* tokens;
-  plist_t* nodemem;
-  plist_t* errortextmem;
-  array_t<node_expr_t*>* tmpargmem;
+  stack_resizeable_cont_t<token_t>* tokens;
+  pagelist_t* nodemem;
+  pagelist_t* errortextmem;
+  stack_resizeable_cont_t<node_expr_t*>* tmpargmem;
 };
 
 Inl node_expr_t*
@@ -1902,7 +1922,7 @@ ParseExprExcludingBinop(
       auto args_mem = input->tmpargmem->mem + tmpargmem_start;
       AssertCrash( args_len <= MAX_u32 );
       expr->array.len = Cast( u32, args_len );
-      expr->array.mem = AddPlist( *input->nodemem, node_expr_t*, sizeof( node_expr_t* ), args_len );
+      expr->array.mem = AddPagelist( *input->nodemem, node_expr_t*, sizeof( node_expr_t* ), args_len );
       Memmove( expr->array.mem, args_mem, args_len * sizeof( node_expr_t* ) );
       input->tmpargmem->len = tmpargmem_start;
     } break;
@@ -2008,7 +2028,7 @@ ParseExprExcludingBinop(
       auto args_mem = input->tmpargmem->mem + tmpargmem_start;
       AssertCrash( args_len <= MAX_u32 );
       expr->fncall.args.len = Cast( u32, args_len );
-      expr->fncall.args.mem = AddPlist( *input->nodemem, node_expr_t*, sizeof( node_expr_t* ), args_len );
+      expr->fncall.args.mem = AddPagelist( *input->nodemem, node_expr_t*, sizeof( node_expr_t* ), args_len );
       Memmove( expr->fncall.args.mem, args_mem, args_len * sizeof( node_expr_t* ) );
       input->tmpargmem->len = tmpargmem_start;
 
@@ -2101,20 +2121,20 @@ Parse(
 NoInl cellvalue_t
 EvaluateExpr(
   grid_t* grid,
-  plist_t* evalmem,
+  pagelist_t* evalmem,
   absolutepos_t abspos, // which cell we're evaluating into.  used for relcell and other relative stuff.
   node_expr_t* expr,
-  array_t<cell_t*>* cells_subexpr,
+  stack_resizeable_cont_t<cell_t*>* cells_subexpr,
   compileerror_t* error
   );
 
 Inl cellvalue_t
 EvaluateExprArray(
   grid_t* grid,
-  plist_t* evalmem,
+  pagelist_t* evalmem,
   absolutepos_t abspos, // which cell we're evaluating into.  used for relcell and other relative stuff.
   expr_array_t* array,
-  array_t<cell_t*>* cells_subexpr,
+  stack_resizeable_cont_t<cell_t*>* cells_subexpr,
   compileerror_t* error
   )
 {
@@ -2122,7 +2142,7 @@ EvaluateExprArray(
   cellvalue_t value;
   value.type = cellvaluetype_t::_array;
   value._array.len = len;
-  value._array.mem = AddPlist( *evalmem, cellvalue_t, _SIZEOF_IDX_T, len );
+  value._array.mem = AddPagelist( *evalmem, cellvalue_t, _SIZEOF_IDX_T, len );
   For( i, 0, len ) {
     auto expr_elem = array->mem[i];
     value._array.mem[i] = EvaluateExpr( grid, evalmem, abspos, expr_elem, cells_subexpr, error );
@@ -2178,7 +2198,7 @@ Inl cellvalue_t
 ReadCellValueDuringExprEval(
   grid_t* grid,
   absolutepos_t abspos,
-  array_t<cell_t*>* cells_subexpr
+  stack_resizeable_cont_t<cell_t*>* cells_subexpr
   )
 {
   auto cell = AccessCell( grid, abspos );
@@ -2211,7 +2231,7 @@ ReadCellValueDuringExprEval(
 Inl void
 CopyCellValue(
   cellvalue_t* dst,
-  plist_t* dstmem,
+  pagelist_t* dstmem,
   cellvalue_t* src
   )
 {
@@ -2221,12 +2241,12 @@ CopyCellValue(
       dst->_f64 = src->_f64;
     } break;
     case cellvaluetype_t::_string: {
-      dst->_string = AddPlistSlice32( *dstmem, u8, 1, src->_string.len );
+      dst->_string = AddPagelistSlice32( *dstmem, u8, 1, src->_string.len );
       Memmove( dst->_string.mem, ML( src->_string ) );
     } break;
     case cellvaluetype_t::_array:
     case cellvaluetype_t::_graph: {
-      dst->_array = AddPlistSlice32( *dstmem, cellvalue_t, _SIZEOF_IDX_T, src->_array.len );
+      dst->_array = AddPagelistSlice32( *dstmem, cellvalue_t, _SIZEOF_IDX_T, src->_array.len );
       Memmove( dst->_array.mem, ML( src->_array ) );
       FORLEN( dst_elem, i, dst->_array )
         auto src_elem = src->_array.mem + i;
@@ -2241,10 +2261,10 @@ CopyCellValue(
 NoInl cellvalue_t
 EvaluateExpr(
   grid_t* grid,
-  plist_t* evalmem,
+  pagelist_t* evalmem,
   absolutepos_t abspos, // which cell we're evaluating into.  used for relcell and other relative stuff.
   node_expr_t* expr,
-  array_t<cell_t*>* cells_subexpr,
+  stack_resizeable_cont_t<cell_t*>* cells_subexpr,
   compileerror_t* error
   )
 {
@@ -2332,7 +2352,7 @@ EvaluateExpr(
           cellvalue_t value;
           value.type = cellvaluetype_t::_array;
           value._array.len = abspos_x1 - abspos_x0;
-          value._array.mem = AddPlist( *evalmem, cellvalue_t, _SIZEOF_IDX_T, value._array.len );
+          value._array.mem = AddPagelist( *evalmem, cellvalue_t, _SIZEOF_IDX_T, value._array.len );
           Fori( u32, abspos_x, abspos_x0, abspos_x1 ) {
             absolutepos_t abspos_elem = { abspos_x, abspos_y };
             value._array.mem[abspos_x - abspos_x0] = ReadCellValueDuringExprEval( grid, abspos_elem, cells_subexpr );
@@ -2364,7 +2384,7 @@ EvaluateExpr(
           cellvalue_t value;
           value.type = cellvaluetype_t::_array;
           value._array.len = abspos_y1 - abspos_y0;
-          value._array.mem = AddPlist( *evalmem, cellvalue_t, _SIZEOF_IDX_T, value._array.len );
+          value._array.mem = AddPagelist( *evalmem, cellvalue_t, _SIZEOF_IDX_T, value._array.len );
           Fori( u32, abspos_y, abspos_y0, abspos_y1 ) {
             absolutepos_t abspos_elem = { abspos_x, abspos_y };
             value._array.mem[abspos_y - abspos_y0] = ReadCellValueDuringExprEval( grid, abspos_elem, cells_subexpr );
@@ -2404,7 +2424,7 @@ EvaluateExpr(
 
           auto dim_x = abspos_x1 - abspos_x0;
           auto dim_y = abspos_y1 - abspos_y0;
-          auto memblock = AddPlist( *evalmem, cellvalue_t, _SIZEOF_IDX_T, ( dim_x + 1 ) * dim_y );
+          auto memblock = AddPagelist( *evalmem, cellvalue_t, _SIZEOF_IDX_T, ( dim_x + 1 ) * dim_y );
           cellvalue_t value;
           value.type = cellvaluetype_t::_array;
           value._array.len = dim_y;
@@ -2456,7 +2476,7 @@ EvaluateExpr(
 
           auto dim_x = abspos_x1 - abspos_x0;
           auto dim_y = abspos_y1 - abspos_y0;
-          auto memblock = AddPlist( *evalmem, cellvalue_t, _SIZEOF_IDX_T, dim_x * ( dim_y + 1 ) );
+          auto memblock = AddPagelist( *evalmem, cellvalue_t, _SIZEOF_IDX_T, dim_x * ( dim_y + 1 ) );
           cellvalue_t value;
           value.type = cellvaluetype_t::_array;
           value._array.len = dim_x;
@@ -2478,7 +2498,7 @@ EvaluateExpr(
 
         case fncalltype_t::sum    : {
           VERIFY_ARGS_ARE_NUM_ARRAY;
-          kahan64_t sum = {};
+          kahansum64_t sum = {};
           FORLEN( arg, i, args._array )
             Add( sum, arg->_f64 );
           }
@@ -2518,7 +2538,7 @@ EvaluateExpr(
 
         case fncalltype_t::mean   : {
           VERIFY_ARGS_ARE_NUM_ARRAY;
-          kahan64_t sum = {};
+          kahansum64_t sum = {};
           FORLEN( arg, i, args._array )
             Add( sum, arg->_f64 );
           }
@@ -2857,16 +2877,16 @@ InsertOrSetCellContents(
       // bump generation, so we can detect cycles anew.
       grid->eval_generation += 1;
 
-      array_t<token_t> tokens;
+      stack_resizeable_cont_t<token_t> tokens;
       Alloc( tokens, 1024 );
 
-      plist_t nodemem;
+      pagelist_t nodemem;
       Init( nodemem, 16000 );
-      array_t<node_expr_t*> tmpargmem;
+      stack_resizeable_cont_t<node_expr_t*> tmpargmem;
       Alloc( tmpargmem, 512 );
-      array_t<cell_t*> cells_subexpr;
+      stack_resizeable_cont_t<cell_t*> cells_subexpr;
       Alloc( cells_subexpr, 512 );
-      array_t<cellandpos_t> cells_superexpr;
+      stack_resizeable_cont_t<cellandpos_t> cells_superexpr;
       Alloc( cells_superexpr, 512 );
 
       parse_input_t parse_input;
@@ -3165,7 +3185,7 @@ DeleteCellContents(
 
 Inl void
 DrawGraph(
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   rectf32_t bounds,
   vec2<f32> zrange,
   cellvaluearray_t* array
@@ -3222,7 +3242,7 @@ DrawGraph(
 Inl void
 RenderGrid(
   grid_t* grid,
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   font_t& font,
   rectf32_t bounds,
   vec2<f32> zrange,
@@ -3353,7 +3373,7 @@ RenderGrid(
   u32 ncells_conservative_y;
   {
     u32 abspos_y = grid->scroll_absolutepos.y;
-    kahan32_t y1 = { colhdr_h }; // start one line down, to account for the col headers.
+    kahansum32_t y1 = { colhdr_h }; // start one line down, to account for the col headers.
     bool loop_y = 1;
     while( loop_y ) {
       f32 custom_dim_y;
@@ -3371,7 +3391,7 @@ RenderGrid(
   u32 ncells_conservative_x;
   {
     u32 abspos_x = grid->scroll_absolutepos.x;
-    kahan32_t x1 = { 0.0f };
+    kahansum32_t x1 = { 0.0f };
     bool loop_x = 1;
     while( loop_x ) {
       f32 custom_dim_x;
@@ -3389,7 +3409,7 @@ RenderGrid(
 
   // this stores the sizing info of an individual cell, ignoring same-row/col constraints.
   // note it takes manual sizing into consideration.
-  array32_t<vec2<f32>> cell_autodims;
+  stack_resizeable_cont_t<vec2<f32>> cell_autodims;
   auto ncells_conservative = ncells_conservative_x * ncells_conservative_y;
   Alloc( cell_autodims, ncells_conservative ); // PERF: make this a Reserve
   cell_autodims.len = ncells_conservative;
@@ -3410,7 +3430,7 @@ RenderGrid(
         switch( cell->value.type ) {
           case cellvaluetype_t::_f64: {
             // PERF: we do CsFrom_f64 again below to actually output the text; cache instead.
-            embeddedarray_t<u8, 64> tmp;
+            stack_nonresizeable_stack_t<u8, 64> tmp;
             CsFrom_f64( tmp.mem, Capacity( tmp ), &tmp.len, cell->value._f64, 2 );
             auto w = LayoutString( font, spaces_per_tab, ML( tmp ) );
             cell_dimf.x = 2.0f * cell_contents_offset.x + w;
@@ -3459,8 +3479,8 @@ RenderGrid(
 
   // note we reuse these dim_xs/dim_ys for every candidate choice.
   // but the len stays the same, so we use smaller iteration loops, not FORLEN32 loops.
-  array32_t<f32> dim_xs;
-  array32_t<f32> dim_ys;
+  stack_resizeable_cont_t<f32> dim_xs;
+  stack_resizeable_cont_t<f32> dim_ys;
   Alloc( dim_xs, ncells_conservative_x ); // PERF: make this a Reserve
   Alloc( dim_ys, ncells_conservative_y ); // PERF: make this a Reserve
   dim_xs.len = ncells_conservative_x;
@@ -3493,7 +3513,7 @@ RenderGrid(
 
     // check that we're not overdrawing or underdrawing with this choice of y.
     bool valid_y = 0;
-    kahan32_t y1 = { colhdr_h }; // start one line down, to account for the col headers.
+    kahansum32_t y1 = { colhdr_h }; // start one line down, to account for the col headers.
     auto last_y = ( bounds.p1.y - bounds.p0.y );
     Fori( u32, j, 0, ncells_choice_y ) { // note dim_ys has a different size than this.
       auto y0 = y1.sum;
@@ -3516,7 +3536,7 @@ RenderGrid(
 
     // using 1-based hdrs, which ncells_choice_y accounts for already.
     auto last_hdr_idx = grid->scroll_absolutepos.y + ncells_choice_y;
-    embeddedarray_t<u8, 64> hdr;
+    stack_nonresizeable_stack_t<u8, 64> hdr;
     auto success = CsFromIntegerU( hdr.mem, Capacity( hdr ), &hdr.len, last_hdr_idx, 1 );
     AssertCrash( success );
     auto max_hdr_w = LayoutString( font, spaces_per_tab, ML( hdr ) );
@@ -3524,7 +3544,7 @@ RenderGrid(
 
     // check that we're not overdrawing or underdrawing with this choice of x.
     bool valid_x = 0;
-    kahan32_t x1 = { rowhdr_w };
+    kahansum32_t x1 = { rowhdr_w };
     auto last_x = ( bounds.p1.x - bounds.p0.x );
     Fori( u32, i, 0, ncells_choice_x ) { // note dim_xs has a different size than this.
       auto x0 = x1.sum;
@@ -3591,7 +3611,7 @@ RenderGrid(
 
   // draw row headers
   {
-    kahan32_t y1 = { grid_offset.y };
+    kahansum32_t y1 = { grid_offset.y };
     FORLEN32( dim_y, j, dim_ys )
       auto abspos_y = grid->scroll_absolutepos.y + j;
       auto y0 = y1.sum;
@@ -3601,7 +3621,7 @@ RenderGrid(
         y1.sum = ( bounds.p1.y - bounds.p0.y );
       }
       auto hdr_idx = abspos_y + 1; // using 1-based hdrs
-      embeddedarray_t<u8, 64> hdr;
+      stack_nonresizeable_stack_t<u8, 64> hdr;
       auto success = CsFromIntegerU( hdr.mem, Capacity( hdr ), &hdr.len, hdr_idx, 1 );
       AssertCrash( success );
       auto w = LayoutString( font, spaces_per_tab, ML( hdr ) );
@@ -3629,7 +3649,7 @@ RenderGrid(
 
   // draw per-column stuff
   {
-    kahan32_t x1 = { grid_offset.x };
+    kahansum32_t x1 = { grid_offset.x };
     Fori( u32, i, 0, ncells_x ) {
       auto cell_dim_x = dim_xs.mem[i];
       auto x0 = x1.sum;
@@ -3655,7 +3675,7 @@ RenderGrid(
       // draw col header
       {
         auto hdr_idx = grid->scroll_absolutepos.x + i + 1; // using 1-based hdrs
-        embeddedarray_t<u8, 64> tmp;
+        stack_nonresizeable_stack_t<u8, 64> tmp;
         bool success = CsFromIntegerU( tmp.mem, Capacity( tmp ), &tmp.len, hdr_idx, 1 );
         AssertCrash( success );
         auto w = LayoutString( font, spaces_per_tab, ML( tmp ) );
@@ -3674,7 +3694,7 @@ RenderGrid(
 
   // draw per-row stuff
   {
-    kahan32_t y1 = { grid_offset.y };
+    kahansum32_t y1 = { grid_offset.y };
     Fori( u32, j, 0, ncells_y ) {
       auto cell_dim_y = dim_ys.mem[j];
       auto y0 = y1.sum;
@@ -3701,7 +3721,7 @@ RenderGrid(
 
   // draw per-cell stuff
   {
-    kahan32_t y1 = { grid_offset.y };
+    kahansum32_t y1 = { grid_offset.y };
     Fori( u32, j, 0, ncells_y ) {
       auto cell_dim_y = dim_ys.mem[j];
       auto y0 = y1.sum;
@@ -3711,7 +3731,7 @@ RenderGrid(
         y1.sum = ( bounds.p1.y - bounds.p0.y );
       }
 
-      kahan32_t x1 = { grid_offset.x };
+      kahansum32_t x1 = { grid_offset.x };
       Fori( u32, i, 0, ncells_x ) {
         auto cell_dim_x = dim_xs.mem[i];
         auto x0 = x1.sum;
@@ -3818,7 +3838,7 @@ RenderGrid(
           if( cell  &&  cell->input.len ) {
             switch( cell->value.type ) {
               case cellvaluetype_t::_f64: {
-                embeddedarray_t<u8, 64> tmp;
+                stack_nonresizeable_stack_t<u8, 64> tmp;
                 CsFrom_f64( tmp.mem, Capacity( tmp ), &tmp.len, cell->value._f64, 2 );
                 auto w = LayoutString( font, spaces_per_tab, ML( tmp ) );
                 DrawString(
@@ -4081,8 +4101,8 @@ app_t
 {
   glwclient_t client;
   bool fullscreen;
-  array_t<f32> stream;
-  array_t<font_t> fonts;
+  stack_resizeable_cont_t<f32> stream;
+  stack_resizeable_cont_t<font_t> fonts;
   grid_t grid;
 };
 
@@ -4201,7 +4221,7 @@ __OnRender( AppOnRender )
 
   if( 0 )
   { // display timestep_realtime, as a way of tracking how long rendering takes.
-    embeddedarray_t<u8, 64> tmp;
+    stack_nonresizeable_stack_t<u8, 64> tmp;
     CsFrom_f64( tmp.mem, Capacity( tmp ), &tmp.len, 1000 * timestep_realtime );
     auto w = LayoutString( font, spaces_per_tab, ML( tmp ) );
     DrawString(
@@ -4412,7 +4432,7 @@ GridCmd_EnterCellContents( grid_t* grid )
   AssertCrash( len <= MAX_u32 );
   input.len = Cast( u32, len );
   if( input.len ) {
-    input.mem = AddPlist( grid->cellmem, u8, 1, input.len );
+    input.mem = AddPagelist( grid->cellmem, u8, 1, input.len );
     Contents( grid->txt_input.buf, input_start, ML( input ) );
     InsertOrSetCellContents( grid, &grid->cursel, input );
     RefreshCurselIdenticals( grid );
@@ -4745,7 +4765,7 @@ __OnWindowEvent( AppOnWindowEvent )
 #endif
 
 int
-Main( array_t<slice_t>& args )
+Main( stack_resizeable_cont_t<slice_t>& args )
 {
   PinThreadToOneCore();
 
@@ -4791,13 +4811,13 @@ Main( array_t<slice_t>& args )
 
 #ifdef _DEBUG // tokenize/parse testing
     compileerror_t error = {};
-    array_t<token_t> tokens;
+    stack_resizeable_cont_t<token_t> tokens;
     Alloc( tokens, 1024 );
-    plist_t scratchmem;
+    pagelist_t scratchmem;
     Init( scratchmem, 16000 );
-    array_t<u8> tmp;
+    stack_resizeable_cont_t<u8> tmp;
     Alloc( tmp, 4096 );
-    array_t<node_expr_t*> tmpargmem;
+    stack_resizeable_cont_t<node_expr_t*> tmpargmem;
     Alloc( tmpargmem, 256 );
 
     testcase_t cases[] = {
@@ -4897,12 +4917,12 @@ Main( array_t<slice_t>& args )
 Inl void
 IgnoreSurroundingSpaces( u8*& a, idx_t& a_len )
 {
-  while( a_len  &&  IsWhitespace( a[0] ) ) {
+  while( a_len  &&  AsciiIsWhitespace( a[0] ) ) {
     a += 1;
     a_len -= 1;
   }
   // TODO: prog_cmd_line actually has two 0-terms!
-  while( a_len  &&  ( !a[a_len - 1]  ||  IsWhitespace( a[a_len - 1] ) ) ) {
+  while( a_len  &&  ( !a[a_len - 1]  ||  AsciiIsWhitespace( a[a_len - 1] ) ) ) {
     a_len -= 1;
   }
 }
@@ -4913,9 +4933,9 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
   MainInit();
 
   u8* cmdline = Str( prog_cmd_line );
-  idx_t cmdline_len = CsLen( Str( prog_cmd_line ) );
+  idx_t cmdline_len = CstrLength( Str( prog_cmd_line ) );
 
-  array_t<slice_t> args;
+  stack_resizeable_cont_t<slice_t> args;
   Alloc( args, 64 );
 
   while( cmdline_len ) {
@@ -4928,11 +4948,11 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
     auto quoted = cmdline[0] == '"';
     if( quoted ) {
       arg = cmdline + 1;
-      auto end = CsScanR( arg, cmdline_len - 1, '"' );
+      auto end = StringScanR( arg, cmdline_len - 1, '"' );
       arg_len = !end  ?  0  :  end - arg;
       IgnoreSurroundingSpaces( arg, arg_len );
     } else {
-      auto end = CsScanR( arg, cmdline_len - 1, ' ' );
+      auto end = StringScanR( arg, cmdline_len - 1, ' ' );
       arg_len = !end  ?  cmdline_len  :  end - arg;
       IgnoreSurroundingSpaces( arg, arg_len );
     }
@@ -4970,9 +4990,9 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
   // i guess we need some kind of looping approach...
   // we know for sure we have to draw the cell at 1,1.
   // to find cell(1,1)'s dim_x, we have to look down the column and size each cell.
-  //   something like an array_t<f32>, storing the col_w to use if we draw down to that row idx ?
+  //   something like an stack_resizeable_cont_t<f32>, storing the col_w to use if we draw down to that row idx ?
   // to find cell(1,1)'s dim_y, we have to look down the row and size each cell.
-  //   similarly, array_t<f32> storing the row_h to use if we draw down to to that col idx ?
+  //   similarly, stack_resizeable_cont_t<f32> storing the row_h to use if we draw down to to that col idx ?
   // to figure out how many rows we'll actually draw from 1,1;
   //   we have to scan each row to find it's row_h
   //   but to do that, we need to know how many cols to scan.
@@ -5114,3 +5134,4 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
 
 #endif
 
+#endif // WIN

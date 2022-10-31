@@ -1,6 +1,5 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-
 struct
 board_t
 {

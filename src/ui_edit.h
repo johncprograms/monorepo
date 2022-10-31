@@ -74,20 +74,20 @@ struct
 asynccontext_filecontentsearch_t
 {
   // input / readonly:
-  array_t<slice_t>* filenames;
+  stack_resizeable_cont_t<slice_t>* filenames;
   idx_t filenames_start;
   idx_t filenames_count;
-  array_t<slice_t>* ignored_filetypes_list;
+  stack_resizeable_cont_t<slice_t>* ignored_filetypes_list;
   slice_t key;
   bool case_sens;
   bool word_boundary;
 
   // output / modifiable:
-  plist_t mem;
-  pagearray_t<foundinfile_t> matches;
+  pagelist_t mem;
+  stack_resizeable_pagelist_t<foundinfile_t> matches;
 
 
-  u8 cache_line_padding_to_avoid_thrashing[64]; // last thing, since this type is packed into an array_t
+  u8 cache_line_padding_to_avoid_thrashing[64]; // last thing, since this type is packed into an stack_resizeable_cont_t
 };
 
 
@@ -105,8 +105,8 @@ Enumc( findinfilesfocus_t )
 struct
 findinfiles_t
 {
-  pagearray_t<foundinfile_t> matches;
-  plist_t mem;
+  stack_resizeable_pagelist_t<foundinfile_t> matches;
+  pagelist_t mem;
   findinfilesfocus_t focus;
   txt_t dir;
   txt_t query;
@@ -121,13 +121,13 @@ findinfiles_t
   slice_t matches_dir;
 
   u8 cache_line_padding_to_avoid_thrashing[64];
-  array_t<asynccontext_filecontentsearch_t> asynccontexts;
+  stack_resizeable_cont_t<asynccontext_filecontentsearch_t> asynccontexts;
   idx_t ncontexts_active;
   idx_t max_ncontexts_active;
 
   // used by all other threads as readonly:
-  array_t<slice_t> filenames;
-  array_t<slice_t> ignored_filetypes_list;
+  stack_resizeable_cont_t<slice_t> filenames;
+  stack_resizeable_cont_t<slice_t> ignored_filetypes_list;
   string_t key;
 };
 
@@ -349,14 +349,14 @@ asynccontext_fileopenerfillpool_t
   fsobj_t cwd;
 
   // output / modifiable:
-  pagearray_t<fileopener_row_t> pool;
-  plist_t pool_mem;
+  stack_resizeable_pagelist_t<fileopener_row_t> pool;
+  pagelist_t pool_mem;
 };
 
 struct
 fileopener_t
 {
-  array_t<fileopener_oper_t> history;
+  stack_resizeable_cont_t<fileopener_oper_t> history;
   idx_t history_idx;
 
   // pool is the backing store of actual files/dirs given our cwd and query.
@@ -368,9 +368,9 @@ fileopener_t
   txt_t query;
   txt_t ignored_filetypes;
   txt_t ignored_substrings;
-  pagearray_t<fileopener_row_t> pool;
-  plist_t pool_mem; // reset everytime we fillpool.
-  pagearray_t<fileopener_row_t*> matches; // points into pool.
+  stack_resizeable_pagelist_t<fileopener_row_t> pool;
+  pagelist_t pool_mem; // reset everytime we fillpool.
+  stack_resizeable_pagelist_t<fileopener_row_t*> matches; // points into pool.
   idx_t cursor; // index into matches.
   idx_t scroll_start;
   idx_t scroll_end;
@@ -381,9 +381,9 @@ fileopener_t
   u8 cache_line_padding_to_avoid_thrashing2[64];
   idx_t ncontexts_active;
 
-  plist_t matches_mem; // reset everytime we regenerate matches.
-  array_t<slice_t> ignored_filetypes_list; // uses matches_mem as backing memory.
-  array_t<slice_t> ignored_substrings_list;
+  pagelist_t matches_mem; // reset everytime we regenerate matches.
+  stack_resizeable_cont_t<slice_t> ignored_filetypes_list; // uses matches_mem as backing memory.
+  stack_resizeable_cont_t<slice_t> ignored_substrings_list;
 
   fileopener_dblclick_t dblclick;
 
@@ -520,7 +520,7 @@ edit_t
 {
   editmode_t mode;
   listwalloc_t<edittxtopen_t> opened;
-  plist_t mem;
+  pagelist_t mem;
 
   edittxtopen_t* active[2];
   bool horzview;
@@ -530,7 +530,7 @@ edit_t
   listwalloc_t<edittxtopen_t*> openedmru;
 
   // opened
-  array_t<edittxtopen_t*> search_matches;
+  stack_resizeable_cont_t<edittxtopen_t*> search_matches;
   txt_t opened_search;
   idx_t opened_cursor;
   idx_t opened_scroll_start;
@@ -623,7 +623,7 @@ OnFileOpen( edit_t& edit, edittxtopen_t* open )
   Memmove( cmd.mem, ML( run_on_open ) );
   Memmove( cmd.mem + run_on_open.len, " ", 1 );
   Memmove( cmd.mem + run_on_open.len + 1, ML( open->txt.filename ) );
-  pagearray_t<u8> output;
+  stack_resizeable_pagelist_t<u8> output;
   Init( output, 1024 );
   Log( "RUN_ON_OPEN" );
   LogAddIndent( +1 );
@@ -640,7 +640,7 @@ OnFileOpen( edit_t& edit, edittxtopen_t* open )
 #if 0
   {
     // TODO: LogInline each of the elems of output pagearray.
-    auto output_str = StringFromPlist( output );
+    auto output_str = StringFromPagelist( output );
     auto cstr = AllocCstr( output_str );
     Log( "output: %s", cstr );
     MemHeapFree( cstr );
@@ -748,22 +748,22 @@ FileopenerSizestrFromSize( u8* dst, idx_t dst_len, idx_t* dst_size, u64 size )
   if( size > gb ) {
     size = Cast( u64, 0.5 + size / Cast( f64, gb ) );
     CsFrom_u64( dst, dst_len, size );
-    CsAddBack( dst, Str( "g" ), 1 );
-    *dst_size = CsLen( dst );
+    CstrAddBack( dst, Str( "g" ), 1 );
+    *dst_size = CstrLength( dst );
   } elif( size > mb ) {
     size = Cast( u64, 0.5 + size / Cast( f64, mb ) );
     CsFrom_u64( dst, dst_len, size );
-    CsAddBack( dst, Str( "m" ), 1 );
-    *dst_size = CsLen( dst );
+    CstrAddBack( dst, Str( "m" ), 1 );
+    *dst_size = CstrLength( dst );
   } elif( size > kb ) {
     size = Cast( u64, 0.5 + size / Cast( f64, kb ) );
     CsFrom_u64( dst, dst_len, size );
-    CsAddBack( dst, Str( "k" ), 1 );
-    *dst_size = CsLen( dst );
+    CstrAddBack( dst, Str( "k" ), 1 );
+    *dst_size = CstrLength( dst );
   } else {
     CsFrom_u64( dst, dst_len, size );
-    CsAddBack( dst, Str( "b" ), 1 );
-    *dst_size = CsLen( dst );
+    CstrAddBack( dst, Str( "b" ), 1 );
+    *dst_size = CstrLength( dst );
   }
 #else
   CsFrom_u64( dst, dst_len, dst_size, size, 1 );
@@ -805,8 +805,8 @@ FileopenerMakeCursorVisible( fileopener_t& fo )
 
 Inl void
 ParseSpaceSeparatedList(
-  plist_t& dst_mem,
-  array_t<slice_t>& dst,
+  pagelist_t& dst_mem,
+  stack_resizeable_cont_t<slice_t>& dst,
   buf_t& src
   )
 {
@@ -830,7 +830,7 @@ ParseSpaceSeparatedList(
     }
 
     auto elem = AddBack( dst );
-    elem->mem = AddPlist( dst_mem, u8, 1, elem_len );
+    elem->mem = AddPagelist( dst_mem, u8, 1, elem_len );
     elem->len = elem_len;
     Contents( src, elem_start, ML( *elem ) );
 
@@ -867,7 +867,7 @@ FileopenerUpdateMatches( fileopener_t& fo )
       auto elem = GetElemAtIterator( fo.pool, pa_iter );
       pa_iter = IteratorMoveR( fo.pool, pa_iter );
 
-      auto last_dot = CsScanL( ML( elem->name ), '.' );
+      auto last_dot = StringScanL( ML( elem->name ), '.' );
       slice_t ext = {};
       if( last_dot ) {
         auto fileext = last_dot + 1;
@@ -881,7 +881,7 @@ FileopenerUpdateMatches( fileopener_t& fo )
       if( ext.len ) {
         ForLen( j, fo.ignored_filetypes_list ) {
           auto filter = fo.ignored_filetypes_list.mem + j;
-          if( CsEquals( ML( ext ), ML( *filter ), 0 ) ) {
+          if( StringEquals( ML( ext ), ML( *filter ), 0 ) ) {
             include = 0;
             break;
           }
@@ -892,7 +892,7 @@ FileopenerUpdateMatches( fileopener_t& fo )
       ForLen( j, fo.ignored_substrings_list ) {
         auto filter = fo.ignored_substrings_list.mem + j;
         idx_t pos;
-        if( CsIdxScanR( &pos, ML( elem->name ), 0, ML( *filter ), 0, 0 ) ) {
+        if( StringIdxScanR( &pos, ML( elem->name ), 0, ML( *filter ), 0, 0 ) ) {
           include = 0;
         }
       }
@@ -900,7 +900,7 @@ FileopenerUpdateMatches( fileopener_t& fo )
       // ignore things which don't match the 'query' key.
       if( must_match_key ) {
         idx_t pos;
-        if( !CsIdxScanR( &pos, ML( elem->name ), 0, ML( key ), 0, 0 ) ) {
+        if( !StringIdxScanR( &pos, ML( elem->name ), 0, ML( key ), 0, 0 ) ) {
           include = 0;
         }
       }
@@ -931,7 +931,7 @@ __AsyncTask( AsyncTask_FileopenerFillPool )
   // TODO: add signal_quit checks into FsFindDirsAndFiles.
   // TODO: add PushMainTaskCompleted incremental results into FsFindDirsAndFiles.
   Prof( foFill_FsFindDirsAndFiles );
-  array_t<dir_or_file_t> objs; // PERF: make these pointers into pool_mem ? or just make this pagearray_t ?
+  stack_resizeable_cont_t<dir_or_file_t> objs; // PERF: make these pointers into pool_mem ? or just make this stack_resizeable_pagelist_t ?
   Alloc( objs, ac->pool.totallen + 64 );
   FsFindDirsAndFiles( objs, ac->pool_mem, ML( ac->cwd ), 1 );
   ProfClose( foFill_FsFindDirsAndFiles );
@@ -951,7 +951,7 @@ __AsyncTask( AsyncTask_FileopenerFillPool )
     if( obj->is_file ) {
       elem->size = obj->filesize;
       elem->readonly = obj->readonly;
-      elem->sizetxt.mem = AddPlist( ac->pool_mem, u8, 1, 64 );
+      elem->sizetxt.mem = AddPagelist( ac->pool_mem, u8, 1, 64 );
       FileopenerSizestrFromSize( elem->sizetxt.mem, 64, &elem->sizetxt.len, obj->filesize );
     } else {
       elem->size = 0;
@@ -1016,7 +1016,7 @@ FileopenerFillPool( fileopener_t& fo )
   {
     auto elem = AddBack<fileopener_row_t>( fo.pool );
     elem->name.len = 2;
-    elem->name.mem = AddPlist( fo.pool_mem, u8, 1, elem->name.len );
+    elem->name.mem = AddPagelist( fo.pool_mem, u8, 1, elem->name.len );
     Memmove( elem->name.mem, Str( ".." ), 2 );
     elem->is_file = 0;
     elem->size = 0;
@@ -1042,9 +1042,9 @@ FileopenerFillPool( fileopener_t& fo )
 //#if 0
 //  auto cwd = AllocContents( fo.cwd.buf );
 //
-//  plist_t mem;
+//  pagelist_t mem;
 //  Init( mem, 32768 );
-//  array_t<dir_or_file_t> objs;
+//  stack_resizeable_cont_t<dir_or_file_t> objs;
 //  Alloc( objs, fo.pool.capacity + 64 );
 //  FsFindDirsAndFiles( objs, mem, ML( cwd ), 1 );
 //  ForLen( i, objs ) {
@@ -1132,7 +1132,7 @@ FileopenerCwdUp( fileopener_t& fo )
 
   auto cwd = AllocContents( fo.cwd.buf );
   idx_t new_cwd_len;
-  bool res = MemScanIdxRev( &new_cwd_len, ML( cwd ), "/", 1 );
+  bool res = MemIdxScanL( &new_cwd_len, ML( cwd ), "/", 1 );
   if( res ) {
     fsobj_t obj;
     obj.len = 0;
@@ -1344,7 +1344,7 @@ __EditCmd( CmdFileopenerNewFile )
 {
   AssertCrash( edit.mode == editmode_t::fileopener );
   u8* default_name = Str( "new_file" );
-  idx_t default_name_len = CsLen( default_name );
+  idx_t default_name_len = CstrLength( default_name );
 
   fsobj_t name;
   name.len = 0;
@@ -1358,7 +1358,7 @@ __EditCmd( CmdFileopenerNewFile )
 
   u32 suffix_num = 0;
   idx_t last_suffix_len = 1;
-  embeddedarray_t<u8, 64> suffix;
+  stack_nonresizeable_stack_t<u8, 64> suffix;
   Forever {
     bool exists = FileExists( ML( name ) );
     if( !exists ) {
@@ -1388,7 +1388,7 @@ __EditCmd( CmdFileopenerNewDir )
 {
   AssertCrash( edit.mode == editmode_t::fileopener );
   u8* default_name = Str( "new_dir" );
-  idx_t default_name_len = CsLen( default_name );
+  idx_t default_name_len = CstrLength( default_name );
 
   fsobj_t name;
   name.len = 0;
@@ -1401,7 +1401,7 @@ __EditCmd( CmdFileopenerNewDir )
 
   u32 suffix_num = 0;
   idx_t last_suffix_len = 1;
-  embeddedarray_t<u8, 64> suffix;
+  stack_nonresizeable_stack_t<u8, 64> suffix;
   Forever {
     bool exists = DirExists( ML( name ) );
     if( !exists ) {
@@ -1713,7 +1713,7 @@ AsyncFileContentSearch( asynccontext_filecontentsearch_t* ac )
     }
 
     Prof( tmp_ApplyFilterFiletype );
-    auto last_dot = CsScanL( ML( *obj ), '.' );
+    auto last_dot = StringScanL( ML( *obj ), '.' );
     slice_t ext = {};
     if( last_dot ) {
       auto fileext = last_dot + 1;
@@ -1724,7 +1724,7 @@ AsyncFileContentSearch( asynccontext_filecontentsearch_t* ac )
     if( ext.len ) {
       ForLen( j, *ac->ignored_filetypes_list ) {
         auto filter = ac->ignored_filetypes_list->mem + j;
-        if( CsEquals( ML( ext ), ML( *filter ), 0 ) ) {
+        if( StringEquals( ML( ext ), ML( *filter ), 0 ) ) {
           include = 0;
           break;
         }
@@ -1773,7 +1773,7 @@ AsyncFileContentSearch( asynccontext_filecontentsearch_t* ac )
               CursorSkipSpacetabL( buf, CursorStopAtNewlineR( buf, pos_match, 0 ), 0 )
               );
             instance->sample.len = CountBytesBetween( buf, sample_start, sample_end );
-            instance->sample.mem = AddPlist( ac->mem, u8, 1, instance->sample.len );
+            instance->sample.mem = AddPagelist( ac->mem, u8, 1, instance->sample.len );
             AssertCrash( LEqual( sample_start, instance->l ) );
             instance->sample_match_offset = CountCharsBetween( buf, sample_start, instance->l );
             Contents( buf, sample_start, ML( instance->sample ) );
@@ -1791,7 +1791,7 @@ AsyncFileContentSearch( asynccontext_filecontentsearch_t* ac )
         idx_t pos = 0;
         while( found ) {
           idx_t res = 0;
-          found = CsIdxScanR( &res, ML( mem ), pos, ML( ac->key ), ac->case_sens, ac->word_boundary );
+          found = StringIdxScanR( &res, ML( mem ), pos, ML( ac->key ), ac->case_sens, ac->word_boundary );
           if( found ) {
             Prof( tmp_AddMatch );
             pos += res;
@@ -1815,7 +1815,7 @@ AsyncFileContentSearch( asynccontext_filecontentsearch_t* ac )
             // min in case pos_match_l spans beyond sample_end
             instance->sample_match_len = MIN( instance->match_len, sample_len - instance->sample_match_offset );
             instance->sample.len = sample_len;
-            instance->sample.mem = AddPlist( ac->mem, u8, 1, instance->sample.len );
+            instance->sample.mem = AddPagelist( ac->mem, u8, 1, instance->sample.len );
             AssertCrash( sample_start <= instance->pos_match_l );
             Memmove( instance->sample.mem, mem.mem + sample_start, instance->sample.len );
 
@@ -1900,7 +1900,7 @@ __EditCmd( CmdFindinfilesRefresh )
 
   if( TxtLen( fif.query ) ) {
     fif.matches_dir.len = TxtLen( fif.dir );
-    fif.matches_dir.mem = AddPlist( fif.mem, u8, 1, fif.matches_dir.len );
+    fif.matches_dir.mem = AddPagelist( fif.mem, u8, 1, fif.matches_dir.len );
     Contents( fif.dir.buf, GetBOF( fif.dir.buf ), ML( fif.matches_dir ) );
 
     Prof( tmp_MakeFilterFiletypes );
@@ -2100,7 +2100,7 @@ ReplaceInFile( edit_t& edit, foundinfile_t* match, slice_t query, slice_t replac
 #endif
 
     auto contents = AllocSelection( open->txt );
-    if( CsEquals( ML( contents ), ML( query ), 1 ) ) {
+    if( StringEquals( ML( contents ), ML( query ), 1 ) ) {
       CmdAddString( open->txt, Cast( idx_t, replacement.mem ), replacement.len );
       open->unsaved = 1;
     } else {
@@ -2339,7 +2339,7 @@ __EditCmd( CmdEditfileGotolineChoose )
   auto gotoline = AllocContents( edit.gotoline.buf );
   bool valid = 1;
   For( i, 0, gotoline.len ) {
-    if( !IsNumber( gotoline.mem[i] ) ) {
+    if( !AsciiIsNumber( gotoline.mem[i] ) ) {
       valid = 0;
       break;
     }
@@ -2493,7 +2493,7 @@ __EditCmd( CmdUpdateSearchMatches )
     ForList( elem, edit.openedmru ) {
       auto open = elem->value;
       idx_t pos;
-      if( CsIdxScanR( &pos, ML( open->txt.filename ), 0, ML( key ), 0, 0 ) ) {
+      if( StringIdxScanR( &pos, ML( open->txt.filename ), 0, ML( key ), 0, 0 ) ) {
         *AddBack( edit.search_matches ) = open;
       }
     }
@@ -2740,7 +2740,7 @@ void
 _RenderTxt(
   txt_t& txt,
   bool& target_valid,
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   font_t& font,
   rectf32_t bounds,
   vec2<f32> zrange,
@@ -2772,7 +2772,7 @@ _RenderTxt(
 void
 _RenderStatusBar(
   edittxtopen_t& open,
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   font_t& font,
   rectf32_t& bounds,
   vec2<f32> zrange
@@ -2845,7 +2845,7 @@ void
 _RenderBothSides(
   edit_t& edit,
   bool& target_valid,
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   font_t& font,
   rectf32_t bounds,
   vec2<f32> zrange,
@@ -2952,7 +2952,7 @@ void
 FileopenerRender(
   edit_t& edit,
   bool& target_valid,
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   font_t& font,
   rectf32_t bounds,
   vec2<f32> zrange,
@@ -3207,7 +3207,7 @@ FileopenerRender(
 
   { // elem readonlys
     static const auto readonly_label = Str( "readonly" );
-    static const idx_t readonly_label_len = CsLen( readonly_label );
+    static const idx_t readonly_label_len = CstrLength( readonly_label );
     auto readonly_w = LayoutString( font, spaces_per_tab, readonly_label, readonly_label_len );
     bool readonly_visible = 0;
 
@@ -3286,7 +3286,7 @@ void
 EditRender(
   edit_t& edit,
   bool& target_valid,
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   font_t& font,
   rectf32_t bounds,
   vec2<f32> zrange,
@@ -3327,7 +3327,7 @@ EditRender(
 
     case editmode_t::switchopened: {
       static const auto header = Str( "SWITCH TO FILE ( MRU ):" );
-      static const auto header_len = CsLen( header );
+      static const auto header_len = CstrLength( header );
       auto header_w = LayoutString( font, spaces_per_tab, header, header_len );
       DrawString(
         stream,
@@ -3353,7 +3353,7 @@ EditRender(
 
       // render search bar.
       static const auto search = Str( "Search: " );
-      static const auto search_len = CsLen( search );
+      static const auto search_len = CstrLength( search );
       auto search_w = LayoutString( font, spaces_per_tab, search, search_len );
       DrawString(
         stream,
@@ -3399,7 +3399,7 @@ EditRender(
           );
       }
       static const auto unsaved = Str( " unsaved " );
-      static const auto unsaved_len = CsLen( unsaved );
+      static const auto unsaved_len = CstrLength( unsaved );
       auto unsaved_w = LayoutString( font, spaces_per_tab, unsaved, unsaved_len );
       For( i, 0, edit.nlines_screen ) {
         idx_t rowidx = ( i + edit.opened_scroll_start );
@@ -3462,7 +3462,7 @@ EditRender(
         auto bind0 = GetPropFromDb( glwkeybind_t, keybind_editfile_findrepl_toggle_case_sensitive );
         auto key0 = KeyStringFromGlw( bind0.key );
         AssertCrash( !key0.mem[key0.len] ); // cstr generated by compiler.
-        auto label = AllocString( "Case sensitive: %u -- Press [ %s ] to toggle.", edit.findrepl.case_sens, key0.mem );
+        auto label = AllocFormattedString( "Case sensitive: %u -- Press [ %s ] to toggle.", edit.findrepl.case_sens, key0.mem );
         auto label_w = LayoutString( font, spaces_per_tab, ML( label ) );
         DrawString(
           stream,
@@ -3483,7 +3483,7 @@ EditRender(
         auto bind0 = GetPropFromDb( glwkeybind_t, keybind_editfile_findrepl_toggle_word_boundary );
         auto key0 = KeyStringFromGlw( bind0.key );
         AssertCrash( !key0.mem[key0.len] ); // cstr generated by compiler.
-        auto label = AllocString( "Whole word: %u -- Press [ %s ] to toggle.", edit.findrepl.word_boundary, key0.mem );
+        auto label = AllocFormattedString( "Whole word: %u -- Press [ %s ] to toggle.", edit.findrepl.word_boundary, key0.mem );
         auto label_w = LayoutString( font, spaces_per_tab, ML( label ) );
         DrawString(
           stream,
@@ -3502,7 +3502,7 @@ EditRender(
 
       { // find
         static const auto find_label = Str( "Find: " );
-        static const idx_t find_label_len = CsLen( find_label );
+        static const idx_t find_label_len = CstrLength( find_label );
         auto findlabel_w = LayoutString( font, spaces_per_tab, find_label, find_label_len );
         DrawString(
           stream,
@@ -3539,7 +3539,7 @@ EditRender(
 
       { // replace
         static const auto replace_label = Str( "Repl: " );
-        static const idx_t replace_label_len = CsLen( replace_label );
+        static const idx_t replace_label_len = CstrLength( replace_label );
         auto replacelabel_w = LayoutString( font, spaces_per_tab, replace_label, replace_label_len );
         DrawString(
           stream,
@@ -3590,7 +3590,7 @@ EditRender(
     case editmode_t::editfile_gotoline: {
 
       static const auto gotoline_label = Str( "Go to line: " );
-      static const idx_t gotoline_label_len = CsLen( gotoline_label );
+      static const idx_t gotoline_label_len = CstrLength( gotoline_label );
       auto gotolinelabel_w = LayoutString( font, spaces_per_tab, gotoline_label, gotoline_label_len );
       DrawString(
         stream,
@@ -3653,8 +3653,8 @@ EditRender(
       auto key1 = KeyStringFromGlw( bind1.key );
       AssertCrash( !key0.mem[key0.len] ); // cstr generated by compiler.
       AssertCrash( !key1.mem[key1.len] ); // cstr generated by compiler.
-      auto label1 = AllocString( "Press [ %s ] to keep your changes.", key0.mem );
-      auto label2 = AllocString( "Press [ %s ] to discard your changes.", key1.mem );
+      auto label1 = AllocFormattedString( "Press [ %s ] to keep your changes.", key0.mem );
+      auto label2 = AllocFormattedString( "Press [ %s ] to discard your changes.", key1.mem );
       auto label0_w = LayoutString( font, spaces_per_tab, ML( label0 ) );
       DrawString(
         stream,
@@ -3720,7 +3720,7 @@ EditRender(
         auto bind0 = GetPropFromDb( glwkeybind_t, keybind_findinfiles_toggle_case_sensitive );
         auto key0 = KeyStringFromGlw( bind0.key );
         AssertCrash( !key0.mem[key0.len] ); // cstr generated by compiler.
-        auto label = AllocString( "Case sensitive: %u -- Press [ %s ] to toggle.", fif.case_sens, key0.mem );
+        auto label = AllocFormattedString( "Case sensitive: %u -- Press [ %s ] to toggle.", fif.case_sens, key0.mem );
         auto label_w = LayoutString( font, spaces_per_tab, ML( label ) );
         DrawString(
           stream,
@@ -3741,7 +3741,7 @@ EditRender(
         auto bind0 = GetPropFromDb( glwkeybind_t, keybind_findinfiles_toggle_word_boundary );
         auto key0 = KeyStringFromGlw( bind0.key );
         AssertCrash( !key0.mem[key0.len] ); // cstr generated by compiler.
-        auto label = AllocString( "Whole word: %u -- Press [ %s ] to toggle.", fif.word_boundary, key0.mem );
+        auto label = AllocFormattedString( "Whole word: %u -- Press [ %s ] to toggle.", fif.word_boundary, key0.mem );
         auto label_w = LayoutString( font, spaces_per_tab, ML( label ) );
         DrawString(
           stream,

@@ -50,7 +50,7 @@ LogInline( void* cstr ... )
 struct
 log_t
 {
-  embeddedarray_t<u8, 65536> buffer;
+  stack_nonresizeable_stack_t<u8, 65536> buffer;
   file_t file;
   s32 indent;
   bool initialized;
@@ -91,22 +91,14 @@ LoggerInit()
   AssertCrash( CAS( &g_log_inuse, 0, 1 ) ); // Some other thread is using the logger before it's initialized!
   auto log = &g_log;
 
-  fsobj_t filename;
-#if 0
-  FsGetCwd( filename );
-#endif
-
-  // TODO: OS abstraction.
-  filename.len = GetModuleFileName( 0, Cast( LPSTR, filename.mem ), Cast( DWORD, Capacity( filename ) ) );
-  filename = _StandardFilename( ML( filename ) );
-
+  fsobj_t filename = FsGetExe();
   if( filename.len ) {
-    auto last_slash = CsScanL( ML( filename ), '/' );
+    auto last_slash = StringScanL( ML( filename ), '/' );
     AssertCrash( last_slash );
     filename.len = ( last_slash - filename.mem );
     filename.len += 1; // include slash.
 
-    embeddedarray_t<u8, 64> tmp;
+    stack_nonresizeable_stack_t<u8, 64> tmp;
     TimeDate( tmp.mem, Capacity( tmp ), &tmp.len );
     AssertWarn( tmp.len );
 

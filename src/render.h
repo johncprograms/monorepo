@@ -283,7 +283,7 @@ SampleBilinear4_u8x4(
 struct
 raster_tiles_t
 {
-  array_t<array_t<idx_t>> tilelist;
+  stack_resizeable_cont_t<stack_resizeable_cont_t<idx_t>> tilelist;
   u32 tile_x;
   u32 tile_y;
   vec2<s32> tile_size; // { tile_x, tile_y }
@@ -342,7 +342,7 @@ ClearTiles( raster_tiles_t& tiles )
   }
 }
 
-Inl array_t<idx_t>&
+Inl stack_resizeable_cont_t<idx_t>&
 Lookup( raster_tiles_t& tiles, s32 tile_pos_x, s32 tile_pos_y )
 {
   s32 tile_idx = tile_pos_x + tile_pos_y * tiles.num_tiles.x;
@@ -368,8 +368,8 @@ void
 BinTriangles(
   raster_tiles_t& raster_tiles,
   img_t& target_img,
-  array_t<vec4<f32>> pos_scratch,
-  array_t<u32> idxs_scratch
+  stack_resizeable_cont_t<vec4<f32>> pos_scratch,
+  stack_resizeable_cont_t<u32> idxs_scratch
   )
 {
   // TODO: do we need to do this axis scaling?
@@ -559,9 +559,9 @@ IntersectLineWithClipPlane(
 Inl void
 ClipMeshAgainstClipPlane(
   idx_t plane_idx,
-  array_t<vec4<f32>>& poss,
-  array_t<vec2<f32>>& tcs,
-  array_t<u32>& idxs
+  stack_resizeable_cont_t<vec4<f32>>& poss,
+  stack_resizeable_cont_t<vec2<f32>>& tcs,
+  stack_resizeable_cont_t<u32>& idxs
   )
 {
   idx_t i = 0;
@@ -774,9 +774,9 @@ RasterReference(
   img_t& target_img,
   img_t& target_dep,
   img_t& texture,
-  array_t<vec4<f32>> pos_scratch,
-  array_t<vec2<f32>> tc_scratch,
-  array_t<u32> idxs_scratch
+  stack_resizeable_cont_t<vec4<f32>> pos_scratch,
+  stack_resizeable_cont_t<vec2<f32>> tc_scratch,
+  stack_resizeable_cont_t<u32> idxs_scratch
   )
 {
   ProfFunc();
@@ -903,9 +903,9 @@ RasterOptimized(
   img_t& target_img,
   img_t& target_dep,
   img_t& texture,
-  array_t<vec4<f32>> pos_scratch,
-  array_t<vec2<f32>> tc_scratch,
-  array_t<u32> idxs_scratch
+  stack_resizeable_cont_t<vec4<f32>> pos_scratch,
+  stack_resizeable_cont_t<vec2<f32>> tc_scratch,
+  stack_resizeable_cont_t<u32> idxs_scratch
   )
 {
   ProfFunc();
@@ -1055,9 +1055,9 @@ RasterOptimizedSimd(
   img_t& target_img,
   img_t& target_dep,
   img_t& texture,
-  array_t<vec4<f32>> pos_scratch,
-  array_t<vec2<f32>> tc_scratch,
-  array_t<u32> idxs_scratch
+  stack_resizeable_cont_t<vec4<f32>> pos_scratch,
+  stack_resizeable_cont_t<vec2<f32>> tc_scratch,
+  stack_resizeable_cont_t<u32> idxs_scratch
   )
 {
   ProfFunc();
@@ -1277,9 +1277,9 @@ RenderMesh(
 
   AssertCrash( mesh.idxs_len % 3 == 0 );
 
-  array_t<vec4<f32>> pos_scratch;
-  array_t<vec2<f32>> tc_scratch;
-  array_t<u32> idxs_scratch;
+  stack_resizeable_cont_t<vec4<f32>> pos_scratch;
+  stack_resizeable_cont_t<vec2<f32>> tc_scratch;
+  stack_resizeable_cont_t<u32> idxs_scratch;
 
   Prof( rendermesh_allocscratch );
   Alloc( pos_scratch, 2 * mesh.vert_len );
@@ -1579,14 +1579,14 @@ rtmesh_t
 {
   vec3<f32> reflectance;
   img_t* reflectance_tex;
-  array_t<rttri_tex_t> tris_tex;
-  array_t<rttri_t> tris;
-  array_t<rtparallelo_tex_t> parallelos_tex;
-  array_t<rtparallelo_t> parallelos;
-  array_t<rtsphere_t> spheres;
-  array_t<rtdisc_t> discs;
-  array_t<rtcylinder_t> cylinders;
-  array_t<rtcone_t> cones;
+  stack_resizeable_cont_t<rttri_tex_t> tris_tex;
+  stack_resizeable_cont_t<rttri_t> tris;
+  stack_resizeable_cont_t<rtparallelo_tex_t> parallelos_tex;
+  stack_resizeable_cont_t<rtparallelo_t> parallelos;
+  stack_resizeable_cont_t<rtsphere_t> spheres;
+  stack_resizeable_cont_t<rtdisc_t> discs;
+  stack_resizeable_cont_t<rtcylinder_t> cylinders;
+  stack_resizeable_cont_t<rtcone_t> cones;
   mat3x3r<f32> rotation_world_from_model;
   mat3x3r<f32> rotation_model_from_world;
   f32 scale_world_from_model;
@@ -1653,7 +1653,7 @@ WorldFromModelDist( rtmesh_t& mesh, f32 dist_model )
 Inl f32
 WorldFromModelArea( rtmesh_t& mesh, f32 area_model )
 {
-  auto area_world = area_model * Sq( mesh.scale_world_from_model );
+  auto area_world = area_model * Square( mesh.scale_world_from_model );
   return area_world;
 }
 
@@ -1995,13 +1995,13 @@ TraceSphere(
   // Setup equation:
   //   t^2 - tau*t + del = 0
   // which has solns:
-  //   t = 0.5f * ( tau +- Sqrt( Sq( tau ) - 4 * del )
+  //   t = 0.5f * ( tau +- Sqrt( Square( tau ) - 4 * del )
 
   auto rel = sphere.p - ray_p_model;
   auto tau = 2 * Dot( ray_d_model, rel );
   auto del = Squared( rel ) - sphere.sq_radius;
 
-  auto disc = Sq( tau ) - 4 * del;
+  auto disc = Square( tau ) - 4 * del;
   if( disc < 0 ) {
 
   } elif( disc < sphere_epsilon ) {
@@ -2076,12 +2076,12 @@ TraceCylinder(
   // Setup equation:
   //   a*t^2 - b*t + c = 0
   auto dn = Dot( ray_d_model, cylinder.n );
-  auto a = 1 - Sq( dn );
+  auto a = 1 - Square( dn );
   auto s = cylinder.p - ray_p_model;
   auto sn = Dot( s, cylinder.n );
   auto sd = Dot( s, ray_d_model );
   auto b = 2 * ( sd - dn * sn );
-  auto c = Squared( s ) - cylinder.sq_radius - Sq( sn );
+  auto c = Squared( s ) - cylinder.sq_radius - Square( sn );
 
   if( a < sphere_epsilon ) {
     //if( c < sphere_epsilon ) {
@@ -2097,13 +2097,13 @@ TraceCylinder(
   } else {
     // Setup equation:
     //   t^2 - tau*t + del = 0
-    //   t = 0.5f * ( tau +- Sqrt( Sq( tau ) - 4 * del )
+    //   t = 0.5f * ( tau +- Sqrt( Square( tau ) - 4 * del )
 
     auto rec_a = 1 / a;
     auto tau = b * rec_a;
     auto del = c * rec_a;
 
-    auto disc = Sq( tau ) - 4 * del;
+    auto disc = Square( tau ) - 4 * del;
     if( disc < 0 ) {
 
     } elif( disc < sphere_epsilon ) {
@@ -2155,11 +2155,11 @@ TraceCone(
   auto s = cone.p - ray_p_model;
   auto rfactor = 1 + cone.r2;
   auto dn = Dot( ray_d_model, cone.n );
-  auto a = 1 - rfactor * Sq( dn );
+  auto a = 1 - rfactor * Square( dn );
   auto sn = Dot( s, cone.n );
   auto sd = Dot( s, ray_d_model );
   auto b = 2 * ( sd - rfactor * dn * sn );
-  auto c = Squared( s ) - rfactor * Sq( sn );
+  auto c = Squared( s ) - rfactor * Square( sn );
 
   if( ABS( a ) < sphere_epsilon ) {
 
@@ -2167,7 +2167,7 @@ TraceCone(
     auto rec_a = 1 / a;
     auto tau = b * rec_a;
     auto del = c * rec_a;
-    auto disc = Sq( tau ) - 4 * del;
+    auto disc = Square( tau ) - 4 * del;
     if( disc < 0 ) {
 
     } else {
@@ -2656,7 +2656,7 @@ DirectRadianceFromSphere_1_0(
 
   auto sphere_p_world = WorldFromModelP( light, sphere.p );
   auto sphere_r_world = WorldFromModelDist( light, sphere.radius );
-  auto sphere_r2_world = Sq( sphere_r_world );
+  auto sphere_r2_world = Square( sphere_r_world );
 
   auto d = sphere_p_world - hit.x_world;
   auto d2 = Squared( d );
@@ -3252,9 +3252,9 @@ ReflectedRadiance_1_1(
   auto weight_brdf = 1 / ( wi_light_pdf_in_solidangle + wi_brdf_pdf_in_solidangle );
 #if 1
   auto radiance_direct =
-    ( radiance_direct_light * Sq( weight_light ) +
-      radiance_direct_brdf * Sq( weight_brdf ) ) /
-        ( Sq( weight_light ) + Sq( weight_brdf ) );
+    ( radiance_direct_light * Square( weight_light ) +
+      radiance_direct_brdf * Square( weight_brdf ) ) /
+        ( Square( weight_light ) + Square( weight_brdf ) );
 #else
   auto radiance_direct =
     radiance_direct_light * weight_light +
@@ -3550,7 +3550,7 @@ path_t
   vec3<f32> eye_n;
   vec3<f32> eye_ray_p;
   vec3<f32> eye_ray_d;
-  array_t<bounce_t> bounces;
+  stack_resizeable_cont_t<bounce_t> bounces;
   vec2<f32> light_uv;
   vec3<f32> light_pos;
   vec3<f32> light_n;
@@ -3936,7 +3936,7 @@ InitScene()
     rtsphere_t sphere;
     sphere.p = _vec3( 0.0f );
     sphere.radius = 1000;
-    sphere.sq_radius = Sq( sphere.radius );
+    sphere.sq_radius = Square( sphere.radius );
     *AddBack( rtmesh_s.spheres ) = sphere;
   }
   rtmesh_s.discs = {};
@@ -3968,7 +3968,7 @@ InitScene()
     parallelo.n = Cross( parallelo.e0, parallelo.e1 );
     parallelo.surface_area_model = Length( parallelo.n );
     parallelo.n /= parallelo.surface_area_model;
-    CsAddBack( rtmesh_light.parallelos, &parallelo );
+    CstrAddBack( rtmesh_light.parallelos, &parallelo );
   }
   rtmesh_light.discs = {};
   rtmesh_light.spheres = {};
@@ -3980,7 +3980,7 @@ InitScene()
     disc.p = _vec3<f32>( 0 );
     disc.n = Normalize( _vec3<f32>( -4, -5, -10 ) );
     disc.radius = 0.5f;
-    disc.sq_radius = Sq( disc.radius );
+    disc.sq_radius = Square( disc.radius );
     *AddBack( rtmesh_light.discs ) = disc;
   }
   rtmesh_light.spheres = {};
@@ -3992,7 +3992,7 @@ InitScene()
     rtsphere_t sphere;
     sphere.p = _vec3( 0.0f );
     sphere.radius = 0.5f;
-    sphere.sq_radius = Sq( sphere.radius );
+    sphere.sq_radius = Square( sphere.radius );
     *AddBack( rtmesh_light.spheres ) = sphere;
   }
 #endif
@@ -4023,7 +4023,7 @@ InitScene()
     parallelo.n = Cross( parallelo.e0, parallelo.e1 );
     parallelo.surface_area_model = Length( parallelo.n );
     parallelo.n /= parallelo.surface_area_model;
-    CsAddBack( rtmesh_light2.parallelos, &parallelo );
+    CstrAddBack( rtmesh_light2.parallelos, &parallelo );
   }
   rtmesh_light2.discs = {};
   rtmesh_light2.spheres = {};
@@ -4035,7 +4035,7 @@ InitScene()
     disc.p = _vec3<f32>( 0 );
     disc.n = Normalize( _vec3<f32>( -4, -5, -10 ) );
     disc.radius = 0.5f;
-    disc.sq_radius = Sq( disc.radius );
+    disc.sq_radius = Square( disc.radius );
     *AddBack( rtmesh_light2.discs ) = disc;
   }
   rtmesh_light2.spheres = {};
@@ -4047,7 +4047,7 @@ InitScene()
     rtsphere_t sphere;
     sphere.p = _vec3( 0.0f );
     sphere.radius = 0.5f;
-    sphere.sq_radius = Sq( sphere.radius );
+    sphere.sq_radius = Square( sphere.radius );
     *AddBack( rtmesh_light2.spheres ) = sphere;
   }
 #endif
@@ -4078,7 +4078,7 @@ InitScene()
     cylinder.n = _vec3<f32>( 0, -1, 0 );
     cylinder.height = 1 / 3.0f;
     cylinder.radius = 1;
-    cylinder.sq_radius = Sq( cylinder.radius );
+    cylinder.sq_radius = Square( cylinder.radius );
     *AddBack( rtmesh_c.cylinders ) = cylinder;
   }
   rtmesh_c.cones = {};
@@ -4107,7 +4107,7 @@ InitScene()
     cone.p = _vec3( 0.0f );
     cone.n = _vec3<f32>( 1, 0, 0 );
     cone.r = 0.5f;
-    cone.r2 = Sq( cone.r );
+    cone.r2 = Square( cone.r );
     cone.extent_pos = 1;
     cone.extent_neg = -1;
     *AddBack( rtmesh_cone.cones ) = cone;
@@ -4117,7 +4117,7 @@ InitScene()
   rtmesh_cone.scale_world_from_model = 15.0f;
   rtmesh_cone.scale_model_from_world = 1 / rtmesh_cone.scale_world_from_model;
   rtmesh_cone.translation_world = _vec3<f32>( 0, 0, 0 );
-  rtmesh_cone.surface_area_model = f32_2PI * rtmesh_cone.cones.mem[0].r2 * ( Sq( rtmesh_cone.cones.mem[0].extent_neg ) + Sq( rtmesh_cone.cones.mem[0].extent_neg ) );
+  rtmesh_cone.surface_area_model = f32_2PI * rtmesh_cone.cones.mem[0].r2 * ( Square( rtmesh_cone.cones.mem[0].extent_neg ) + Square( rtmesh_cone.cones.mem[0].extent_neg ) );
   rtmesh_cone.radiance_emit = _vec3( 0.0f );
 
 }

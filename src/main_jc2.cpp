@@ -2,22 +2,42 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
 #define FINDLEAKS   0
-#include "common.h"
-#include "math_vec.h"
+#include "core_cruntime.h"
+#include "core_types.h"
+#include "core_language_macros.h"
+#include "os_mac.h"
+#include "os_windows.h"
+#include "memory_operations.h"
+#include "asserts.h"
+#include "math_integer.h"
+#include "math_float.h"
+#include "math_lerp.h"
+#include "math_floatvec.h"
 #include "math_matrix.h"
+#include "math_kahansummation.h"
+#include "allocator_heap.h"
+#include "allocator_virtual.h"
+#include "allocator_heap_or_virtual.h"
+#include "cstr.h"
 #include "ds_slice.h"
 #include "ds_string.h"
-#include "ds_plist.h"
-#include "ds_array.h"
-#include "ds_embeddedarray.h"
-#include "ds_fixedarray.h"
-#include "ds_pagearray.h"
+#include "allocator_pagelist.h"
+#include "ds_stack_resizeable_cont.h"
+#include "ds_stack_nonresizeable_stack.h"
+#include "ds_stack_nonresizeable.h"
+#include "ds_stack_resizeable_pagelist.h"
 #include "ds_list.h"
-#include "ds_bytearray.h"
-#include "ds_hashset.h"
-#include "cstr.h"
+#include "ds_stack_cstyle.h"
+#include "cstr_integer.h"
+#include "cstr_float.h"
+#include "ds_stack_resizeable_cont_addbacks.h"
+#include "ds_hashset_cstyle.h"
 #include "filesys.h"
 #include "timedate.h"
+#include "ds_mtqueue_mrmw_nonresizeable.h"
+#include "ds_mtqueue_mrsw_nonresizeable.h"
+#include "ds_mtqueue_srmw_nonresizeable.h"
+#include "ds_mtqueue_srsw_nonresizeable.h"
 #include "threading.h"
 #define LOGGER_ENABLED   0
 #include "logger.h"
@@ -25,7 +45,8 @@
 #define PROF_ENABLED_AT_LAUNCH   0
 #include "profile.h"
 #include "rand.h"
-#include "main.h"
+#include "allocator_heap_findleaks.h"
+#include "mainthread.h"
 
 
 Templ struct
@@ -192,7 +213,7 @@ Inl slice_t
 StringSliceOfTokenType( tokentype_t type )
 {
   switch( type ) {
-    #define CASE( name )   case tokentype_t::name: return { Str( # name ), CsLen( Str( # name ) ) };
+    #define CASE( name )   case tokentype_t::name: return { Str( # name ), CstrLength( Str( # name ) ) };
     TOKENTYPES( CASE )
     #undef CASE
     default: UnreachableCrash();
@@ -213,7 +234,7 @@ token_t
 
 Inl void
 AddBackString(
-  array_t<u8>* array,
+  stack_resizeable_cont_t<u8>* array,
   slice_t text
   )
 {
@@ -221,8 +242,8 @@ AddBackString(
 }
 Inl void
 AddBackString(
-  array_t<u8>* array,
-  void* cstr
+  stack_resizeable_cont_t<u8>* array,
+  const void* cstr
   )
 {
   auto slice = SliceFromCStr( cstr );
@@ -231,8 +252,8 @@ AddBackString(
 
 Inl void
 PrintTokens(
-  array_t<u8>* out,
-  array_t<token_t>* tokens
+  stack_resizeable_cont_t<u8>* out,
+  stack_resizeable_cont_t<token_t>* tokens
   )
 {
   ForLen( i, *tokens ) {
@@ -285,11 +306,11 @@ compilecontext_t
 {
   slice_t filename;
   slice_t file;
-  array_t<u8> errors;
-  array_t<token_t> tokens;
-  plist_t mem;
+  stack_resizeable_cont_t<u8> errors;
+  stack_resizeable_cont_t<token_t> tokens;
+  pagelist_t mem;
   globaltypes_t* globaltypes; // ptr to avoid decl cycle.
-  array_t<vartable_t*> scopestack;
+  stack_resizeable_cont_t<vartable_t*> scopestack;
   function_t* current_function;
   u8 ptr_bytecount;
   u8 array_bytecount;
@@ -306,7 +327,7 @@ OutputFileAndLine(
 {
   AddBackString( &ctx->errors, ctx->filename );
   AddBackString( &ctx->errors, ":" );
-  embeddedarray_t<u8, 64> tmp;
+  stack_nonresizeable_stack_t<u8, 64> tmp;
   CsFrom_u64( tmp.mem, Capacity( tmp ), &tmp.len, lineno );
   AddBackString( &ctx->errors, SliceFromArray( tmp ) );
   AddBackString( &ctx->errors, ":" );
@@ -336,17 +357,17 @@ OutputSrcLineAndCaret(
   )
 {
   auto max_bol = ctx->file.mem + ctx->file.len;
-  while( bol < max_bol  &&  IsSpaceTab( *bol ) ) {
+  while( bol < max_bol  &&  AsciiIsSpaceTab( *bol ) ) {
     bol += 1;
   }
 
   auto eol = bol;
   auto max_eol = MIN( bol + 80, ctx->file.mem + ctx->file.len );
-  while( eol < max_eol  &&  !IsNewlineCh( *eol ) ) {
+  while( eol < max_eol  &&  !AsciiIsNewlineCh( *eol ) ) {
     eol += 1;
   }
 
-  auto linelen = CsLen( bol, eol );
+  auto linelen = CstrLength( bol, eol );
   slice_t linecontents = { bol, linelen };
   AddBackString( &ctx->errors, "    " );
   AddBackString( &ctx->errors, linecontents );
@@ -379,7 +400,7 @@ ErrorCStr(
   u8* bol,
   u8* inline_mem,
   u64 lineno,
-  void* errstr
+  const void* errstr
   )
 {
   OutputFileAndLine(
@@ -403,7 +424,7 @@ Inl void
 ErrorCStr(
   compilecontext_t* ctx,
   token_t* tkn,
-  void* errstr
+  const void* errstr
   )
 {
   ErrorCStr(
@@ -433,7 +454,7 @@ Tokenize(
     auto curr_len = ctx->file.len - pos;
 
     // skip over whitespace.
-    if( IsSpaceTab( curr[0] ) ) {
+    if( AsciiIsSpaceTab( curr[0] ) ) {
       pos += 1;
       continue;
     }
@@ -494,24 +515,24 @@ Tokenize(
     bool num_negative = 0;
     if( curr[0] == '-' ) {
       idx_t offset = 1;
-      while( pos + offset < ctx->file.len  &&  IsSpaceTab( curr[offset] ) ) {
+      while( pos + offset < ctx->file.len  &&  AsciiIsSpaceTab( curr[offset] ) ) {
         offset += 1;
       }
       if( pos + offset < ctx->file.len ) {
-        if( IsNumber( curr[offset] ) ) {
+        if( AsciiIsNumber( curr[offset] ) ) {
           found_num = 1;
           num_negative = 1;
           offset_num_start = offset;
         }
       }
     }
-    elif( IsNumber( curr[0] ) ) {
+    elif( AsciiIsNumber( curr[0] ) ) {
       found_num = 1;
       num_negative = 0;
       offset_num_start = 0;
     }
     if( found_num ) {
-      // we've determined IsNumber( curr[offset_num_start] )
+      // we've determined AsciiIsNumber( curr[offset_num_start] )
       idx_t offset = 1;
       bool seen_dot = 0;
       bool seen_e = 0;
@@ -519,7 +540,7 @@ Tokenize(
 //      bool seen_e_negativesign = 0;
       while( pos + offset < ctx->file.len ) {
         auto c = curr[offset];
-        if( IsNumber( c ) ) {
+        if( AsciiIsNumber( c ) ) {
           offset += 1;
           continue;
         }
@@ -572,11 +593,11 @@ Tokenize(
       continue;
     }
 
-    if( ( curr[0] == '_' )  ||  IsAlpha( curr[0] ) ) {
+    if( ( curr[0] == '_' )  ||  AsciiIsAlpha( curr[0] ) ) {
       idx_t offset = 1;
       while( pos + offset < ctx->file.len ) {
         auto c = curr[offset];
-        if( ( c == '_' )  ||  IsAlpha( c )  ||  IsNumber( c ) ) {
+        if( ( c == '_' )  ||  AsciiIsAlpha( c )  ||  AsciiIsNumber( c ) ) {
           offset += 1;
           continue;
         }
@@ -587,7 +608,7 @@ Tokenize(
 #define TOKENIZE_KEYWORD( _tokenname ) \
   if( MemEqual( curr, offset, ML( NAMEJOIN( c_sym_, _tokenname ) ) ) ) { \
     tkn.len = NAMEJOIN( c_sym_, _tokenname ).len; \
-    tkn.type = NAMEJOIN( tokentype_t::, _tokenname ); \
+    tkn.type = tokentype_t::_tokenname; \
     *AddBack( *tokens ) = tkn; \
     pos += NAMEJOIN( c_sym_, _tokenname ).len; \
     continue; \
@@ -624,7 +645,7 @@ Tokenize(
 #define TOKENIZE_SYMBOL( _tokenname ) \
   if( MemEqual( curr, MIN( curr_len, NAMEJOIN( c_sym_, _tokenname ).len ), ML( NAMEJOIN( c_sym_, _tokenname ) ) ) ) { \
     tkn.len = NAMEJOIN( c_sym_, _tokenname ).len; \
-    tkn.type = NAMEJOIN( tokentype_t::, _tokenname ); \
+    tkn.type = tokentype_t::_tokenname; \
     *AddBack( *tokens ) = tkn; \
     pos += NAMEJOIN( c_sym_, _tokenname ).len; \
     continue; \
@@ -699,7 +720,7 @@ Tokenize(
   // convert ( " ... " ) spans into string tokens.
   // convert ( ' ... ' ) spans into char tokens.
 
-  array_t<tokenspan_t> removespans;
+  stack_resizeable_cont_t<tokenspan_t> removespans;
   Alloc( removespans, 1024 );
 
   pos = 0;
@@ -880,7 +901,7 @@ struct statement_t;
 // TODO: more serious array syntax.
 //   syntax for making a slice from an array/slice, i.e. bar := foo[2,*,5..10];
 
-// TODO: implement arrays as struct array_t { T* mem, idx_t len };
+// TODO: implement arrays as struct stack_resizeable_cont_t { T* mem, idx_t len };
 //   the capacity is implicit; round the len to the next higher power of 2, and that's the current capacity.
 //   this makes for a size-efficient array, which i expect we'll be passing around everywhere.
 //   this also does exponential size growth, which is req'd for O(1) amortized insert.
@@ -997,7 +1018,7 @@ struct statement_t;
 //   note that we'll likely disallow arrayidx/brace syntax for raw pointers, since they're not all that necessary.
 //   i usually do an "x = array_mem + idx;" syntax in C++ anyways.
 //   i also want to experiment with array syntaxes, and including pointers only makes things more complicated.
-//   e.g. syntax for a builtin array_t, list_t, pagearray_t, plist_t, sarray_t, maybe even hashset_t, etc.
+//   e.g. syntax for a builtin stack_resizeable_cont_t, list_t, stack_resizeable_pagelist_t, pagelist_t, stack_implicitcapacity_t, maybe even hashset_t, etc.
 //   maybe that won't be all that fruitful, since i get by just fine with functions in C++.
 //   should probably do a fncall count in existing code, and just optimize syntax for that.
 //
@@ -1450,19 +1471,19 @@ struct expr_t {
 
 Inl void
 PrintExpr(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   expr_t* expr
   );
 Inl void
 PrintScope(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   scope_t* scope,
   idx_t indent
   );
 
 Inl void
 PrintIdent(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   ident_t* ident
   )
 {
@@ -1470,7 +1491,7 @@ PrintIdent(
 }
 Inl void
 PrintIndent(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   idx_t indent
   )
 {
@@ -1480,7 +1501,7 @@ PrintIndent(
 }
 Inl void
 PrintFncall(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   fncall_t* fncall
   )
 {
@@ -1496,7 +1517,7 @@ PrintFncall(
 }
 Inl void
 PrintExprAssignable(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   expr_assignable_t* expr_assignable
   )
 {
@@ -1519,7 +1540,7 @@ PrintExprAssignable(
 }
 Inl void
 PrintExpr(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   expr_t* expr
   )
 {
@@ -1580,7 +1601,7 @@ PrintExpr(
 }
 Inl void
 PrintTypedecl(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   typedecl_t* typedecl
   )
 {
@@ -1617,7 +1638,7 @@ PrintTypedecl(
 }
 Inl void
 PrintDecl(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   decl_t* decl
   )
 {
@@ -1627,7 +1648,7 @@ PrintDecl(
 }
 Inl void
 PrintDeclassign(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   declassign_t* declassign
   )
 {
@@ -1647,7 +1668,7 @@ PrintDeclassign(
 }
 Inl void
 PrintFndecl(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   fndecl_t* fndecl
   )
 {
@@ -1672,7 +1693,7 @@ PrintFndecl(
 }
 Inl void
 PrintStatement(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   statement_t* statement,
   idx_t indent
   )
@@ -1773,7 +1794,7 @@ PrintStatement(
 }
 Inl void
 PrintScope(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   scope_t* scope,
   idx_t indent
   )
@@ -1807,7 +1828,7 @@ PrintScope(
 }
 Inl void
 PrintGlobalScope(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   global_scope_t* global_scope
   )
 {
@@ -1900,8 +1921,8 @@ PrintGlobalScope(
 Templ Inl T*
 _AddNode( compilecontext_t* ctx )
 {
-  auto r = AddPlist( ctx->mem, T, _SIZEOF_IDX_T, 1 );
-  // PERF: we can zero in bulk when allocating new plist pages.
+  auto r = AddPagelist( ctx->mem, T, _SIZEOF_IDX_T, 1 );
+  // PERF: we can zero in bulk when allocating new pagelist pages.
   Typezero( r );
   return r;
 }
@@ -1913,8 +1934,8 @@ _AddNode( compilecontext_t* ctx )
 Templ Inl listelem_t<T>*
 AddListElem( compilecontext_t* ctx )
 {
-  auto listelem = AddPlist( ctx->mem, listelem_t<T>, _SIZEOF_IDX_T, 1 );
-  // PERF: we can zero in bulk when allocating new plist pages.
+  auto listelem = AddPagelist( ctx->mem, listelem_t<T>, _SIZEOF_IDX_T, 1 );
+  // PERF: we can zero in bulk when allocating new pagelist pages.
   Typezero( listelem );
   return listelem;
 }
@@ -2040,7 +2061,7 @@ PeekTokenOfType(
     AddBackString( errors, ", but hit EOF first.\n" );
   }
   auto tkn = tokens->mem + pos;
-  bool matched = ArrayContains( types, types_len, &tkn->type );
+  bool matched = TContains( types, types_len, &tkn->type );
   if( !matched ) {
     OutputFileAndLine( ctx, tkn );
     AddBackString( errors, "Expected one of: ( " );
@@ -2225,7 +2246,7 @@ ParseExprNotBinop(
       expr->num.literal = tkn;
       AssertCrash( tkn->len );
       // TODO: custom number parsing.
-      if( CsScanR( ML( *tkn ), '.' ) ) {
+      if( StringScanR( ML( *tkn ), '.' ) ) {
         expr->num.type = num_type_t::float_;
         auto value = CsTo_f64( ML( *tkn ) );
         expr->num.value_f64 = value;
@@ -2338,7 +2359,7 @@ ParseExpr(
   ParseExprNotBinop( ctx, pos, expr );  IER
   // if we do have a binop, then we have to set expr appropriately while keeping our expr_l.
   auto tkn = PeekToken( ctx, *pos );  IER
-  if( ArrayContains( AL( c_binop_tokens ), &tkn->type ) ) {
+  if( TContains( AL( c_binop_tokens ), &tkn->type ) ) {
     *pos += 1;
     auto expr_l = ADD_NODE( ctx, expr_t );
     *expr_l = *expr;
@@ -3015,37 +3036,37 @@ function_t
 
 Inl void
 PrintU64Hex(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   u64 value
   )
 {
-  embeddedarray_t<u8, 64> tmp;
+  stack_nonresizeable_stack_t<u8, 64> tmp;
   CsFromIntegerU( tmp.mem, Capacity( tmp ), &tmp.len, value, 0, 0, 0, 16 );
   AddBackString( out, SliceFromArray( tmp ) );
 }
 Inl void
 PrintU64(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   u64 value
   )
 {
-  embeddedarray_t<u8, 64> tmp;
+  stack_nonresizeable_stack_t<u8, 64> tmp;
   CsFrom_u64( tmp.mem, Capacity( tmp ), &tmp.len, value );
   AddBackString( out, SliceFromArray( tmp ) );
 }
 Inl void
 PrintS64(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   s64 value
   )
 {
-  embeddedarray_t<u8, 64> tmp;
+  stack_nonresizeable_stack_t<u8, 64> tmp;
   CsFrom_s64( tmp.mem, Capacity( tmp ), &tmp.len, value );
   AddBackString( out, SliceFromArray( tmp ) );
 }
 Inl void
 PrintType(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   type_t* type
   )
 {
@@ -3062,7 +3083,7 @@ PrintType(
               AddBackString( out, "*" );
             } break;
             case typedecl_arrayidx_type_t::expr_const: {
-              embeddedarray_t<u8, 64> tmp;
+              stack_nonresizeable_stack_t<u8, 64> tmp;
               CsFromIntegerU( tmp.mem, Capacity( tmp ), &tmp.len, arrayidx->value );
               AddBackString( out, SliceFromArray( tmp ) );
             } break;
@@ -3095,7 +3116,7 @@ PrintType(
         } break;
         default: UnreachableCrash();
       }
-      embeddedarray_t<u8, 64> tmp;
+      stack_nonresizeable_stack_t<u8, 64> tmp;
       CsFromIntegerU( tmp.mem, Capacity( tmp ), &tmp.len, bytecount * 8 );
       AddBackString( out, SliceFromArray( tmp ) );
     } break;
@@ -3116,7 +3137,7 @@ PrintType(
 }
 Inl void
 PrintVar(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   var_t* var
   )
 {
@@ -3127,7 +3148,7 @@ PrintVar(
 }
 Inl void
 PrintVartable(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   vartable_t* vartable,
   idx_t indent
   )
@@ -3150,7 +3171,7 @@ PrintVartable(
 }
 NoInl void
 PrintGlobalScopeTypes(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   compilecontext_t* ctx,
   global_scope_t* global_scope
   )
@@ -3168,7 +3189,7 @@ PrintGlobalScopeTypes(
       AddBackString( out, "value " );
       PrintIdent( out, &value->ident );
       AddBackString( out, " " );
-      embeddedarray_t<u8, 64> tmp;
+      stack_nonresizeable_stack_t<u8, 64> tmp;
       CsFromIntegerU( tmp.mem, Capacity( tmp ), &tmp.len, value->value );
       AddBackString( out, SliceFromArray( tmp ) );
       AddBackString( out, "\n" );
@@ -3348,7 +3369,7 @@ PrintGlobalScopeTypes(
         } break;
 
         #define _ARRAYELEMFROMARRAY( _name ) \
-          case NAMEJOIN( tc_type_t::, _name ): { \
+          case tc_type_t::_name: { \
             AddBackString( out, "    " ); \
             AddBackString( out, # _name ); \
             AddBackString( out, " " ); \
@@ -3372,7 +3393,7 @@ PrintGlobalScopeTypes(
         _ARRAYELEMFROMARRAY( array_pelem_from_parray )
 
         #define _STRUCTFIELDFROMSTRUCT( _name ) \
-          case NAMEJOIN( tc_type_t::, _name ): { \
+          case tc_type_t::_name: { \
             AddBackString( out, "    " ); \
             AddBackString( out, # _name ); \
             AddBackString( out, " " ); \
@@ -3827,8 +3848,8 @@ TypeFncall(
     //   if we have a generic, then make sure we generate a new function_t with the types we find here.
     //   or reuse the existing concrete function_t matching our call types.
     //
-    auto var_args = AddPlistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, fndecltype->args.len );
-    auto var_rets = AddPlistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, fndecltype->rets.len );
+    auto var_args = AddPagelistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, fndecltype->args.len );
+    auto var_rets = AddPagelistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, fndecltype->rets.len );
     idx_t idx = 0;
     FORLIST( expr_arg, elem, fncall->expr_args )
       auto arg = fndecltype->args.mem + idx;
@@ -3910,7 +3931,7 @@ _TypeArrayIdxs(
 {
   auto globaltypes = ctx->globaltypes;
   // TODO: arrayidxs in an expr_assignable should be allowed to be any int type.
-  *var_arrayidxs = AddPlistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, entry->expr_arrayidxs.len );
+  *var_arrayidxs = AddPagelistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, entry->expr_arrayidxs.len );
   idx_t idx = 0;
   FORLIST( expr_arrayidx, elem2, entry->expr_arrayidxs )
     list_t<rtype_t> rtypes_arrayidx = {};
@@ -4531,7 +4552,7 @@ TypeExpr(
       var_t* var = 0;
       bool just_ident = 0;
       TypeExprAssignable( ctx, tcode, &expr->expr_assignable, rtype, &var, 0, &just_ident );  IER
-      *vars = AddPlistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
+      *vars = AddPagelistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
       vars->mem[0] = var;
     } break;
     case expr_type_t::unop_addrof: {
@@ -4553,7 +4574,7 @@ TypeExpr(
       tc->type = tc_type_t::addrof;
       tc->addrof.var = var;
       tc->addrof.var_result = var_addrof;
-      *vars = AddPlistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
+      *vars = AddPagelistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
       vars->mem[0] = var_addrof;
     } break;
     case expr_type_t::unop: {
@@ -4586,7 +4607,7 @@ TypeExpr(
           // re-generate autocasts since the type changed.
           auto rtype = AddBackList( ctx, rtypes );
           MakeRtypeFromType( ctx, rtype, &var_deref->type );
-          *vars = AddPlistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
+          *vars = AddPagelistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
           vars->mem[0] = var_deref;
         } break;
         case unoptype_t::negate_num: {
@@ -4607,7 +4628,7 @@ TypeExpr(
           // it's unclear what else we would do here; force to signed?
           auto rtype = AddBackList( ctx, rtypes );
           *rtype = *rtype_expr;
-          *vars = AddPlistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
+          *vars = AddPagelistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
           vars->mem[0] = var_unop;
         } break;
         case unoptype_t::negate_bool: {
@@ -4629,7 +4650,7 @@ TypeExpr(
           // bool stays bool, num stays num. no typing changes from this binop.
           auto rtype = AddBackList( ctx, rtypes );
           *rtype = *rtype_expr;
-          *vars = AddPlistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
+          *vars = AddPagelistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
           vars->mem[0] = var_unop;
         } break;
         default: UnreachableCrash();
@@ -4713,7 +4734,7 @@ TypeExpr(
       tc->binop.var_l = var_l;
       tc->binop.var_r = var_r;
       tc->binop.var_result = var_binop;
-      *vars = AddPlistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
+      *vars = AddPagelistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
       vars->mem[0] = var_binop;
       // TODO: allow arrays/slices, e.g. eqeq/noteq?
       // TODO: struct compares, which do elementwise compare?
@@ -4873,7 +4894,7 @@ TypeExpr(
       tc->type = tc_type_t::loadconstant;
       tc->loadconstant.var_l = var_num;
       tc->loadconstant.mem = mem;
-      *vars = AddPlistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
+      *vars = AddPagelistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
       vars->mem[0] = var_num;
     } break;
     case expr_type_t::str: {
@@ -4887,7 +4908,7 @@ TypeExpr(
       tc->type = tc_type_t::loadconstant;
       tc->loadconstant.var_l = var_str;
       tc->loadconstant.mem = expr->str.literal->mem; // TODO: copy to a constants section?
-      *vars = AddPlistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
+      *vars = AddPagelistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
       vars->mem[0] = var_str;
     } break;
     case expr_type_t::chr: {
@@ -4900,7 +4921,7 @@ TypeExpr(
       tc->type = tc_type_t::loadconstant;
       tc->loadconstant.var_l = var_str;
       tc->loadconstant.mem = expr->str.literal->mem; // TODO: copy to a constants section?
-      *vars = AddPlistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
+      *vars = AddPagelistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, 1 );
       vars->mem[0] = var_str;
     } break;
     default: UnreachableCrash();
@@ -5827,7 +5848,9 @@ TypeScope(
   else {
     auto vartable_parent = ctx->scopestack.mem[ ctx->scopestack.len - 1 ];
     auto vartable = AddBackList( ctx, &vartable_parent->vartables );
+#ifdef _DEBUG
     vartable->scope = scope;
+#endif
     *AddBack( ctx->scopestack ) = vartable;
   }
   FORLIST( statement, elem, scope->statements )
@@ -5869,7 +5892,7 @@ AddFndecltype(
   if( !already_there ) {
     fndecltype = AddBackList( ctx, &globaltypes->fndecltypes );
     fndecltype->ident = fndecl->ident;
-    fndecltype->args = AddPlistSlice( ctx->mem, namedtype_t, _SIZEOF_IDX_T, fndecl->decl_args.len );
+    fndecltype->args = AddPagelistSlice( ctx->mem, namedtype_t, _SIZEOF_IDX_T, fndecl->decl_args.len );
     ZeroContents( fndecltype->args );
     idx_t idx = 0;
     FORLIST( decl_arg, elem, fndecl->decl_args )
@@ -5877,7 +5900,7 @@ AddFndecltype(
       arg->ident = decl_arg->ident;
       TypeFromTypedecl( ctx, &arg->type, &decl_arg->typedecl );  IER
     }
-    fndecltype->rets = AddPlistSlice( ctx->mem, type_t, _SIZEOF_IDX_T, fndecl->typedecl_rets.len );
+    fndecltype->rets = AddPagelistSlice( ctx->mem, type_t, _SIZEOF_IDX_T, fndecl->typedecl_rets.len );
     ZeroContents( fndecltype->rets );
     idx = 0;
     FORLIST( typedecl_ret, elem, fndecl->typedecl_rets )
@@ -5950,7 +5973,7 @@ TypeGlobalScope(
       enumdecltype = AddBackList( ctx, &globaltypes->enumdecltypes );
       enumdecltype->ident = enumdecl->ident;
       enumdecltype->type = globaltypes->type_u32;
-      enumdecltype->values = AddPlistSlice( ctx->mem, enumdecltype_value_t, _SIZEOF_IDX_T, enumdecl->enumdecl_entries.len );
+      enumdecltype->values = AddPagelistSlice( ctx->mem, enumdecltype_value_t, _SIZEOF_IDX_T, enumdecl->enumdecl_entries.len );
       ZeroContents( enumdecltype->values );
       idx_t idx = 0;
       u32 next_value = 0;
@@ -6017,7 +6040,7 @@ TypeGlobalScope(
         FindEntryByIdent( &globaltypes->structdecltypes, &structdecl->ident, &already_there, &structdecltype );
         AssertCrash( already_there );
         // now we fill in structdecltype->fields, now that all structdecltypes have been added, and can resolve to type_t.
-        structdecltype->fields = AddPlistSlice( ctx->mem, namedtype_t, _SIZEOF_IDX_T, structdecl->decl_fields.len );
+        structdecltype->fields = AddPagelistSlice( ctx->mem, namedtype_t, _SIZEOF_IDX_T, structdecl->decl_fields.len );
         ZeroContents( structdecltype->fields );
         idx_t idx = 0;
         FORLIST( decl_field, elem, structdecl->decl_fields )
@@ -6093,7 +6116,7 @@ TypeGlobalScope(
     function->fndecltype = fndecltype;
     // allocate stack space for args.
     // also create namedvar_args, so subsequent scope typing can use those vars.
-    function->namedvar_args = AddPlistSlice( ctx->mem, namedvar_t, _SIZEOF_IDX_T, fndecltype->args.len );
+    function->namedvar_args = AddPagelistSlice( ctx->mem, namedvar_t, _SIZEOF_IDX_T, fndecltype->args.len );
     ZeroContents( function->namedvar_args );
     function->bytecount_frame = 0;
     function->bytecount_args = 0;
@@ -6111,7 +6134,7 @@ TypeGlobalScope(
     }
     // allocate stack space for rets, which we pass by pointer.
     // also keep a list of var_t*, so we can generate writes to the pointer.
-    function->var_rets_by_ptr = AddPlistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, fndecltype->rets.len );
+    function->var_rets_by_ptr = AddPagelistSlice( ctx->mem, var_t*, _SIZEOF_IDX_T, fndecltype->rets.len );
     ZeroContents( function->var_rets_by_ptr );
     function->bytecount_rets = 0;
     FORLEN( type_ret, i, fndecltype->rets )
@@ -6127,7 +6150,9 @@ TypeGlobalScope(
       function->bytecount_rets += bytecount_ret;
       function->bytecount_frame += bytecount_ret;
     }
+#ifdef _DEBUG
     function->vartable.scope = fndefn->scope;
+#endif
     ctx->current_function = function;
     TypeScope(
       ctx,
@@ -6176,7 +6201,7 @@ TypeGlobalScope(
     // TODO: double allocation of args here?
 
     // TODO: is bvar_args necessary? i don't think so...
-//    function->bvar_args = AddPlistSlice( ctx->mem, bc_var_t, _SIZEOF_IDX_T, fndecltype->args.len );
+//    function->bvar_args = AddPagelistSlice( ctx->mem, bc_var_t, _SIZEOF_IDX_T, fndecltype->args.len );
 //    ZeroContents( function->bvar_args );
 //    FORLEN( namedtype_arg, i, fndecltype->args )
 //      auto bvar_arg = function->bvar_args.mem + i;
@@ -6458,7 +6483,7 @@ bc_t
 
 Inl void
 PrintStackvarloc(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   bc_var_t* loc
   )
 {
@@ -6470,7 +6495,7 @@ PrintStackvarloc(
 }
 NoInl void
 PrintCode(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   tslice_t<bc_t>* code,
   idx_t entry_point
   )
@@ -6625,7 +6650,7 @@ jump_patch_t
 NoInl void
 Generate(
   compilecontext_t* ctx,
-  array_t<bc_t>* code,
+  stack_resizeable_cont_t<bc_t>* code,
   idx_t* entry_point
   )
 {
@@ -6672,7 +6697,7 @@ Generate(
           // it's up to bc_fncall_t.fncall execution to actually copy them to the stack.
           // i.e. the locations are relative to the caller frame.
           auto args_len = tc->fncall.var_args.len;
-          bc->fncall.caller_loc_args = AddPlistSlice( ctx->mem, bc_var_t, _SIZEOF_IDX_T, args_len );
+          bc->fncall.caller_loc_args = AddPagelistSlice( ctx->mem, bc_var_t, _SIZEOF_IDX_T, args_len );
           FORLEN( caller_loc_arg, k, bc->fncall.caller_loc_args )
             auto tc_var_arg = tc->fncall.var_args.mem[k];
             // note: locations are relative to caller frame.
@@ -6681,7 +6706,7 @@ Generate(
           auto function_called = LookupFunction( ctx, tc->fncall.fndecltype );
           AssertCrash( function_called ); // TODO: should this be an error?
           auto rets_len = function_called->var_rets_by_ptr.len;
-          bc->fncall.caller_loc_rets = AddPlistSlice( ctx->mem, bc_var_t, _SIZEOF_IDX_T, rets_len );
+          bc->fncall.caller_loc_rets = AddPagelistSlice( ctx->mem, bc_var_t, _SIZEOF_IDX_T, rets_len );
           FORLEN( caller_loc_ret, k, bc->fncall.caller_loc_rets )
             auto tc_var_ret = function_called->var_rets_by_ptr.mem[k];
             *caller_loc_ret = tc_var_ret->stackvarloc;
@@ -7445,7 +7470,7 @@ Execute( tslice_t<bc_t> code, idx_t entry_point )
 
 Inl void
 PrintCppType(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   type_t* type
   )
 {
@@ -7464,7 +7489,7 @@ PrintCppType(
         } break;
         default: UnreachableCrash();
       }
-      embeddedarray_t<u8, 64> tmp;
+      stack_nonresizeable_stack_t<u8, 64> tmp;
       CsFromIntegerU( tmp.mem, Capacity( tmp ), &tmp.len, bytecount * 8 );
       AddBackString( out, SliceFromArray( tmp ) );
     } break;
@@ -7498,7 +7523,7 @@ PrintCppType(
               AddBackString( out, "*" );
             } break;
             case typedecl_arrayidx_type_t::expr_const: {
-              embeddedarray_t<u8, 64> tmp;
+              stack_nonresizeable_stack_t<u8, 64> tmp;
               CsFromIntegerU( tmp.mem, Capacity( tmp ), &tmp.len, arrayidx->value );
               AddBackString( out, SliceFromArray( tmp ) );
             } break;
@@ -7516,7 +7541,7 @@ PrintCppType(
 }
 Inl void
 PrintCppVarName(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   var_t* var
   )
 {
@@ -7525,7 +7550,7 @@ PrintCppVarName(
 }
 Inl void
 PrintCppVar(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   var_t* var
   )
 {
@@ -7535,7 +7560,7 @@ PrintCppVar(
 }
 Inl void
 PrintCppFndecltype(
-  array_t<u8>* out,
+  stack_resizeable_cont_t<u8>* out,
   fndecltype_t* fndecltype
   )
 {
@@ -7568,7 +7593,7 @@ PrintCppFndecltype(
 NoInl void
 GenerateCpp(
   compilecontext_t* ctx,
-  array_t<u8>* out
+  stack_resizeable_cont_t<u8>* out
   )
 {
   auto globaltypes = ctx->globaltypes;
@@ -7977,7 +8002,7 @@ GenerateCpp(
       Narrow(lhs, c);
       Narrow(rhs, c);
     }
-  we can use a single array_t<typelist_elem_t> for this, and return tslice_t<typelist_elem_t> into the array,
+  we can use a single stack_resizeable_cont_t<typelist_elem_t> for this, and return tslice_t<typelist_elem_t> into the array,
   and just push/pop the array len in each frame. that would allow for in-place intersect.
   as a simpler alternate, if we can just sequentially generate typelists in the ctx->mem, that might be better.
 
@@ -8344,7 +8369,7 @@ Main( u8* cmdline, idx_t cmdline_len )
   //  s32 c_2 = c_0 / c_1;
     s32 c_3 = c_1 / c_0;
 
-    array_t<bc_t> code;
+    stack_resizeable_cont_t<bc_t> code;
     Alloc( code, 2000 );
 
     // f0(a u32, b u32) u32 { ret a / b }
@@ -8425,7 +8450,7 @@ Main( u8* cmdline, idx_t cmdline_len )
     return 1;
   }
   AssertCrash( file.loaded );
-  string_t filemem = FileAlloc( file );
+  auto filemem = FileAlloc( file );
   ctx.file = SliceFromString( filemem );
   AssertCrash( filemem.mem );
   FileFree( file );
@@ -8451,7 +8476,7 @@ Main( u8* cmdline, idx_t cmdline_len )
       return 1; \
     } \
 
-  array_t<u8> debugout;
+  stack_resizeable_cont_t<u8> debugout;
   Alloc( debugout, 32000 );
 
   #define PRINTDEBUGOUT \
@@ -8478,7 +8503,7 @@ Main( u8* cmdline, idx_t cmdline_len )
   PRINTDEBUGOUT;
   printf( "\n================================\n\n" );
 
-  array_t<bc_t> code; // TODO: pagelist
+  stack_resizeable_cont_t<bc_t> code; // TODO: pagelist
   Alloc( code, 4000 );
 
   idx_t entry_point = 0;
@@ -8489,7 +8514,7 @@ Main( u8* cmdline, idx_t cmdline_len )
   PRINTDEBUGOUT;
   printf( "\n================================\n\n" );
 
-  array_t<u8> cpp; // TODO: pagelist
+  stack_resizeable_cont_t<u8> cpp; // TODO: pagelist
   Alloc( cpp, 4*1000*1000 );
 
   GenerateCpp( &ctx, &cpp );
@@ -8510,12 +8535,12 @@ main( int argc, char** argv )
 {
   MainInit();
 
-  array_t<u8> cmdline;
+  stack_resizeable_cont_t<u8> cmdline;
   Alloc( cmdline, 512 );
   Fori( int, i, 1, argc ) {
     slice_t arg;
     arg.mem = Cast( u8*, argv[i] );
-    arg.len = CsLen( arg.mem );
+    arg.len = CstrLength( arg.mem );
     AddBackContents( &cmdline, arg );
     AddBackCStr( &cmdline, " " );
   }

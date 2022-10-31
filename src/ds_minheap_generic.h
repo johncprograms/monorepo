@@ -22,7 +22,7 @@
 // note this is a value-based data array, meaning we're not using auxilliary indexing.
 // so, you should probably only use this for small data types, like integers.
 //
-// you should only use this for short to medium size heaps, since it's fundamentally an array_t<Data>.
+// you should only use this for short to medium size heaps, since it's fundamentally an stack_resizeable_cont_t<Data>.
 // huge heaps should use a smarter paging approach, like a B-heap, veb-tree, etc.
 //
 
@@ -84,7 +84,7 @@ InitMinHeapInPlace( Data* data, idx_t len )
 
 template< typename Data >
 Inl void
-MinHeapExtract( array_t<Data>* array, Data* dst )
+MinHeapExtract( stack_resizeable_cont_t<Data>* array, Data* dst )
 {
   auto data = array->mem;
   auto len = array->len;
@@ -100,7 +100,7 @@ MinHeapExtract( array_t<Data>* array, Data* dst )
 
 template< typename Data >
 Inl void
-MinHeapInsert( array_t<Data>* array, Data* src )
+MinHeapInsert( stack_resizeable_cont_t<Data>* array, Data* src )
 {
   auto idx_insert = array->len;
   *AddBack( *array ) = *src;
@@ -132,7 +132,7 @@ TestMinHeapGeneric()
 
   idx_t N = 128;
   For( len, 1, N ) {
-    array_t<u32> data;
+    stack_resizeable_cont_t<u32> data;
     Alloc( data, len );
     data.len = len;
 

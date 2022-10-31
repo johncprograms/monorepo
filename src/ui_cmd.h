@@ -7,12 +7,12 @@ cmd_t
   txt_t txt_display;
   txt_t txt_cmd;
   bool already_executing;
-  array_t<u8> async_execute_input; // we copy txt_cmd into here, so the background thread has a copy.
+  stack_resizeable_cont_t<u8> async_execute_input; // we copy txt_cmd into here, so the background thread has a copy.
   // note the background thread allocates message space out of this, which the main thread then reads.
-  // so we're relying on plist_t never moving any of its pages.
+  // so we're relying on pagelist_t never moving any of its pages.
   // also note the main thread is the one that resets this before it kicks off the background thread.
   // TODO: there's probably a better way to manage this memory.
-  plist_t async_mem;
+  pagelist_t async_mem;
 };
 
 
@@ -76,15 +76,15 @@ ChangeCwd( cmd_t& cmd, u8* dir, idx_t dir_len )
       dir += 1;
     }
 
-    if( dir_len >= 2  &&  CsEquals( dir, 2, Str( ".." ), 2, 1 ) ) {
-      u8* cwd_lastslash = CsScanL( ML( cwd ), '/' );
+    if( dir_len >= 2  &&  StringEquals( dir, 2, Str( ".." ), 2, 1 ) ) {
+      u8* cwd_lastslash = StringScanL( ML( cwd ), '/' );
       if( !cwd_lastslash ) {
         static const u8* msg = Str( "cannot cd up; at root." );
-        CmdAddString( cmd.txt_display, Cast( idx_t, msg ), CsLen( msg ) );
+        CmdAddString( cmd.txt_display, Cast( idx_t, msg ), CstrLength( msg ) );
         CmdAddLn( cmd.txt_display );
         break;
       } else {
-        cwd.len = CsLen( cwd.mem, cwd_lastslash );
+        cwd.len = CstrLength( cwd.mem, cwd_lastslash );
         dir += 2;
         dir_len -= 2;
       }
@@ -98,12 +98,12 @@ ChangeCwd( cmd_t& cmd, u8* dir, idx_t dir_len )
       continue;
     }
 
-    u8* subdir_end = CsScanR( dir, dir_len, '/' );
+    u8* subdir_end = StringScanR( dir, dir_len, '/' );
     if( !subdir_end ) {
       subdir_end = dir + dir_len;
     }
     u8* subdir = dir;
-    idx_t subdir_len = CsLen( subdir, subdir_end );
+    idx_t subdir_len = CstrLength( subdir, subdir_end );
 
     fsobj_t tmp = cwd;
     Memmove( AddBack( tmp ), "/", 1 );
@@ -112,7 +112,7 @@ ChangeCwd( cmd_t& cmd, u8* dir, idx_t dir_len )
     bool subdir_exists = DirExists( ML( tmp ) );
     if( !subdir_exists ) {
       static const u8* msg = Str( "cannot cd; subdir doesn't exist: " );
-      CmdAddString( cmd.txt_display, Cast( idx_t, msg ), CsLen( msg ) );
+      CmdAddString( cmd.txt_display, Cast( idx_t, msg ), CstrLength( msg ) );
       CmdAddString( cmd.txt_display, Cast( idx_t, subdir ), subdir_len );
       CmdAddLn( cmd.txt_display );
       break;
@@ -170,7 +170,7 @@ __MainTaskCompleted( MainTaskCompleted_ExecuteOutputFinished )
 
   auto str = SliceFromCStr( "Exit code: " );
   CmdAddString( cmd->txt_display, Cast( idx_t, str.mem ), str.len );
-  embeddedarray_t<u8, 64> tmp;
+  stack_nonresizeable_stack_t<u8, 64> tmp;
   CsFrom_s32( tmp.mem, Capacity( tmp ), &tmp.len, exit_code );
   CmdAddString( cmd->txt_display, Cast( idx_t, tmp.mem ), tmp.len );
   CmdAddLn( cmd->txt_display );
@@ -196,7 +196,7 @@ __ExecuteOutput( Async_OutputForCmdExecute )
     internal_error_string = SliceFromCStr( "Internal error: " );
   }
   auto len = internal_error_string.len + message->len;
-  auto slice = AddPlistSlice( cmd->async_mem, u8, 1, len );
+  auto slice = AddPagelistSlice( cmd->async_mem, u8, 1, len );
   Memmove( slice.mem, ML( internal_error_string ) );
   Memmove( slice.mem + internal_error_string.len, ML( *message ) );
 
@@ -213,7 +213,7 @@ __AsyncTask( AsyncTask_Execute )
 {
   ProfFunc();
 
-  auto async_execute_input = Cast( array_t<u8>*, misc0 );
+  auto async_execute_input = Cast( stack_resizeable_cont_t<u8>*, misc0 );
   auto cmd = Cast( cmd_t*, misc1 );
 
   s32 exit_code = Execute( SliceFromArray( *async_execute_input ), 0, Async_OutputForCmdExecute, cmd, taskthread );
@@ -251,7 +251,7 @@ __CmdCmd( CmdExecute )
   CmdCursorFileR( cmd.txt_display );
 
   // TODO: what do we do with newlines in the txt_cmd ?
-  string_t input = AllocContents( &cmd.txt_cmd.buf, eoltype_t::crlf );
+  auto input = AllocContents( &cmd.txt_cmd.buf, eoltype_t::crlf );
   if( input.len ) {
     CmdSelectAll( cmd.txt_cmd );
     CmdRemChL( cmd.txt_cmd );
@@ -259,20 +259,20 @@ __CmdCmd( CmdExecute )
     CmdAddLn( cmd.txt_display );
 
     // built-in commands:
-    if( CsEquals( input.mem, 3, Str( "cd " ), 3, 0 ) ) {
+    if( StringEquals( input.mem, 3, Str( "cd " ), 3, 0 ) ) {
       auto dir = input.mem + 3;
       auto dir_len = input.len - 3;
-      CsReplace( dir, dir_len, '\\', '/' );
+      StringReplaceAscii( dir, dir_len, '\\', '/' );
       ChangeCwd( cmd, dir, dir_len );
       PrintCwdAndBracket( &cmd );
     }
-    elif( CsEquals( input.mem, 2, Str( "ls" ), 2, 0 )  ||
-          CsEquals( input.mem, 3, Str( "dir" ), 3, 0 ) ) {
+    elif( StringEquals( input.mem, 2, Str( "ls" ), 2, 0 )  ||
+          StringEquals( input.mem, 3, Str( "dir" ), 3, 0 ) ) {
       fsobj_t cwd;
       FsGetCwd( cwd );
-      plist_t mem;
+      pagelist_t mem;
       Init( mem, 32768 );
-      array_t<slice_t> objs;
+      stack_resizeable_cont_t<slice_t> objs;
       Alloc( objs, 256 );
       FsFindDirs( objs, mem, ML( cwd ), 0 );
       ForLen( i, objs ) {
@@ -320,7 +320,7 @@ __CmdCmd( CmdExecute )
       s32 exit_code = Execute( input_slice, 0, OutputForCmdExecute, &cmd );
       auto str = SliceFromCStr( "Exit code: " );
       CmdAddString( cmd.txt_display, Cast( idx_t, str.mem ), str.len );
-      embeddedarray_t<u8, 64> tmp;
+      stack_nonresizeable_stack_t<u8, 64> tmp;
       CsFrom_s32( tmp.mem, Capacity( tmp ), &tmp.len, exit_code );
       CmdAddString( cmd.txt_display, Cast( idx_t, tmp.mem ), tmp.len );
       CmdAddLn( cmd.txt_display );
@@ -341,7 +341,7 @@ void
 CmdRender(
   cmd_t& cmd,
   bool& target_valid,
-  array_t<f32>& stream,
+  stack_resizeable_cont_t<f32>& stream,
   font_t& font,
   rectf32_t bounds,
   vec2<f32> zrange,

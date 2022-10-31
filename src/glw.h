@@ -1,5 +1,7 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
+// TODO: we basically need to rewrite this for MAC.
+
 // COMPILE-TIME OPTIONS
 
 #ifndef OPENGL_INSTEAD_OF_SOFTWARE
@@ -7,29 +9,45 @@
 #endif
 
 
-#define GET_X_LPARAM(lp)                        ((int)(short)LOWORD(lp))
-#define GET_Y_LPARAM(lp)                        ((int)(short)HIWORD(lp))
+#include "glw_font_stb_truetype.h"
+
+Enumc( glwkey_t );
+
+struct
+glwkeybind_t
+{
+  glwkey_t key;
+  glwkey_t alreadydn;
+  glwkey_t alreadydn2;
+  glwkey_t conflict;
+  glwkey_t conflict2;
+  glwkey_t conflict3;
+};
 
 
 
-#if OPENGL_INSTEAD_OF_SOFTWARE
+#ifdef WIN
 
-  #include <gl/gl.h>
-  #include "glw_glext.h"
-  #include "glw_wglext.h"
+  #define GET_X_LPARAM(lp)                        ((int)(short)LOWORD(lp))
+  #define GET_Y_LPARAM(lp)                        ((int)(short)HIWORD(lp))
 
-  #pragma comment( lib, "opengl32" )
+  #if OPENGL_INSTEAD_OF_SOFTWARE
 
-  #define glVerify() \
-    do { \
-      u32 err = glGetError(); \
-      AssertWarn( !err ); \
-    } while( 0 )
+    #include <gl/gl.h>
+    #include "glw_glext.h"
+    #include "glw_wglext.h"
+
+    #pragma comment( lib, "opengl32" )
+
+    #define glVerify() \
+      do { \
+        u32 err = glGetError(); \
+        AssertWarn( !err ); \
+      } while( 0 )
+
+  #endif
 
 #endif
-
-
-#include "glw_font_stb_truetype.h"
 
 
 
@@ -40,49 +58,51 @@
 // WINDOWING / INPUT INTERFACE:
 //
 
+//   name, val, win_MK_val,  win_VK_val
+#define MOUSEBTNMAP( _x ) \
+  _x( none, 0,           0,           0 ) \
+  _x( l   , 1, MK_LBUTTON , VK_LBUTTON  ) \
+  _x( r   , 2, MK_RBUTTON , VK_RBUTTON  ) \
+  _x( m   , 3, MK_MBUTTON , VK_MBUTTON  ) \
+  _x( b4  , 4, MK_XBUTTON1, VK_XBUTTON1 ) \
+  _x( b5  , 5, MK_XBUTTON2, VK_XBUTTON2 ) \
+  
 Enumc( glwmousebtn_t )
 {
-  none = 0,
-  l,
-  r,
-  m,
-  b4,
-  b5,
+#define ENTRY( _name, _val, _win_mk, _win_vk ) _name = _val,
+MOUSEBTNMAP( ENTRY )
+#undef ENTRY
 
   count
 };
+CompileAssert( Cast( enum_t, glwmousebtn_t::count ) == 6 );
+
 Inl slice_t
 SliceFromMouseBtn( glwmousebtn_t t )
 {
   switch( t ) {
-    case glwmousebtn_t::none: return SliceFromCStr( "none" );
-    case glwmousebtn_t::l: return SliceFromCStr( "l" );
-    case glwmousebtn_t::r: return SliceFromCStr( "r" );
-    case glwmousebtn_t::m: return SliceFromCStr( "m" );
-    case glwmousebtn_t::b4: return SliceFromCStr( "b4" );
-    case glwmousebtn_t::b5: return SliceFromCStr( "b5" );
+    #define ENTRY( _name, _val, _win_mk, _win_vk )   case glwmousebtn_t::_name: return SliceFromCStr( #_name );
+    MOUSEBTNMAP( ENTRY )
+    #undef ENTRY
     default: UnreachableCrash(); return {};
   }
 }
-u32 c_mk_flags[] = {
-  0,
-  MK_LBUTTON,
-  MK_RBUTTON,
-  MK_MBUTTON,
-  MK_XBUTTON1,
-  MK_XBUTTON2,
-  };
-CompileAssert( _countof( c_mk_flags ) == Cast( enum_t, glwmousebtn_t::count ) );
 
-int c_vks[] = {
-  0,
-  VK_LBUTTON,
-  VK_RBUTTON,
-  VK_MBUTTON,
-  VK_XBUTTON1,
-  VK_XBUTTON2,
-  };
-CompileAssert( _countof( c_vks ) == Cast( enum_t, glwmousebtn_t::count ) );
+#ifdef WIN
+  u32 c_mk_flags[] = {
+    #define ENTRY( _name, _val, _win_mk, _win_vk )   _win_mk,
+    MOUSEBTNMAP( ENTRY )
+    #undef ENTRY
+    };
+  CompileAssert( _countof( c_mk_flags ) == Cast( enum_t, glwmousebtn_t::count ) );
+
+  int c_vks[] = {
+    #define ENTRY( _name, _val, _win_mk, _win_vk )   _win_vk,
+    MOUSEBTNMAP( ENTRY )
+    #undef ENTRY
+    };
+  CompileAssert( _countof( c_vks ) == Cast( enum_t, glwmousebtn_t::count ) );
+#endif
 
 struct
 glwkeylocks_t
@@ -400,8 +420,8 @@ Enumc( glwkey_t )
 
     shader.vs = glCreateShader( GL_VERTEX_SHADER );  glVerify();
     shader.fs = glCreateShader( GL_FRAGMENT_SHADER );  glVerify();
-    s32 vs_len = Cast( s32, CsLen( Cast( u8*, vs ) ) );
-    s32 fs_len = Cast( s32, CsLen( Cast( u8*, fs ) ) );
+    s32 vs_len = Cast( s32, CstrLength( Cast( u8*, vs ) ) );
+    s32 fs_len = Cast( s32, CstrLength( Cast( u8*, fs ) ) );
     glShaderSource( shader.vs, 1, &vs, &vs_len );  glVerify();
     glShaderSource( shader.fs, 1, &fs, &fs_len );  glVerify();
     glCompileShader( shader.vs );  glVerify();
@@ -617,6 +637,24 @@ Enumc( glwcursortype_t )
   wait,
 };
 
+Inl void
+_SetCursortype( glwcursortype_t type )
+{
+#ifdef WIN
+  switch( type ) {
+    case glwcursortype_t::arrow:  SetCursor( LoadCursor( 0, IDC_ARROW ) );  break;
+    case glwcursortype_t::ibeam:  SetCursor( LoadCursor( 0, IDC_IBEAM ) );  break;
+    case glwcursortype_t::hand :  SetCursor( LoadCursor( 0, IDC_HAND  ) );  break;
+    case glwcursortype_t::wait :  SetCursor( LoadCursor( 0, IDC_WAIT  ) );  break;
+    default: UnreachableCrash();
+  }
+#elifdef MAC
+  ImplementCrash();
+#else
+#error Unsupported platform
+#endif
+}
+
 
 
 Enumc( glwcallbacktype_t )
@@ -641,8 +679,8 @@ glwclient_t
 {
   bool alive;
   glwcursortype_t cursortype;
-  array_t<u8> cstr_title;
-  array_t<glwcallback_t> callbacks;
+  stack_resizeable_cont_t<u8> cstr_title;
+  stack_resizeable_cont_t<glwcallback_t> callbacks;
 
 #if OPENGL_INSTEAD_OF_SOFTWARE
   hashset_t texid_map;
@@ -650,7 +688,7 @@ glwclient_t
   u32 vao;
   shader_tex_t shader_fullscreen;
   u32 glstream_fullscreen;
-  array_t<f32> stream_fullscreen;
+  stack_resizeable_cont_t<f32> stream_fullscreen;
 #endif // OPENGL_INSTEAD_OF_SOFTWARE
 
   //u32 keyrepeat_delay_millisec; // TODO: implement custom timer keyrepeating.
@@ -662,25 +700,37 @@ glwclient_t
   vec2<s32> m;
   u32 dpi;
 
+#ifdef WIN
   HANDLE timer_anim;
+#elifdef MAC
+#else
+#error Unexpected platform
+#endif
+
   f64 timestep_fixed; // seconds
   u64 time_render0;
   u64 time_render1;
 
-  HDC window_dc; // handle to display context.
-#if OPENGL_INSTEAD_OF_SOFTWARE
-  HGLRC hgl; // handle to opengl context.
-  glwtarget_t target;
-#else
-  HDC fullscreen_bitmap_dc;
-  HBITMAP fullscreen_bitmap;
   u32* fullscreen_bitmap_argb;
-#if RENDER_UNPACKED
-  __m128* fullscreen_bitmap_argb_unpacked;
-#endif
-#endif // OPENGL_INSTEAD_OF_SOFTWARE
+  #if RENDER_UNPACKED
+    __m128* fullscreen_bitmap_argb_unpacked;
+  #endif
+  
+#ifdef WIN
+  HDC window_dc; // handle to display context.
+  #if OPENGL_INSTEAD_OF_SOFTWARE
+    HGLRC hgl; // handle to opengl context.
+    glwtarget_t target;
+  #else
+    HDC fullscreen_bitmap_dc;
+    HBITMAP fullscreen_bitmap;
+  #endif // OPENGL_INSTEAD_OF_SOFTWARE
   HWND hwnd; // handle to window.
   HINSTANCE hi; // handle to WinAPI module the window is running under.
+#elifdef MAC
+#else
+#error Unexpected platform
+#endif
 
   bool target_valid;
 };
@@ -961,7 +1011,13 @@ GlwSetCursorType( glwclient_t& client, glwcursortype_t type )
 void
 GlwSetCursorVisible( glwclient_t& client, bool visible )
 {
+#ifdef WIN
   ShowCursor( visible );
+#elifdef MAC
+  ImplementCrash();
+#else
+#error Unsupported platform
+#endif
 }
 
 
@@ -982,20 +1038,21 @@ GlwSetCursorVisible( glwclient_t& client, bool visible )
 
 
 
+#ifdef WIN
+  struct
+  glwkeyvkcode_t
+  {
+    glwkey_t key;
+    u8 vkcode;
+  };
 
-struct
-glwkeyvkcode_t
-{
-  glwkey_t key;
-  u8 vkcode;
-};
-
-static const glwkeyvkcode_t g_glwkeyvkcodes[] =
-{
-  #define ENTRY( name, value, win_value )   { glwkey_t::##name, win_value },
-  KEYVALMAP( ENTRY )
-  #undef ENTRY
-};
+  static const glwkeyvkcode_t g_glwkeyvkcodes[] =
+  {
+    #define ENTRY( name, value, win_value )   { glwkey_t::name, win_value },
+    KEYVALMAP( ENTRY )
+    #undef ENTRY
+  };
+#endif
 
 struct
 glwkeystring_t
@@ -1006,7 +1063,7 @@ glwkeystring_t
 
 static const glwkeystring_t g_glwkeystrings[] =
 {
-  #define ENTRY( name, value, win_value )   { glwkey_t::##name, SliceFromCStr( #name ) },
+  #define ENTRY( name, value, win_value )   { glwkey_t::name, SliceFromCStr( #name ) },
   KEYVALMAP( ENTRY )
   #undef ENTRY
 };
@@ -1036,11 +1093,17 @@ _InitKeyTable()
 {
   auto keycount = Cast( enum_t, glwkey_t::count );
 
+#ifdef WIN
   Fori( enum_t, i, 0, keycount ) { // exclude 'count' as an entry
     auto keyvkcode = g_glwkeyvkcodes[i];
     g_key_os_from_glw[Cast( enum_t, keyvkcode.key )] = keyvkcode.vkcode;
     g_key_glw_from_os[keyvkcode.vkcode] = keyvkcode.key;
   }
+#elifdef MAC
+  ImplementCrash();
+#else
+#error Unsupported platform
+#endif
 
 
 #if CPPHASHSET
@@ -1082,13 +1145,14 @@ _KillKeyTable()
   Kill( &g_key_from_string );
 }
 
-
-Inl glwkey_t
-KeyGlwFromOS( WPARAM key )
-{
-  AssertCrash( key < _countof( g_key_glw_from_os ) );
-  return g_key_glw_from_os[key];
-}
+#ifdef WIN
+  Inl glwkey_t
+  KeyGlwFromOS( WPARAM key )
+  {
+    AssertCrash( key < _countof( g_key_glw_from_os ) );
+    return g_key_glw_from_os[key];
+  }
+#endif
 
 Inl u8
 KeyOSFromGlw( glwkey_t key )
@@ -1121,17 +1185,6 @@ KeyStringFromGlw( glwkey_t key )
   return g_string_from_key[Cast( enum_t, key )];
 }
 
-struct
-glwkeybind_t
-{
-  glwkey_t key;
-  glwkey_t alreadydn;
-  glwkey_t alreadydn2;
-  glwkey_t conflict;
-  glwkey_t conflict2;
-  glwkey_t conflict3;
-};
-
 
 Inl glwkeybind_t
 _glwkeybind(
@@ -1162,7 +1215,7 @@ GlwKeybind( glwkey_t key, glwkeybind_t& bind )
   }
 
   // make sure specified modifier keys are already dn.
-
+#ifdef WIN
   #define ELIMINATE_ALREADYDN( name_ ) \
     if( bind.name_ != glwkey_t::none ) { \
       u16 key_state = GetKeyState( KeyOSFromGlw( bind.name_ ) ); \
@@ -1194,6 +1247,12 @@ GlwKeybind( glwkey_t key, glwkeybind_t& bind )
 
   #undef ELIMINATE_CONFLICT
 
+#elifdef MAC
+  ImplementCrash();
+#else
+#error Unsupported platform
+#endif
+
   return 1;
 }
 
@@ -1203,7 +1262,7 @@ GlwKeybind( glwkey_t key, glwkeybind_t& bind )
 
   Inl void
   OutputQuad(
-    array_t<f32>& stream,
+    stack_resizeable_cont_t<f32>& stream,
     vec2<f32> p0,
     vec2<f32> p1,
     f32 z,
@@ -1235,19 +1294,26 @@ GlwKeybind( glwkey_t key, glwkeybind_t& bind )
   Inl void
   DeleteTarget( glwclient_t& client )
   {
-#if RENDER_UNPACKED
+  #if RENDER_UNPACKED
     MemHeapFree( client.fullscreen_bitmap_argb_unpacked );
-#endif
+  #endif
+  #ifdef WIN
     DeleteObject( client.fullscreen_bitmap );
     client.fullscreen_bitmap = 0;
     SelectObject( client.fullscreen_bitmap_dc, 0 );
     DeleteDC( client.fullscreen_bitmap_dc );
     client.fullscreen_bitmap_dc = 0;
+  #elifdef MAC
+    ImplementCrash();
+  #else
+    #error Unsupported platform
+  #endif
   }
 
   Inl void
   ResizeTargetToMatchDim( glwclient_t& client )
   {
+#ifdef WIN
     DeleteTarget( client );
 
     client.fullscreen_bitmap_dc = CreateCompatibleDC( client.window_dc );
@@ -1280,6 +1346,11 @@ GlwKeybind( glwkey_t key, glwkeybind_t& bind )
     GetObject( client.fullscreen_bitmap, sizeof( ds ), &ds );
 
     SelectObject( client.fullscreen_bitmap_dc, client.fullscreen_bitmap );
+#elifdef MAC
+    ImplementCrash();
+#else
+#error Unsupported platform
+#endif
   }
 
 #endif // !OPENGL_INSTEAD_OF_SOFTWARE
@@ -1329,109 +1400,99 @@ Viewport( glwclient_t& client )
 }
 
 
-Inl void
-_SetCursortype( glwcursortype_t type )
-{
-  switch( type ) {
-    case glwcursortype_t::arrow:  SetCursor( LoadCursor( 0, IDC_ARROW ) );  break;
-    case glwcursortype_t::ibeam:  SetCursor( LoadCursor( 0, IDC_IBEAM ) );  break;
-    case glwcursortype_t::hand :  SetCursor( LoadCursor( 0, IDC_HAND  ) );  break;
-    case glwcursortype_t::wait :  SetCursor( LoadCursor( 0, IDC_WAIT  ) );  break;
-    default: UnreachableCrash();
-  }
-}
-
-Inl vec2<u32>
-_GetMonitorSize( HWND hwnd )
-{
-  MONITORINFO monitor_info = { sizeof( MONITORINFO ) /* other fields 0 */ };
-  AssertWarn( GetMonitorInfo( MonitorFromWindow( hwnd, MONITOR_DEFAULTTONEAREST ), &monitor_info ) );
-  auto w = Cast( u32, monitor_info.rcMonitor.right  - monitor_info.rcMonitor.left );
-  auto h = Cast( u32, monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top  );
-  return _vec2( w, h );
-}
-
-Inl void
-_SetWindowSize( HWND hwnd, vec2<u32> dim )
-{
-  DWORD style = GetWindowLong( hwnd, GWL_STYLE );
-  DWORD styleex = GetWindowLong( hwnd, GWL_EXSTYLE );
-  RECT rect = { 0, 0, Cast( LONG, dim.x ), Cast( LONG, dim.y ) };
-  AdjustWindowRectEx( &rect, style, 0, styleex ); // get actual win size.
-  auto outer_w = rect.right  - rect.left;
-  auto outer_h = rect.bottom - rect.top;
-  BOOL r = SetWindowPos(
-    hwnd, // window
-    0, // zorder flag ( unused )
-    0, 0, // x, y in client space ( unused )
-    outer_w, outer_h, // w, h in client space
-    SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_SHOWWINDOW | SWP_FRAMECHANGED ); // size/positioning flags
-  AssertWarn( r );
-}
-
-static void
-_SetFullscreen( HWND hwnd, vec2<u32>& dim, vec2<f32>& dimf, bool fs )
-{
-  static bool place_prev_stored = 0;
-  static WINDOWPLACEMENT place_prev = { sizeof( WINDOWPLACEMENT ) /* other fields 0 */ };
-  static vec2<u32> windowdim = {};
-
-  DWORD style = GetWindowLong( hwnd, GWL_STYLE );
-  DWORD styleex = GetWindowLong( hwnd, GWL_EXSTYLE );
-
-  if( fs ) {
-    // ENTER FULLSCREEN MODE
-    AssertWarn( GetWindowPlacement( hwnd, &place_prev ) );
-    windowdim = dim;
-    place_prev_stored = 1;
-
-    AssertWarn( style & WS_OVERLAPPEDWINDOW );
-    style &= ~WS_OVERLAPPEDWINDOW;
-    style |= WS_POPUP;
-    AssertWarn( SetWindowLong( hwnd, GWL_STYLE, style ) );
-
+#ifdef WIN
+  Inl vec2<u32>
+  _GetMonitorSize( HWND hwnd )
+  {
     MONITORINFO monitor_info = { sizeof( MONITORINFO ) /* other fields 0 */ };
-    AssertWarn( GetMonitorInfo( MonitorFromWindow( hwnd, MONITOR_DEFAULTTOPRIMARY ), &monitor_info ) );
-    LONG x = monitor_info.rcMonitor.left;
-    LONG y = monitor_info.rcMonitor.top;
-    LONG w = monitor_info.rcMonitor.right  - monitor_info.rcMonitor.left;
-    LONG h = monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top;
+    AssertWarn( GetMonitorInfo( MonitorFromWindow( hwnd, MONITOR_DEFAULTTONEAREST ), &monitor_info ) );
+    auto w = Cast( u32, monitor_info.rcMonitor.right  - monitor_info.rcMonitor.left );
+    auto h = Cast( u32, monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top  );
+    return _vec2( w, h );
+  }
 
-    dim = _vec2( Cast( u32, w ), Cast( u32, h ) );
-    dimf.x = Cast( f32, dim.x );
-    dimf.y = Cast( f32, dim.y );
+  Inl void
+  _SetWindowSize( HWND hwnd, vec2<u32> dim )
+  {
+    DWORD style = GetWindowLong( hwnd, GWL_STYLE );
+    DWORD styleex = GetWindowLong( hwnd, GWL_EXSTYLE );
+    RECT rect = { 0, 0, Cast( LONG, dim.x ), Cast( LONG, dim.y ) };
+    AdjustWindowRectEx( &rect, style, 0, styleex ); // get actual win size.
+    auto outer_w = rect.right  - rect.left;
+    auto outer_h = rect.bottom - rect.top;
     BOOL r = SetWindowPos(
       hwnd, // window
-      HWND_TOP, // zorder flag
-      x, y, // x, y in client space
-      w, h, // w, h in client space
-      SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW ); // size / positioning flags
+      0, // zorder flag ( unused )
+      0, 0, // x, y in client space ( unused )
+      outer_w, outer_h, // w, h in client space
+      SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_SHOWWINDOW | SWP_FRAMECHANGED ); // size/positioning flags
     AssertWarn( r );
+  }
 
-  } else {
-    // ENTER WINDOWED MODE
-    style &= ~WS_POPUP;
-    style |= WS_OVERLAPPEDWINDOW;
-    AssertWarn( SetWindowLong( hwnd, GWL_STYLE, style ) );
-    if( place_prev_stored ) {
-      AssertWarn( SetWindowPlacement( hwnd, &place_prev ) );
-      dim = windowdim;
+  static void
+  _SetFullscreen( HWND hwnd, vec2<u32>& dim, vec2<f32>& dimf, bool fs )
+  {
+    static bool place_prev_stored = 0;
+    static WINDOWPLACEMENT place_prev = { sizeof( WINDOWPLACEMENT ) /* other fields 0 */ };
+    static vec2<u32> windowdim = {};
+
+    DWORD style = GetWindowLong( hwnd, GWL_STYLE );
+    DWORD styleex = GetWindowLong( hwnd, GWL_EXSTYLE );
+
+    if( fs ) {
+      // ENTER FULLSCREEN MODE
+      AssertWarn( GetWindowPlacement( hwnd, &place_prev ) );
+      windowdim = dim;
+      place_prev_stored = 1;
+
+      AssertWarn( style & WS_OVERLAPPEDWINDOW );
+      style &= ~WS_OVERLAPPEDWINDOW;
+      style |= WS_POPUP;
+      AssertWarn( SetWindowLong( hwnd, GWL_STYLE, style ) );
+
+      MONITORINFO monitor_info = { sizeof( MONITORINFO ) /* other fields 0 */ };
+      AssertWarn( GetMonitorInfo( MonitorFromWindow( hwnd, MONITOR_DEFAULTTOPRIMARY ), &monitor_info ) );
+      LONG x = monitor_info.rcMonitor.left;
+      LONG y = monitor_info.rcMonitor.top;
+      LONG w = monitor_info.rcMonitor.right  - monitor_info.rcMonitor.left;
+      LONG h = monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top;
+
+      dim = _vec2( Cast( u32, w ), Cast( u32, h ) );
       dimf.x = Cast( f32, dim.x );
       dimf.y = Cast( f32, dim.y );
-      RECT rect = { 0, 0, Cast( LONG, windowdim.x ), Cast( LONG, windowdim.y ) };
-      AdjustWindowRectEx( &rect, style, FALSE, styleex ); // get actual win size.
-      auto outer_w = rect.right  - rect.left;
-      auto outer_h = rect.bottom - rect.top;
       BOOL r = SetWindowPos(
         hwnd, // window
-        0, // zorder flag ( unused )
-        0, 0, // x, y in client space ( unused )
-        outer_w, outer_h, // w, h in client space
-        SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_SHOWWINDOW | SWP_FRAMECHANGED ); // size/positioning flags
+        HWND_TOP, // zorder flag
+        x, y, // x, y in client space
+        w, h, // w, h in client space
+        SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW ); // size / positioning flags
       AssertWarn( r );
+
+    } else {
+      // ENTER WINDOWED MODE
+      style &= ~WS_POPUP;
+      style |= WS_OVERLAPPEDWINDOW;
+      AssertWarn( SetWindowLong( hwnd, GWL_STYLE, style ) );
+      if( place_prev_stored ) {
+        AssertWarn( SetWindowPlacement( hwnd, &place_prev ) );
+        dim = windowdim;
+        dimf.x = Cast( f32, dim.x );
+        dimf.y = Cast( f32, dim.y );
+        RECT rect = { 0, 0, Cast( LONG, windowdim.x ), Cast( LONG, windowdim.y ) };
+        AdjustWindowRectEx( &rect, style, FALSE, styleex ); // get actual win size.
+        auto outer_w = rect.right  - rect.left;
+        auto outer_h = rect.bottom - rect.top;
+        BOOL r = SetWindowPos(
+          hwnd, // window
+          0, // zorder flag ( unused )
+          0, 0, // x, y in client space ( unused )
+          outer_w, outer_h, // w, h in client space
+          SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_SHOWWINDOW | SWP_FRAMECHANGED ); // size/positioning flags
+        AssertWarn( r );
+      }
     }
   }
-}
+#endif
 
 
 
@@ -1493,6 +1554,7 @@ _Render( glwclient_t& client )
     glFlush();  glVerify();
 #else // !OPENGL_INSTEAD_OF_SOFTWARE
 
+#ifdef WIN
     Prof( BlitToScreen );
     BOOL bitblt_success = BitBlt(
       client.window_dc,
@@ -1504,6 +1566,12 @@ _Render( glwclient_t& client )
       );
     AssertWarn( bitblt_success );
     ProfClose( BlitToScreen );
+#elifdef MAC
+    ImplementCrash();
+#else
+#error Unsupported platform
+#endif
+
 #endif // !OPENGL_INSTEAD_OF_SOFTWARE
 
   } // end if( !client.target_valid )
@@ -1546,36 +1614,38 @@ _Render( glwclient_t& client )
 #endif // OPENGL_INSTEAD_OF_SOFTWARE
 }
 
-Inl void
-CheckForMouseMoveAndTriggerEvent(
-  glwclient_t* client,
-  LPARAM lp
-  )
-{
-  auto x = GET_X_LPARAM( lp );
-  auto y = GET_Y_LPARAM( lp );
-  auto new_m = _vec2( x, y );
-  auto raw_delta = new_m - client->m;
-  client->m = new_m;
-  if( raw_delta.x  ||  raw_delta.y ) {
-    ForLen( j, client->callbacks ) {
-      auto& callback = client->callbacks.mem[j];
-      if( callback.type == glwcallbacktype_t::mouseevent ) {
-        Cast( pfn_onmouseevent_t, callback.fn )(
-          callback.misc,
-          _rect( _vec2<f32>( 0, 0 ), client->dimf ),
-          client->target_valid,
-          client->cursortype,
-          glwmouseevent_t::move,
-          glwmousebtn_t::none,
-          client->m,
-          raw_delta,
-          0
-          );
+#ifdef WIN
+  Inl void
+  CheckForMouseMoveAndTriggerEvent(
+    glwclient_t* client,
+    LPARAM lp
+    )
+  {
+    auto x = GET_X_LPARAM( lp );
+    auto y = GET_Y_LPARAM( lp );
+    auto new_m = _vec2( x, y );
+    auto raw_delta = new_m - client->m;
+    client->m = new_m;
+    if( raw_delta.x  ||  raw_delta.y ) {
+      ForLen( j, client->callbacks ) {
+        auto& callback = client->callbacks.mem[j];
+        if( callback.type == glwcallbacktype_t::mouseevent ) {
+          Cast( pfn_onmouseevent_t, callback.fn )(
+            callback.misc,
+            _rect( _vec2<f32>( 0, 0 ), client->dimf ),
+            client->target_valid,
+            client->cursortype,
+            glwmouseevent_t::move,
+            glwmousebtn_t::none,
+            client->m,
+            raw_delta,
+            0
+            );
+        }
       }
     }
   }
-}
+#endif
 
 Inl void
 FireMouseButtonEvent(
@@ -1602,108 +1672,125 @@ FireMouseButtonEvent(
   }
 }
 
+#ifdef WIN
+  LRESULT CALLBACK
+  WindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
+  {
+    static glwclient_t* client = 0;
 
-LRESULT CALLBACK
-WindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
-{
-  static glwclient_t* client = 0;
+    //Log( "msg( %u )", msg );
 
-  //Log( "msg( %u )", msg );
+    switch( msg ) {
+      case WM_CREATE: {
+        auto data = Cast( CREATESTRUCT*, lp );
+        client = Cast( glwclient_t*, data->lpCreateParams );
+      } return 0;
 
-  switch( msg ) {
-    case WM_CREATE: {
-      auto data = Cast( CREATESTRUCT*, lp );
-      client = Cast( glwclient_t*, data->lpCreateParams );
-    } return 0;
+      case WM_DESTROY: // fallthrough
+      case WM_CLOSE: {
+        PostQuitMessage( 0 );
+        GlwEarlyKill( *client );
+      } return 0;
 
-    case WM_DESTROY: // fallthrough
-    case WM_CLOSE: {
-      PostQuitMessage( 0 );
-      GlwEarlyKill( *client );
-    } return 0;
+      case WM_DPICHANGED: {
+        auto dpi_x = LOWORD( wp );
+        auto dpi_y = HIWORD( wp );
+        auto rect = *Cast( RECT*, lp );
 
-    case WM_DPICHANGED: {
-      auto dpi_x = LOWORD( wp );
-      auto dpi_y = HIWORD( wp );
-      auto rect = *Cast( RECT*, lp );
+        AssertWarn( dpi_x == dpi_y );
+        auto old_dpi = client->dpi;
+        auto new_dpi = dpi_x;
+        client->dpi = new_dpi;
 
-      AssertWarn( dpi_x == dpi_y );
-      auto old_dpi = client->dpi;
-      auto new_dpi = dpi_x;
-      client->dpi = new_dpi;
+        Log( "[DPICHANGED] dpi: %d -> %d", old_dpi, new_dpi );
 
-      Log( "[DPICHANGED] dpi: %d -> %d", old_dpi, new_dpi );
+        // Win32 gives us a very specific rect, and we shouldn't change it.
+        BOOL r = SetWindowPos(
+          client->hwnd, // window
+          0, // zorder flag
+          rect.left, rect.top,
+          rect.right - rect.left, rect.bottom - rect.top,
+          SWP_NOZORDER | SWP_NOACTIVATE
+          );
+        AssertWarn( r );
 
-      // Win32 gives us a very specific rect, and we shouldn't change it.
-      BOOL r = SetWindowPos(
-        client->hwnd, // window
-        0, // zorder flag
-        rect.left, rect.top,
-        rect.right - rect.left, rect.bottom - rect.top,
-        SWP_NOZORDER | SWP_NOACTIVATE
-        );
-      AssertWarn( r );
-
-      ForLen( j, client->callbacks ) {
-        auto& callback = client->callbacks.mem[j];
-        if( callback.type == glwcallbacktype_t::windowevent ) {
-          Cast( pfn_onwindowevent_t, callback.fn )(
-            callback.misc,
-            glwwindowevent_resize | glwwindowevent_dpichange,
-            client->dim,
-            client->dpi,
-            1,
-            client->target_valid
-            );
+        ForLen( j, client->callbacks ) {
+          auto& callback = client->callbacks.mem[j];
+          if( callback.type == glwcallbacktype_t::windowevent ) {
+            Cast( pfn_onwindowevent_t, callback.fn )(
+              callback.misc,
+              glwwindowevent_resize | glwwindowevent_dpichange,
+              client->dim,
+              client->dpi,
+              1,
+              client->target_valid
+              );
+          }
         }
-      }
 
-      Viewport( *client );
+        Viewport( *client );
 
-    } return 0;
+      } return 0;
 
-    case WM_PAINT: {
-      _Render( *client );
-      AssertWarn( ValidateRect( client->hwnd, 0 ) );
-    } return 0;
+      case WM_PAINT: {
+        _Render( *client );
+        AssertWarn( ValidateRect( client->hwnd, 0 ) );
+      } return 0;
 
-    case WM_ERASEBKGND: {
-      // do nothing.
-    } return 1;
+      case WM_ERASEBKGND: {
+        // do nothing.
+      } return 1;
 
-    case WM_SIZE: {
-      client->dim.x = LOWORD( lp );
-      client->dim.y = HIWORD( lp );
-      client->dimf.x = Cast( f32, client->dim.x );
-      client->dimf.y = Cast( f32, client->dim.y );
+      case WM_SIZE: {
+        client->dim.x = LOWORD( lp );
+        client->dim.y = HIWORD( lp );
+        client->dimf.x = Cast( f32, client->dim.x );
+        client->dimf.y = Cast( f32, client->dim.y );
 
-      ForLen( j, client->callbacks ) {
-        auto& callback = client->callbacks.mem[j];
-        if( callback.type == glwcallbacktype_t::windowevent ) {
-          Cast( pfn_onwindowevent_t, callback.fn )(
-            callback.misc,
-            glwwindowevent_resize,
-            client->dim,
-            client->dpi,
-            1,
-            client->target_valid
-            );
+        ForLen( j, client->callbacks ) {
+          auto& callback = client->callbacks.mem[j];
+          if( callback.type == glwcallbacktype_t::windowevent ) {
+            Cast( pfn_onwindowevent_t, callback.fn )(
+              callback.misc,
+              glwwindowevent_resize,
+              client->dim,
+              client->dpi,
+              1,
+              client->target_valid
+              );
+          }
         }
-      }
 
-      Viewport( *client );
-    } return 0;
+        Viewport( *client );
+      } return 0;
 
-    case WM_SYSCOMMAND: {
-      switch( wp ) {
-        case SC_MONITORPOWER:
-        case SC_SCREENSAVE:
-          return 0; // ignore the above commands
-      }
-    } break; // forward other cmds to DefWindowProc.
+      case WM_SYSCOMMAND: {
+        switch( wp ) {
+          case SC_MONITORPOWER:
+          case SC_SCREENSAVE:
+            return 0; // ignore the above commands
+        }
+      } break; // forward other cmds to DefWindowProc.
 
-    case WM_KILLFOCUS: {
-      if( client->alive ) { // ignore this event if we're quitting.
+      case WM_KILLFOCUS: {
+        if( client->alive ) { // ignore this event if we're quitting.
+          ForLen( j, client->callbacks ) {
+            auto& callback = client->callbacks.mem[j];
+            if( callback.type == glwcallbacktype_t::windowevent ) {
+              Cast( pfn_onwindowevent_t, callback.fn )(
+                callback.misc,
+                glwwindowevent_focuschange,
+                client->dim,
+                client->dpi,
+                0,
+                client->target_valid
+                );
+            }
+          }
+        }
+      } return 0;
+
+      case WM_SETFOCUS: {
         ForLen( j, client->callbacks ) {
           auto& callback = client->callbacks.mem[j];
           if( callback.type == glwcallbacktype_t::windowevent ) {
@@ -1712,221 +1799,205 @@ WindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
               glwwindowevent_focuschange,
               client->dim,
               client->dpi,
-              0,
+              1,
               client->target_valid
               );
           }
         }
-      }
-    } return 0;
+      } return 0;
 
-    case WM_SETFOCUS: {
-      ForLen( j, client->callbacks ) {
-        auto& callback = client->callbacks.mem[j];
-        if( callback.type == glwcallbacktype_t::windowevent ) {
-          Cast( pfn_onwindowevent_t, callback.fn )(
-            callback.misc,
-            glwwindowevent_focuschange,
-            client->dim,
-            client->dpi,
-            1,
-            client->target_valid
-            );
-        }
-      }
-    } return 0;
-
-    case WM_KEYDOWN:
-    case WM_SYSKEYDOWN: {
-      BOOL repeat = ( lp & ( 1 << 30 ) );
-      glwkeyevent_t type = ( repeat  ?  glwkeyevent_t::repeat  :  glwkeyevent_t::dn );
-      auto key = KeyGlwFromOS( wp );
-      if( key != glwkey_t::none ) {
-        ForLen( j, client->callbacks ) {
-          auto& callback = client->callbacks.mem[j];
-          if( callback.type == glwcallbacktype_t::keyevent ) {
-            auto fullscreen = client->fullscreen;
-            Cast( pfn_onkeyevent_t, callback.fn )(
-              callback.misc,
-              _rect( _vec2<f32>( 0, 0 ), client->dimf ),
-              fullscreen,
-              client->target_valid,
-              type,
-              key
-              );
-            if( fullscreen != client->fullscreen ) {
-              _SetFullscreen( client->hwnd, client->dim, client->dimf, fullscreen );
-              client->fullscreen = fullscreen;
+      case WM_KEYDOWN:
+      case WM_SYSKEYDOWN: {
+        BOOL repeat = ( lp & ( 1 << 30 ) );
+        glwkeyevent_t type = ( repeat  ?  glwkeyevent_t::repeat  :  glwkeyevent_t::dn );
+        auto key = KeyGlwFromOS( wp );
+        if( key != glwkey_t::none ) {
+          ForLen( j, client->callbacks ) {
+            auto& callback = client->callbacks.mem[j];
+            if( callback.type == glwcallbacktype_t::keyevent ) {
+              auto fullscreen = client->fullscreen;
+              Cast( pfn_onkeyevent_t, callback.fn )(
+                callback.misc,
+                _rect( _vec2<f32>( 0, 0 ), client->dimf ),
+                fullscreen,
+                client->target_valid,
+                type,
+                key
+                );
+              if( fullscreen != client->fullscreen ) {
+                _SetFullscreen( client->hwnd, client->dim, client->dimf, fullscreen );
+                client->fullscreen = fullscreen;
+              }
             }
           }
         }
-      }
-    } return 0;
+      } return 0;
 
-    case WM_KEYUP:
-    case WM_SYSKEYUP: {
-      auto key = KeyGlwFromOS( wp );
-      if( key != glwkey_t::none ) {
-        ForLen( j, client->callbacks ) {
-          auto& callback = client->callbacks.mem[j];
-          if( callback.type == glwcallbacktype_t::keyevent ) {
-            auto fullscreen = client->fullscreen;
-            Cast( pfn_onkeyevent_t, callback.fn )(
-              callback.misc,
-              _rect( _vec2<f32>( 0, 0 ), client->dimf ),
-              fullscreen,
-              client->target_valid,
-              glwkeyevent_t::up,
-              key
-              );
-            if( fullscreen != client->fullscreen ) {
-              _SetFullscreen( client->hwnd, client->dim, client->dimf, fullscreen );
-              client->fullscreen = fullscreen;
+      case WM_KEYUP:
+      case WM_SYSKEYUP: {
+        auto key = KeyGlwFromOS( wp );
+        if( key != glwkey_t::none ) {
+          ForLen( j, client->callbacks ) {
+            auto& callback = client->callbacks.mem[j];
+            if( callback.type == glwcallbacktype_t::keyevent ) {
+              auto fullscreen = client->fullscreen;
+              Cast( pfn_onkeyevent_t, callback.fn )(
+                callback.misc,
+                _rect( _vec2<f32>( 0, 0 ), client->dimf ),
+                fullscreen,
+                client->target_valid,
+                glwkeyevent_t::up,
+                key
+                );
+              if( fullscreen != client->fullscreen ) {
+                _SetFullscreen( client->hwnd, client->dim, client->dimf, fullscreen );
+                client->fullscreen = fullscreen;
+              }
             }
           }
         }
-      }
-    } return 0;
+      } return 0;
 
-    case WM_MOUSEMOVE: {
-//      auto fkeys = GET_KEYSTATE_WPARAM( wp );
-      CheckForMouseMoveAndTriggerEvent( client, lp );
-    } return 0;
+      case WM_MOUSEMOVE: {
+  //      auto fkeys = GET_KEYSTATE_WPARAM( wp );
+        CheckForMouseMoveAndTriggerEvent( client, lp );
+      } return 0;
 
-    case WM_MOUSEWHEEL: {
-      // NOTE: lp is the position of the mouse in screen-space, not in client-space!
-      //   so don't do the same kind of CheckForMouseMoveAndTriggerEvent logic without a space conversion.
-//      auto fkeys = GET_KEYSTATE_WPARAM( wp );
+      case WM_MOUSEWHEEL: {
+        // NOTE: lp is the position of the mouse in screen-space, not in client-space!
+        //   so don't do the same kind of CheckForMouseMoveAndTriggerEvent logic without a space conversion.
+  //      auto fkeys = GET_KEYSTATE_WPARAM( wp );
 
-      auto dwheel = GET_WHEEL_DELTA_WPARAM( wp ) / WHEEL_DELTA; // TODO: float for this.
-      if( dwheel ) {
-        ForLen( j, client->callbacks ) {
-          auto& callback = client->callbacks.mem[j];
-          if( callback.type == glwcallbacktype_t::mouseevent ) {
-            Cast( pfn_onmouseevent_t, callback.fn )(
-              callback.misc,
-              _rect( _vec2<f32>( 0, 0 ), client->dimf ),
-              client->target_valid,
-              client->cursortype,
-              glwmouseevent_t::wheelmove,
-              glwmousebtn_t::none,
-              client->m,
-              _vec2<s32>( 0, 0 ),
-              Cast( s32, dwheel ) // TODO: float
-              );
+        auto dwheel = GET_WHEEL_DELTA_WPARAM( wp ) / WHEEL_DELTA; // TODO: float for this.
+        if( dwheel ) {
+          ForLen( j, client->callbacks ) {
+            auto& callback = client->callbacks.mem[j];
+            if( callback.type == glwcallbacktype_t::mouseevent ) {
+              Cast( pfn_onmouseevent_t, callback.fn )(
+                callback.misc,
+                _rect( _vec2<f32>( 0, 0 ), client->dimf ),
+                client->target_valid,
+                client->cursortype,
+                glwmouseevent_t::wheelmove,
+                glwmousebtn_t::none,
+                client->m,
+                _vec2<s32>( 0, 0 ),
+                Cast( s32, dwheel ) // TODO: float
+                );
+            }
           }
         }
+      } return 0;
+
+      case WM_LBUTTONDOWN: {
+        auto btn = glwmousebtn_t::l;
+        CheckForMouseMoveAndTriggerEvent( client, lp );
+        SetCapture( client->hwnd );
+        FireMouseButtonEvent( client, btn, 1 );
+      } return 0;
+
+      case WM_LBUTTONUP: {
+        auto btn = glwmousebtn_t::l;
+        CheckForMouseMoveAndTriggerEvent( client, lp );
+        BOOL released = ReleaseCapture();
+        AssertCrash( released );
+        FireMouseButtonEvent( client, btn, 0 );
+      } return 0;
+
+      case WM_RBUTTONDOWN: {
+        auto btn = glwmousebtn_t::r;
+        CheckForMouseMoveAndTriggerEvent( client, lp );
+        FireMouseButtonEvent( client, btn, 1 );
+      } return 0;
+
+      case WM_RBUTTONUP: {
+        auto btn = glwmousebtn_t::r;
+        CheckForMouseMoveAndTriggerEvent( client, lp );
+        FireMouseButtonEvent( client, btn, 0 );
+      } return 0;
+
+      case WM_MBUTTONDOWN: {
+        auto btn = glwmousebtn_t::m;
+        CheckForMouseMoveAndTriggerEvent( client, lp );
+        FireMouseButtonEvent( client, btn, 1 );
+      } return 0;
+
+      case WM_MBUTTONUP: {
+        auto btn = glwmousebtn_t::m;
+        CheckForMouseMoveAndTriggerEvent( client, lp );
+        FireMouseButtonEvent( client, btn, 0 );
+      } return 0;
+
+      case WM_XBUTTONDOWN: {
+        auto xbtn = Cast( u16, GET_XBUTTON_WPARAM( wp ) );
+        AssertCrash( ( xbtn & XBUTTON1 ) ^ ( xbtn & XBUTTON2 ) );
+        auto btn = ( xbtn & XBUTTON1 )  ?  glwmousebtn_t::b4  :  glwmousebtn_t::b5;
+        CheckForMouseMoveAndTriggerEvent( client, lp );
+        FireMouseButtonEvent( client, btn, 1 );
+      } return 1; // NOTE: this is different from the other mouse button events, so says the msdn docs
+
+      case WM_XBUTTONUP: {
+        auto xbtn = Cast( u16, GET_XBUTTON_WPARAM( wp ) );
+        AssertCrash( ( xbtn & XBUTTON1 ) ^ ( xbtn & XBUTTON2 ) );
+        auto btn = ( xbtn & XBUTTON1 )  ?  glwmousebtn_t::b4  :  glwmousebtn_t::b5;
+        CheckForMouseMoveAndTriggerEvent( client, lp );
+        FireMouseButtonEvent( client, btn, 0 );
+      } return 1; // NOTE: this is different from the other mouse button events, so says the msdn docs
+
+      case WM_NCHITTEST: {
+        LRESULT r = DefWindowProc( hwnd, msg, wp, lp );
+        bool cursor_in_client = ( r == HTCLIENT );
+        if( cursor_in_client ) {
+          _SetCursortype( client->cursortype );
+        } else {
+          //SetCursor( LoadCursor( 0, IDC_ARROW ) );
+        }
+        return r;
       }
-    } return 0;
 
-    case WM_LBUTTONDOWN: {
-      auto btn = glwmousebtn_t::l;
-      CheckForMouseMoveAndTriggerEvent( client, lp );
-      SetCapture( client->hwnd );
-      FireMouseButtonEvent( client, btn, 1 );
-    } return 0;
+  //    case WM_CAPTURECHANGED: {
+  //      For( i, 0, Cast( idx_t, glwmousebtn_t::count ) ) {
+  //        SetBit( client->mousealreadydn, i, 0 );
+  //      }
+  //    } return 0;
 
-    case WM_LBUTTONUP: {
-      auto btn = glwmousebtn_t::l;
-      CheckForMouseMoveAndTriggerEvent( client, lp );
-      BOOL released = ReleaseCapture();
-      AssertCrash( released );
-      FireMouseButtonEvent( client, btn, 0 );
-    } return 0;
-
-    case WM_RBUTTONDOWN: {
-      auto btn = glwmousebtn_t::r;
-      CheckForMouseMoveAndTriggerEvent( client, lp );
-      FireMouseButtonEvent( client, btn, 1 );
-    } return 0;
-
-    case WM_RBUTTONUP: {
-      auto btn = glwmousebtn_t::r;
-      CheckForMouseMoveAndTriggerEvent( client, lp );
-      FireMouseButtonEvent( client, btn, 0 );
-    } return 0;
-
-    case WM_MBUTTONDOWN: {
-      auto btn = glwmousebtn_t::m;
-      CheckForMouseMoveAndTriggerEvent( client, lp );
-      FireMouseButtonEvent( client, btn, 1 );
-    } return 0;
-
-    case WM_MBUTTONUP: {
-      auto btn = glwmousebtn_t::m;
-      CheckForMouseMoveAndTriggerEvent( client, lp );
-      FireMouseButtonEvent( client, btn, 0 );
-    } return 0;
-
-    case WM_XBUTTONDOWN: {
-      auto xbtn = Cast( u16, GET_XBUTTON_WPARAM( wp ) );
-      AssertCrash( ( xbtn & XBUTTON1 ) ^ ( xbtn & XBUTTON2 ) );
-      auto btn = ( xbtn & XBUTTON1 )  ?  glwmousebtn_t::b4  :  glwmousebtn_t::b5;
-      CheckForMouseMoveAndTriggerEvent( client, lp );
-      FireMouseButtonEvent( client, btn, 1 );
-    } return 1; // NOTE: this is different from the other mouse button events, so says the msdn docs
-
-    case WM_XBUTTONUP: {
-      auto xbtn = Cast( u16, GET_XBUTTON_WPARAM( wp ) );
-      AssertCrash( ( xbtn & XBUTTON1 ) ^ ( xbtn & XBUTTON2 ) );
-      auto btn = ( xbtn & XBUTTON1 )  ?  glwmousebtn_t::b4  :  glwmousebtn_t::b5;
-      CheckForMouseMoveAndTriggerEvent( client, lp );
-      FireMouseButtonEvent( client, btn, 0 );
-    } return 1; // NOTE: this is different from the other mouse button events, so says the msdn docs
-
-    case WM_NCHITTEST: {
-      LRESULT r = DefWindowProc( hwnd, msg, wp, lp );
-      bool cursor_in_client = ( r == HTCLIENT );
-      if( cursor_in_client ) {
-        _SetCursortype( client->cursortype );
-      } else {
-        //SetCursor( LoadCursor( 0, IDC_ARROW ) );
-      }
-      return r;
     }
-
-//    case WM_CAPTURECHANGED: {
-//      For( i, 0, Cast( idx_t, glwmousebtn_t::count ) ) {
-//        SetBit( client->mousealreadydn, i, 0 );
-//      }
-//    } return 0;
-
+    return DefWindowProc( hwnd, msg, wp, lp );
   }
-  return DefWindowProc( hwnd, msg, wp, lp );
-}
 
-// gets the current state of the keylocks
-Inl glwkeylocks_t
-GlwKeylocks()
-{
-  glwkeylocks_t r;
-  r.caps   = GetKeyState( KeyOSFromGlw( glwkey_t::capslock   ) ) & 1;
-  r.num    = GetKeyState( KeyOSFromGlw( glwkey_t::numlock    ) ) & 1;
-  r.scroll = GetKeyState( KeyOSFromGlw( glwkey_t::scrolllock ) ) & 1;
-  return r;
-}
+  // gets the current state of the keylocks
+  Inl glwkeylocks_t
+  GlwKeylocks()
+  {
+    glwkeylocks_t r;
+    r.caps   = GetKeyState( KeyOSFromGlw( glwkey_t::capslock   ) ) & 1;
+    r.num    = GetKeyState( KeyOSFromGlw( glwkey_t::numlock    ) ) & 1;
+    r.scroll = GetKeyState( KeyOSFromGlw( glwkey_t::scrolllock ) ) & 1;
+    return r;
+  }
 
-Inl bool
-OSKeyIsDown( int os_key )
-{
-  u16 key_state = GetKeyState( os_key );
-  bool r = key_state & ( 1 << 15 );
-  return r;
-}
-Inl bool
-GlwKeyIsDown( glwkey_t key )
-{
-  auto os_key = KeyOSFromGlw( key );
-  bool r = OSKeyIsDown( os_key );
-  return r;
-}
-Inl bool
-GlwMouseBtnIsDown( glwmousebtn_t btn )
-{
-  auto os_key = c_vks[ Cast( enum_t, btn ) ];
-  bool r = OSKeyIsDown( os_key );
-  return r;
-}
+  Inl bool
+  OSKeyIsDown( int os_key )
+  {
+    u16 key_state = GetKeyState( os_key );
+    bool r = key_state & ( 1 << 15 );
+    return r;
+  }
+  Inl bool
+  GlwKeyIsDown( glwkey_t key )
+  {
+    auto os_key = KeyOSFromGlw( key );
+    bool r = OSKeyIsDown( os_key );
+    return r;
+  }
+  Inl bool
+  GlwMouseBtnIsDown( glwmousebtn_t btn )
+  {
+    auto os_key = c_vks[ Cast( enum_t, btn ) ];
+    bool r = OSKeyIsDown( os_key );
+    return r;
+  }
+#endif
 
 struct
 glwkeymodifiersdown_t
@@ -1940,9 +2011,15 @@ Inl glwkeymodifiersdown_t
 GlwKeyModifiersDown()
 {
   glwkeymodifiersdown_t r;
+#ifdef WIN
   r.ctrl  = OSKeyIsDown( KeyOSFromGlw( glwkey_t::ctrl  ) );
   r.shift = OSKeyIsDown( KeyOSFromGlw( glwkey_t::shift ) );
   r.alt   = OSKeyIsDown( KeyOSFromGlw( glwkey_t::alt   ) );
+#elifdef MAC
+  ImplementCrash();
+#else
+#error Unsupported platform
+#endif
   return r;
 }
 Inl bool
@@ -1955,6 +2032,7 @@ AnyDown( glwkeymodifiersdown_t m )
 void
 GlwInit()
 {
+#ifdef WIN
   // Opt out of windows's dpi auto-scaling, so we can have hi-res fonts on hi-dpi screens!
   auto res = SetProcessDpiAwareness( PROCESS_PER_MONITOR_DPI_AWARE );
   if( res != S_OK ) {
@@ -1968,6 +2046,7 @@ GlwInit()
   if( !old_dpictx ) {
     Log( "SetThreadDpiAwarenessContext to PER_MONITOR_AWARE failed!" );
   }
+#endif
 
   _InitKeyTable();
 }
@@ -2003,14 +2082,15 @@ GlwInitWindow(
 
   client.m = _vec2<s32>( 0, 0 );
 
+#ifdef WIN
   // TODO: abstract this a bit, so it's not so flaky initializing a waitable timer.
-  static const s64 delay_over_millisec = -10000;
-
+  constant s64 delay_over_millisec = -10000;
   client.timer_anim = CreateWaitableTimer( 0, 0, 0 );
   AssertWarn( client.timer_anim );
   s32 period_millisec = Cast( s32, anim_interval_millisec );
   s64 delay = delay_over_millisec * period_millisec;
   AssertWarn( SetWaitableTimer( client.timer_anim, Cast( LARGE_INTEGER*, &delay ), period_millisec, 0, 0, 0 ) );
+#endif
 
   client.timestep_fixed = Cast( f64, anim_interval_millisec ) / 1000.0;
 
@@ -2027,6 +2107,7 @@ GlwInitWindow(
     );
 #endif // OPENGL_INSTEAD_OF_SOFTWARE
 
+#ifdef WIN
   client.hi = GetModuleHandle( 0 );
 
   // CREATE THE WINDOW
@@ -2036,15 +2117,17 @@ GlwInitWindow(
   // we do this so we can ask for the monitor size, which requires a window.
   RECT rect = { 0, 0, 800, 600 };
   AdjustWindowRectEx( &rect, style, FALSE, styleex );
+#endif
 
   // Make a cstr title.
   if( !title || title_len == 0 ) {
     title = Str( "default title" );
-    title_len = CsLen( title );
+    title_len = CstrLength( title );
   }
   auto dst_title = AddBack( client.cstr_title, title_len + 1 );
-  CsCopy( dst_title, title, title_len );
+  CstrCopy( dst_title, title, title_len );
 
+#ifdef WIN
   // Autogen an icon with a random color
   vec3<f32> palette[] = {
     _vec3<f32>( 1, 0, 0 ),
@@ -2261,17 +2344,23 @@ GlwInitWindow(
   client.fullscreen_bitmap = 0;
 #endif // !OPENGL_INSTEAD_OF_SOFTWARE
 
+#endif // WIN
+
   client.target_valid = 0;
 
   if( auto_dim_windowed ) {
+#ifdef WIN
     auto monitor_size = _GetMonitorSize( client.hwnd );
     dim_windowed = monitor_size / 2u;
+#endif
   }
   AssertCrash( dim_windowed.x );
   AssertCrash( dim_windowed.y );
   client.dim = dim_windowed;
   client.dimf.x = Cast( f32, client.dim.x );
   client.dimf.y = Cast( f32, client.dim.y );
+  
+#ifdef WIN
   // WARNING!!!
   // this triggers a WM_SIZE message, which we also use for handling resize.
   // our methodology here is to create everything with a dummy size, then resize at the last possible moment, here.
@@ -2282,15 +2371,17 @@ GlwInitWindow(
   SetFocus( client.hwnd );
 
   _SetFullscreen( client.hwnd, client.dim, client.dimf, fullscreen );
+#endif
+
   client.fullscreen = fullscreen;
 
   _SetCursortype( cursortype );
   client.cursortype = cursortype;
+#ifdef WIN
   ShowCursor( cursor_visible );
 
   client.dpi = GetDpiForWindow( client.hwnd );
-
-
+#endif
 
 //  int real_pxfmt = GetPixelFormat( client.window_dc );
 //  if( !real_pxfmt ) {
@@ -2301,7 +2392,6 @@ GlwInitWindow(
 //  pfd3.nSize = sizeof( PIXELFORMATDESCRIPTOR );
 //  pfd3.nVersion = 1;
 //  AssertWarn( DescribePixelFormat( client.window_dc, real_pxfmt, sizeof( PIXELFORMATDESCRIPTOR ), &pfd3 ) );
-
 }
 
 
@@ -2327,6 +2417,7 @@ GlwKillWindow( glwclient_t& client )
   AssertWarn( wglDeleteContext( client.hgl ) );
 #endif // !OPENGL_INSTEAD_OF_SOFTWARE
 
+#ifdef WIN
   AssertWarn( ReleaseDC( client.hwnd, client.window_dc ) );
   AssertWarn( DestroyWindow( client.hwnd ) );
   AssertWarn( UnregisterClass( Cast( char*, client.cstr_title.mem ), client.hi ) );
@@ -2338,6 +2429,7 @@ GlwKillWindow( glwclient_t& client )
   client.window_dc = 0;
   client.hwnd = 0;
   client.hi = 0;
+#endif
 
   AssertCrash( !client.alive );
   Free( client.cstr_title );
@@ -2347,7 +2439,9 @@ GlwKillWindow( glwclient_t& client )
   Kill( client.texid_map );
 #endif // OPENGL_INSTEAD_OF_SOFTWARE
 
+#ifdef WIN
   CloseHandle( client.timer_anim );
+#endif
 }
 
 void
@@ -2356,9 +2450,11 @@ GlwKill()
   _KillKeyTable();
 }
 
+
 Inl void
 SendToClipboardText( glwclient_t& client, u8* text, idx_t text_len )
 {
+#ifdef WIN
   HGLOBAL win_mem = {};
 
 #if 0
@@ -2398,6 +2494,11 @@ SendToClipboardText( glwclient_t& client, u8* text, idx_t text_len )
 
   // cannot be freed before CloseClipboard call.
   GlobalFree( win_mem );
+#elifdef MAC
+  ImplementCrash();
+#else
+#error Unsupported platform
+#endif
 }
 
 
@@ -2407,6 +2508,7 @@ typedef USECLIPBOARDTXT( *pfn_useclipboardtxt_t );
 Inl void
 GetFromClipboardText( glwclient_t& client, pfn_useclipboardtxt_t UseClipboardTxt, void* misc )
 {
+#ifdef WIN
 #if 0
   HWND hwnd = GetForegroundWindow();
   AssertWarn( hwnd );
@@ -2429,7 +2531,7 @@ GetFromClipboardText( glwclient_t& client, pfn_useclipboardtxt_t UseClipboardTxt
   HANDLE clip = GetClipboardData( CF_TEXT );
   if( clip ) {
     u8* text = Cast( u8*, GlobalLock( clip ) );
-    idx_t text_len = CsLen( text );
+    idx_t text_len = CstrLength( text );
     UseClipboardTxt( text, text_len, misc );
     GlobalUnlock( clip );
   } else {
@@ -2437,6 +2539,11 @@ GetFromClipboardText( glwclient_t& client, pfn_useclipboardtxt_t UseClipboardTxt
   }
 
   AssertWarn( CloseClipboard() );
+#elifdef MAC
+  ImplementCrash();
+#else
+#error Unsupported platform
+#endif
 }
 
 
@@ -2455,6 +2562,7 @@ ReserveGlStreams( glwclient_t& client, idx_t count )
 }
 #endif
 
+#ifdef WIN
 
 #if OPENGL_INSTEAD_OF_SOFTWARE
 
@@ -2571,3 +2679,7 @@ GlwMainLoop( glwclient_t& client )
   } while( client.alive );
 }
 
+#elifdef MAC
+#else
+#error Unsupported platform
+#endif

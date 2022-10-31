@@ -146,8 +146,8 @@ DfsIntoArrays(
   n_t* outnodes, // length E
   n_t start_node,
   u64* bits_visited, // bitarray of length N
-  array_t<n_t>* found_nodes,
-  array_t<n_t>* stack
+  stack_resizeable_cont_t<n_t>* found_nodes,
+  stack_resizeable_cont_t<n_t>* stack
   )
 {
   ProfFunc();
@@ -440,8 +440,8 @@ BfsIntoTwoBuffers(
 
   auto queue = buffer;
   auto queue_len = N;
-  n_t pos_wr = 0;
-  n_t pos_rd = 0;
+  n_t tail = 0;
+  n_t head = 0;
 
   n_t found_len = 0;
 
@@ -453,7 +453,7 @@ BfsIntoTwoBuffers(
 #define BULK_BFS_COPY 0
 #if BULK_BFS_COPY
     auto v = outnodes + outoffset + e;
-    EnqueueAssumingRoom( queue, queue_len, &pos_wr, pos_rd, v, outdegree );
+    EnqueueAssumingRoom( queue, queue_len, head, &tail, v, outdegree );
     Fori( e_t, e, 0, outdegree ) {
       auto v = outnodes[ outoffset + e ];
       SETBIT( bits_visited, v );
@@ -462,7 +462,7 @@ BfsIntoTwoBuffers(
     Fori( e_t, e, 0, outdegree ) {
       auto v = outnodes[ outoffset + e ];
       // TODO: could do one bulk copy, no need for iterative copying.
-      EnqueueAssumingRoom( queue, queue_len, &pos_wr, pos_rd, &v );
+      EnqueueAssumingRoom( queue, queue_len, head, &tail, &v );
       SETBIT( bits_visited, v );
     }
 #endif
@@ -470,16 +470,16 @@ BfsIntoTwoBuffers(
     found_len += 1;
   }
 
-  while( pos_wr != pos_rd ) {
+  while( tail != head ) {
     n_t u;
-    DequeueAssumingRoom( queue, queue_len, pos_wr, &pos_rd, &u );
+    DequeueAssumingRoom( queue, queue_len, &head, tail, &u );
     auto outdegree = outdegrees[ u ];
     auto outoffset = outoffsets[ u ];
     Fori( e_t, e, 0, outdegree ) {
       auto v = outnodes[ outoffset + e ];
       auto visited = GETBIT( bits_visited, v );
       if( !visited ) {
-        EnqueueAssumingRoom( queue, queue_len, &pos_wr, pos_rd, &v );
+        EnqueueAssumingRoom( queue, queue_len, head, &tail, &v );
         SETBIT( bits_visited, v );
       }
     }
@@ -510,8 +510,8 @@ ShortestPathUnweightedWithBFS(
 
   auto queue = buffer;
   auto queue_len = N;
-  n_t pos_wr = 0;
-  n_t pos_rd = 0;
+  n_t tail = 0;
+  n_t head = 0;
 
   n_t found_len = 0;
 
@@ -529,7 +529,7 @@ ShortestPathUnweightedWithBFS(
 #define BULK_BFS_COPY 0
 #if BULK_BFS_COPY
     auto v = outnodes + outoffset + e;
-    EnqueueAssumingRoom( queue, queue_len, &pos_wr, pos_rd, v, outdegree );
+    EnqueueAssumingRoom( queue, queue_len, head, &tail, v, outdegree );
     Fori( e_t, e, 0, outdegree ) {
       auto v = outnodes[ outoffset + e ];
       SETBIT( bits_visited, v );
@@ -538,7 +538,7 @@ ShortestPathUnweightedWithBFS(
     Fori( e_t, e, 0, outdegree ) {
       auto v = outnodes[ outoffset + e ];
       // TODO: could do one bulk copy, no need for iterative copying.
-      EnqueueAssumingRoom( queue, queue_len, &pos_wr, pos_rd, &v );
+      EnqueueAssumingRoom( queue, queue_len, head, &tail, &v );
       SETBIT( bits_visited, v );
     }
 #endif
@@ -546,9 +546,9 @@ ShortestPathUnweightedWithBFS(
     found_len += 1;
   }
 
-  while( pos_wr != pos_rd ) {
+  while( tail != head ) {
     n_t u;
-    DequeueAssumingRoom( queue, queue_len, pos_wr, &pos_rd, &u );
+    DequeueAssumingRoom( queue, queue_len, &head, tail, &u );
     auto outdegree = outdegrees[ u ];
     auto outoffset = outoffsets[ u ];
     Fori( e_t, e, 0, outdegree ) {
@@ -557,7 +557,7 @@ ShortestPathUnweightedWithBFS(
       if( !visited ) {
         shortest_distance[v] = shortest_distance[u] + 1;
         previous_node_in_path[v] = u;
-        EnqueueAssumingRoom( queue, queue_len, &pos_wr, pos_rd, &v );
+        EnqueueAssumingRoom( queue, queue_len, head, &tail, &v );
         SETBIT( bits_visited, v );
       }
     }
@@ -678,8 +678,8 @@ DirectedTreeFromDirectedGraphWithBfs(
 
   auto queue = buffer;
   auto queue_len = N;
-  n_t pos_wr = 0;
-  n_t pos_rd = 0;
+  n_t tail = 0;
+  n_t head = 0;
 
   {
     auto u = start_node;
@@ -695,7 +695,7 @@ DirectedTreeFromDirectedGraphWithBfs(
 
 #if BULK_BFS_COPY
     auto v = outnodes + outoffset + e;
-    EnqueueAssumingRoom( queue, queue_len, &pos_wr, pos_rd, v, outdegree );
+    EnqueueAssumingRoom( queue, queue_len, head, &tail, v, outdegree );
     Fori( e_t, e, 0, outdegree ) {
       auto v = outnodes[ outoffset + e ];
       SETBIT( bits_visited, v );
@@ -705,7 +705,7 @@ DirectedTreeFromDirectedGraphWithBfs(
     Fori( e_t, e, 0, outdegree ) {
       auto v = outnodes[ outoffset + e ];
       // TODO: could do one bulk copy, no need for iterative copying.
-      EnqueueAssumingRoom( queue, queue_len, &pos_wr, pos_rd, &v );
+      EnqueueAssumingRoom( queue, queue_len, head, &tail, &v );
       SETBIT( bits_visited, v );
       result_outnodes[ result_E++ ] = v;
     }
@@ -715,9 +715,9 @@ DirectedTreeFromDirectedGraphWithBfs(
     result_degrees[u_new] = u_outdegree;
   }
 
-  while( pos_wr != pos_rd ) {
+  while( tail != head ) {
     n_t u;
-    DequeueAssumingRoom( queue, queue_len, pos_wr, &pos_rd, &u );
+    DequeueAssumingRoom( queue, queue_len, &head, tail, &u );
     auto outdegree = outdegrees[ u ];
     auto outoffset = outoffsets[ u ];
 
@@ -729,7 +729,7 @@ DirectedTreeFromDirectedGraphWithBfs(
       auto v = outnodes[ outoffset + e ];
       auto visited = GETBIT( bits_visited, v );
       if( !visited ) {
-        EnqueueAssumingRoom( queue, queue_len, &pos_wr, pos_rd, &v );
+        EnqueueAssumingRoom( queue, queue_len, head, &tail, &v );
         SETBIT( bits_visited, v );
         result_outnodes[ result_E++ ] = v;
       }
@@ -764,7 +764,7 @@ DfsCompIntoArray(
   n_t* outnodes, // length E
   u64* bits_visited, // bitarray of length N
   n_t* buffer, // length N
-  array_t<tslice_t<n_t>>* result_comps,
+  stack_resizeable_cont_t<tslice_t<n_t>>* result_comps,
   n_t* result_compnodes // length N
   )
 {
@@ -928,7 +928,7 @@ _TsVisitRecursive(
   auto outoffset = outoffsets[ u ];
   Fori( e_t, e, 0, outdegree ) {
     auto v = outnodes[ outoffset + e ];
-    _TsVisitRecursive( N, E, outoffsets, outdegrees, outnodes, u, bits_visited, bits_done, sorted_nodes, sorted_nodes_idx, found_cycle );
+    _TsVisitRecursive( N, E, outoffsets, outdegrees, outnodes, v, bits_visited, bits_done, sorted_nodes, sorted_nodes_idx, found_cycle );
     if( *found_cycle ) {
       return;
     }
@@ -1104,7 +1104,7 @@ ShortestPathDijkstraArray_SLOW(
   ProfFunc();
   AssertCrash( N );
 
-  array_t<n_t> set;
+  stack_resizeable_cont_t<n_t> set;
   Alloc( set, N / 16 + 1 );
 
   Fori( n_t, u, 0, N ) {
@@ -1131,7 +1131,7 @@ ShortestPathDijkstraArray_SLOW(
     auto outoffset = outoffsets[ u ];
     Fori( e_t, e, 0, outdegree ) {
       auto v = outnodes[ outoffset + e ];
-      auto v_in_set = ArrayContains( ML( set ), &v );
+      auto v_in_set = TContains( ML( set ), &v );
       if( v_in_set ) {
         auto edge_weight = outedge_weights[ outoffset + e ];
         auto candidate_distance = shortest_distance[u] + edge_weight;
@@ -1416,15 +1416,15 @@ ShortestPathFaster(
 
   auto queue = buffer;
   auto queue_len = N;
-  n_t pos_wr = 0;
-  n_t pos_rd = 0;
+  n_t tail = 0;
+  n_t head = 0;
 
-  EnqueueAssumingRoom( queue, queue_len, &pos_wr, pos_rd, &start_node );
+  EnqueueAssumingRoom( queue, queue_len, head, &tail, &start_node );
   SETBIT( bits_inqueue, start_node );
 
-  while( pos_wr != pos_rd ) {
+  while( tail != head ) {
     n_t u;
-    DequeueAssumingRoom( queue, queue_len, pos_wr, &pos_rd, &u );
+    DequeueAssumingRoom( queue, queue_len, &head, tail, &u );
     CLRBIT( bits_inqueue, u );
     auto outdegree = outdegrees[ u ];
     auto outoffset = outoffsets[ u ];
@@ -1437,7 +1437,7 @@ ShortestPathFaster(
         previous_node_in_path[v] = u;
         auto v_inqueue = GETBIT( bits_inqueue, v );
         if( !v_inqueue ) {
-          EnqueueAssumingRoom( queue, queue_len, &pos_wr, pos_rd, &v );
+          EnqueueAssumingRoom( queue, queue_len, head, &tail, &v );
           SETBIT( bits_inqueue, v );
         }
       }
@@ -1601,9 +1601,9 @@ RecoverShortestPathFloydWarshall(
   n_t v
   )
 {
-  n_t pos_wr = 0;
+  n_t tail = 0;
   Fori( n_t, i, 0, path_len ) {
-    path[ pos_wr++ ] = u;
+    path[ tail++ ] = u;
     auto uv = u + v * N;
     u = next_node_in_paths[ uv ];
   }
@@ -1758,7 +1758,7 @@ LayoutSimpleSpring(
     Memzero( forces, N * sizeof( forces[0] ) );
     Fori( n_t, u, 0, N ) {
       auto u_pos = positions + u;
-      auto u_vel = velocities + u;
+      // auto u_vel = velocities + u;
       auto u_force = forces + u;
 
       //
@@ -1769,15 +1769,15 @@ LayoutSimpleSpring(
       Fori( e_t, e, 0, u_outdegree ) {
         auto v = outnodes[ u_outoffset + e ];
         auto v_pos = positions + v;
-        auto v_vel = velocities + v;
+        // auto v_vel = velocities + v;
         auto v_force = forces + v;
 
         // TODO: bigger mass in proportion to total degree?
         //   will have to fix mass+force sharing below.
-        f32 mass = 1.0f;
+        // f32 mass = 1.0f;
         constant f32 spring_k = 1000.0f;
         constant f32 spring_center_dist = 10.5f;
-        f32 friction_k = 2.2f * Sqrt32( mass * spring_k ); // 2 * Sqrt( m * k ) is critical damping, but we want a little overdamping.
+        // f32 friction_k = 2.2f * Sqrt32( mass * spring_k ); // 2 * Sqrt( m * k ) is critical damping, but we want a little overdamping.
 
         auto v_minus_u = *v_pos - *u_pos;
         auto uv_dist = Length( v_minus_u );
@@ -1914,7 +1914,6 @@ TestGraph()
       f32 min_cost_from_node[N];
       n_t previous_node_in_min_spanning_tree[N];
       MinimumSpanningTreePrim( N, E, outoffsets, outdegrees, outnodes, outedge_weights, 0, buffer, buffer2, min_cost_from_node, previous_node_in_min_spanning_tree, bits_visited );
-      int k = 0;
     }
 
     // test some DFS functions
@@ -2023,7 +2022,7 @@ TestGraph()
 
   // tests on random graphs:
   {
-    // 10,000 nodes causes us to hit ~20M edges, which is high enough to start hitting array_t limits.
+    // 10,000 nodes causes us to hit ~20M edges, which is high enough to start hitting stack_resizeable_cont_t limits.
     // so until we add sparse edge support, or just allocate huge contiguous sections here,
     // our limit is something like this.
     constant n_t node_sizes[] = { 0, 1, 2, 3, 4, 10, 100, 1000 };
@@ -2031,12 +2030,10 @@ TestGraph()
     ForEach( N, node_sizes ) {
       ForEach( P, edge_probabilities ) {
         // we're using the G(n,p) model, where each possible edge is present with probability p.
-        tstring_t<e_t> outoffsets;
-        tstring_t<e_t> outdegrees;
-        array_t<n_t> outnodes;
-        array_t<f32> outedge_weights;
-        Alloc( outoffsets, N );
-        Alloc( outdegrees, N );
+        auto outoffsets = AllocString<e_t>( N );
+        auto outdegrees = AllocString<e_t>( N );
+        stack_resizeable_cont_t<n_t> outnodes;
+        stack_resizeable_cont_t<f32> outedge_weights;
         auto estimate_E = Cast( idx_t, 1 + NumPossibleDirectedEdges( N ) * P * 1.2f );
         Alloc( outnodes, estimate_E );
         Alloc( outedge_weights, estimate_E );
@@ -2063,20 +2060,15 @@ TestGraph()
 
         if( E ) {
           Fori( n_t, start_node, 0, N ) {
-            tstring_t<u64> bits_visited;
-            Alloc( bits_visited, Bitbuffer64Len( N ) );
-            tstring_t<n_t> buffer;
-            Alloc( buffer, N );
-            tstring_t<n_t> buffer2;
-            Alloc( buffer2, N );
+            auto bits_visited = AllocString<u64>( Bitbuffer64Len( N ) );
+            auto buffer = AllocString<n_t>( N );
+            auto buffer2 = AllocString<n_t>( N );
 
             // number of functions we're verifying here.
             // we're skipping ShortestPathDijkstraArray_SLOW since it's really slow, N^2 basically.
             constant n_t M = 4;
-            tstring_t<f32> shortest_distance;
-            Alloc( shortest_distance, M * N );
-            tstring_t<n_t> previous_node_in_path;
-            Alloc( previous_node_in_path, M * N );
+            auto shortest_distance = AllocString<f32>( M * N );
+            auto previous_node_in_path = AllocString<n_t>( M * N );
             n_t f = 0;
 
 //            {
@@ -2182,7 +2174,7 @@ TsVisitWithStack(
   n_t* buffer, // length N
   n_t* buffer_idx,
   bool* found_cycle,
-  array_t<>* stack
+  stack_resizeable_cont_t<>* stack
   )
 {
   AssertCrash( N );
@@ -2472,12 +2464,12 @@ Parse(
   }
   auto contents = FileAlloc( file );
 
-  array_t<
+  stack_resizeable_cont_t<
 
   u32 nlines = CountNewlines( ML( csv ) ) + 1;
-  array32_t<slice32_t> lines;
+  stack_resizeable_cont_t<slice32_t> lines;
   Alloc( lines, nlines );
-  array_t<slice_t> entries;
+  stack_resizeable_cont_t<slice_t> entries;
   Alloc( entries, 32 );
   SplitIntoLines( &lines, ML( csv ) );
   FORLEN32( line, y, lines )
@@ -2493,7 +2485,7 @@ Parse(
       rect->p0 = abspos;
       rect->p1 = abspos + _vec2<u32>( 1, 1 );
       AssertCrash( entry->len <= MAX_u32 );
-      auto copied = AddPlistSlice32( grid->cellmem, u8, 1, Cast( u32, entry->len ) );
+      auto copied = AddPagelistSlice32( grid->cellmem, u8, 1, Cast( u32, entry->len ) );
       Memmove( copied.mem, ML( *entry ) );
       InsertOrSetCellContents( grid, &rectlist, copied );
     }
@@ -2502,7 +2494,7 @@ Parse(
   Free( entries );
   Free( lines );
 
-  pagearray_t<slice32_t> lines;
+  stack_resizeable_pagelist_t<slice32_t> lines;
   Init( lines, 65000 );
   SplitIntoLines( &lines, ML( contents ) );
   AssertCrash( lines.totallen <= MAX_u32 );

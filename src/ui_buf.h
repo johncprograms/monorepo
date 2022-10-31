@@ -110,9 +110,9 @@ diff_t
   // we maintain all the beginning-of-line positions, at all times.
   // this is a sorted list, so getting the i'th element corresponds to the i'th sequential line.
   // we'll update these during insert/delete/etc. operations.
-  // PERF: use pagearray_t / skiplist_t if this is too slow!
+  // PERF: use stack_resizeable_pagelist_t / skipagelist_t if this is too slow!
   // PERF: u32 ?
-  array_t<idx_t> ln_starts;
+  stack_resizeable_cont_t<idx_t> ln_starts;
 #endif
 };
 
@@ -184,15 +184,15 @@ Enumc( loadstate_t )
 struct
 buf_t
 {
-  array_t<diff_t> diffs;
-  plist_t plist;
+  stack_resizeable_cont_t<diff_t> diffs;
+  pagelist_t pagelist;
   idx_t content_len;
-  array_t<undoableoper_t> history;
+  stack_resizeable_cont_t<undoableoper_t> history;
   idx_t history_idx;
 
   // external users of the buf_t can attach their persistent content_ptrs here.
   // we'll update these content_ptrs during insert/delete/etc. operations.
-//  array_t<content_ptr_t> user_ptrs; // TODO: replace txt content tracking with this ?
+//  stack_resizeable_cont_t<content_ptr_t> user_ptrs; // TODO: replace txt content tracking with this ?
 };
 
 
@@ -204,7 +204,7 @@ buf_t
 Inl void
 Zero( buf_t& buf )
 {
-  Zero( buf.plist );
+  Zero( buf.pagelist );
   Zero( buf.diffs );
   buf.content_len = 0;
   Zero( buf.history );
@@ -225,7 +225,7 @@ Kill( buf_t& buf )
     Kill( *diff );
   }
   Free( buf.diffs );
-  Kill( buf.plist );
+  Kill( buf.pagelist );
   Free( buf.history );
 
   Zero( buf );
@@ -433,7 +433,7 @@ BufLoadEmpty( buf_t& buf )
 {
   ProfFunc();
 
-  Init( buf.plist, 256 );
+  Init( buf.pagelist, 256 );
 
   Alloc( buf.diffs, 8 );
 
@@ -450,8 +450,8 @@ BufLoad( buf_t& buf, file_t& file )
   ProfFunc();
   AssertCrash( file.size < MAX_idx );
 
-  constant u64 c_chunk_size = 200*1024*1024 - 256; // leave a little space for plistheader_t
-  Init( buf.plist, CLAMP( Cast( idx_t, file.size ), 256, c_chunk_size ) );
+  constant u64 c_chunk_size = 200*1024*1024 - 256; // leave a little space for pagelistheader_t
+  Init( buf.pagelist, CLAMP( Cast( idx_t, file.size ), 256, c_chunk_size ) );
 
   Alloc( buf.diffs, 256 );
 
@@ -464,7 +464,7 @@ BufLoad( buf_t& buf, file_t& file )
       if( chunk_size ) {
         auto diff = AddBack( buf.diffs );
         diff->slice.len = Cast( idx_t, chunk_size );
-        diff->slice.mem = AddPlist( buf.plist, u8, 1, diff->slice.len );
+        diff->slice.mem = AddPagelist( buf.pagelist, u8, 1, diff->slice.len );
         FileRead( file, i * c_chunk_size, ML( diff->slice ), Cast( u32, chunk_size ) );
         _AllocAndFillLnStarts( *diff );
       }
@@ -734,7 +734,7 @@ FindFirstR(
 
     // eliminate the fullstring match, if it fails the word_boundary test.
     // if we're searching "0123456789" for "234", the test is:
-    //   keep-match <=> InWord( "1" ) != InWord( "2" ) && InWord( "4" ) != InWord( "5" )
+    //   keep-match <=> AsciiInWord( "1" ) != AsciiInWord( "2" ) && AsciiInWord( "4" ) != AsciiInWord( "5" )
     // i.e. the first and last chars in the match have to have different "wordiness" than the chars outside.
     //
     if( word_boundary ) {
@@ -745,7 +745,7 @@ FindFirstR(
         auto diff_before_match_start = buf.diffs.mem + before_match_start.diff_idx;
         AssertCrash( before_match_start.offset_into_diff < diff_before_match_start->slice.len );
         u8 c = diff_before_match_start->slice.mem[ before_match_start.offset_into_diff ];
-        if( InWord( c ) == InWord( firstchar ) ) {
+        if( AsciiInWord( c ) == AsciiInWord( firstchar ) ) {
           diff = buf.diffs.mem + next.diff_idx;
           offset_into_diff = next.offset_into_diff;
           continue;
@@ -757,7 +757,7 @@ FindFirstR(
         auto diff_before_x = buf.diffs.mem + after_match.diff_idx;
         AssertCrash( after_match.offset_into_diff < diff_before_x->slice.len );
         u8 c = diff_before_x->slice.mem[ after_match.offset_into_diff ];
-        if( InWord( c ) == InWord( str[ len - 1 ] ) ) {
+        if( AsciiInWord( c ) == AsciiInWord( str[ len - 1 ] ) ) {
           diff = buf.diffs.mem + next.diff_idx;
           offset_into_diff = next.offset_into_diff;
           continue;
@@ -815,8 +815,8 @@ FindFirstR(
             auto diff_before_match_start = buf.diffs.mem + before_match_start.diff_idx;
             AssertCrash( before_match_start.offset_into_diff < diff_before_match_start->slice.len );
             u8 c = diff_before_match_start->slice.mem[ before_match_start.offset_into_diff ];
-            // TODO: option to compare InWord( before_match_start ) to InWord( match_start )
-            if( InWord( c ) ) {
+            // TODO: option to compare AsciiInWord( before_match_start ) to AsciiInWord( match_start )
+            if( AsciiInWord( c ) ) {
               x = match_start;
               nmatched = 0;
             }
@@ -824,12 +824,12 @@ FindFirstR(
           if( nmatched ) {
             auto before_x = CursorCharL( buf, x, 1, &nmoved );
             if( nmoved ) {
-              // TODO: option to compare InWord( before_x ) to InWord( x )
+              // TODO: option to compare AsciiInWord( before_x ) to AsciiInWord( x )
               AssertCrash( before_x.diff_idx < buf.diffs.len );
               auto diff_before_x = buf.diffs.mem + before_x.diff_idx;
               AssertCrash( before_x.offset_into_diff < diff_before_x->slice.len );
               u8 c = diff_before_x->slice.mem[ before_x.offset_into_diff ];
-              if( InWord( c ) ) {
+              if( AsciiInWord( c ) ) {
                 // no need to check before_match_start_valid, since it will only be invalid on a match starting at BOF.
                 // i.e. match_start == BOF == before_match_start.
                 // that's what we want for before_x, since we're incrementing by one below.
@@ -937,8 +937,8 @@ FindFirstR(
             auto diff_before_match_start = buf.diffs.mem + before_match_start.diff_idx;
             AssertCrash( before_match_start.offset_into_diff < diff_before_match_start->slice.len );
             u8 c = diff_before_match_start->slice.mem[ before_match_start.offset_into_diff ];
-            // TODO: option to compare InWord( before_match_start ) to InWord( match_start )
-            if( InWord( c ) ) {
+            // TODO: option to compare AsciiInWord( before_match_start ) to AsciiInWord( match_start )
+            if( AsciiInWord( c ) ) {
               before_x_valid = 1;
               before_x = before_match_start;
               x = match_start;
@@ -946,12 +946,12 @@ FindFirstR(
             }
           }
           if( nmatched ) {
-            // TODO: option to compare InWord( before_x ) to InWord( x )
+            // TODO: option to compare AsciiInWord( before_x ) to AsciiInWord( x )
             AssertCrash( before_x.diff_idx < buf.diffs.len );
             auto diff_before_x = buf.diffs.mem + before_x.diff_idx;
             AssertCrash( before_x.offset_into_diff < diff_before_x->slice.len );
             u8 c = diff_before_x->slice.mem[ before_x.offset_into_diff ];
-            if( InWord( c ) ) {
+            if( AsciiInWord( c ) ) {
               // no need to check before_match_start_valid, since it will only be invalid on a match starting at BOF.
               // i.e. match_start == BOF == before_match_start.
               // that's what we want for before_x, since we're incrementing by one below.
@@ -1061,27 +1061,27 @@ FindFirstL(
 
       if( nmatched == len ) {
         if( word_boundary ) {
-          // TODO: option to compare InWord( before_x ) to InWord( x )
+          // TODO: option to compare AsciiInWord( before_x ) to AsciiInWord( x )
           auto before_x = CursorCharL( buf, x, 1, 0 );
           if( !Equal( before_x, x ) ) {
             AssertCrash( before_x.diff_idx < buf.diffs.len );
             auto diff_before_x = buf.diffs.mem + before_x.diff_idx;
             AssertCrash( before_x.offset_into_diff < diff_before_x->slice.len );
             u8 c = diff_before_x->slice.mem[ before_x.offset_into_diff ];
-            if( InWord( c ) ) {
+            if( AsciiInWord( c ) ) {
               x = before_match_end;
               diff = buf.diffs.mem + x.diff_idx;
               nmatched = 0;
               continue;
             }
           }
-          // TODO: option to compare InWord( before_match_end ) to InWord( match_end )
+          // TODO: option to compare AsciiInWord( before_match_end ) to AsciiInWord( match_end )
           if( !IsEOF( buf, match_end ) ) {
             AssertCrash( match_end.diff_idx < buf.diffs.len );
             auto diff_match_end = buf.diffs.mem + match_end.diff_idx;
             AssertCrash( match_end.offset_into_diff < diff_match_end->slice.len );
             u8 c = diff_match_end->slice.mem[ match_end.offset_into_diff ];
-            if( InWord( c ) ) {
+            if( AsciiInWord( c ) ) {
               x = before_match_end;
               diff = buf.diffs.mem + x.diff_idx;
               nmatched = 0;
@@ -1285,7 +1285,7 @@ _SplitDiffAt(
     undoableopertype_t::add
     );
 
-  // since buf.diffs is an array_t, we can realloc after the add.
+  // since buf.diffs is an stack_resizeable_cont_t, we can realloc after the add.
   // so re-query diff.
   diff = buf.diffs.mem + pos.diff_idx;
 
@@ -1363,7 +1363,7 @@ Insert(
   }
 
   // ensure maximum-size chunks, so our per-chunk datastructures don't get too huge individually.
-  constant idx_t c_chunk_size = 2*1024*1024 - 256; // leave a little space for plistheader_t
+  constant idx_t c_chunk_size = 2*1024*1024 - 256; // leave a little space for pagelistheader_t
   idx_t nchunks = len / c_chunk_size;
   idx_t nremain = len % c_chunk_size;
 
@@ -1378,7 +1378,7 @@ Insert(
     if( chunk_size ) {
       diff_t add;
       add.slice.len = chunk_size;
-      add.slice.mem = AddPlist( buf.plist, u8, 1, add.slice.len );
+      add.slice.mem = AddPagelist( buf.pagelist, u8, 1, add.slice.len );
       AssertCrash( add.slice.len );
       Memmove( add.slice.mem, str + i * c_chunk_size, add.slice.len );
       _AllocAndFillLnStarts( add );
@@ -1406,8 +1406,8 @@ Insert(
   // we only merge the first newly-inserted diff with it's previous, and only if the total len is small.
   // this is because people actually type 1,000s of characters, and we don't want that many diffs.
   // it'd be cool if we could stream new characters right into existing diffs, i.e. avoid this
-  // 'merge-after-the-fact', but that requires some deep introspection into plist_t that we don't have right now.
-  // if we switched to pagearray_t, we probably could do that introspection. something to consider for later.
+  // 'merge-after-the-fact', but that requires some deep introspection into pagelist_t that we don't have right now.
+  // if we switched to stack_resizeable_pagelist_t, we probably could do that introspection. something to consider for later.
   //
   if( pos.diff_idx ) {
     AssertCrash( pos.diff_idx < buf.diffs.len );
@@ -1424,7 +1424,7 @@ Insert(
     if( combined_len < c_combine_threshold ) {
       diff_t repl;
       repl.slice.len = combined_len;
-      repl.slice.mem = AddPlist( buf.plist, u8, 1, repl.slice.len );
+      repl.slice.mem = AddPagelist( buf.pagelist, u8, 1, repl.slice.len );
       AssertCrash( combined_len );
       Memmove( repl.slice.mem, diff_prev->slice.mem, diff_prev->slice.len );
       Memmove( repl.slice.mem + diff_prev->slice.len, diff->slice.mem, diff->slice.len );
@@ -1527,8 +1527,8 @@ Delete(
 
   // passing arbitrary numbers of outparams isn't pretty, when we have to tack some on.
   // PERF: allocating these outparam lists isn't great.
-  fixedarray_t<content_ptr_t*> concurrents_and_start;
-  fixedarray_t<content_ptr_t*> concurrents_and_end;
+  stack_nonresizeable_t<content_ptr_t*> concurrents_and_start;
+  stack_nonresizeable_t<content_ptr_t*> concurrents_and_end;
   Alloc( concurrents_and_start, concurrents_len + 1 );
   Alloc( concurrents_and_end,   concurrents_len + 1 );
   Memmove( AddBack( concurrents_and_start, concurrents_len ), concurrents, concurrents_len * sizeof( concurrents[0] ) );
@@ -1584,7 +1584,7 @@ Replace(
 {
   // passing arbitrary numbers of outparams isn't pretty, when we have to tack some on.
   // PERF: allocating these outparam lists isn't great.
-  fixedarray_t<content_ptr_t*> new_concurrents;
+  stack_nonresizeable_t<content_ptr_t*> new_concurrents;
   Alloc( new_concurrents, concurrents_len + 1 );
   Memmove( AddBack( new_concurrents, concurrents_len ), concurrents, concurrents_len * sizeof( concurrents[0] ) );
   *AddBack( new_concurrents ) = &start;
@@ -1642,9 +1642,9 @@ Copy(
 
   // passing arbitrary numbers of outparams isn't pretty, when we have to tack some on.
   // PERF: allocating these outparam lists isn't great.
-  fixedarray_t<content_ptr_t*> concurrents_dst_srcend;
-  fixedarray_t<content_ptr_t*> concurrents_dst_srcstart;
-  fixedarray_t<content_ptr_t*> concurrents_srcstart_srcend;
+  stack_nonresizeable_t<content_ptr_t*> concurrents_dst_srcend;
+  stack_nonresizeable_t<content_ptr_t*> concurrents_dst_srcstart;
+  stack_nonresizeable_t<content_ptr_t*> concurrents_srcstart_srcend;
   Alloc( concurrents_dst_srcend,      concurrents_len + 2 );
   Alloc( concurrents_dst_srcstart,    concurrents_len + 2 );
   Alloc( concurrents_srcstart_srcend, concurrents_len + 2 );
@@ -1799,9 +1799,9 @@ Move(
 
   // passing arbitrary numbers of outparams isn't pretty, when we have to tack some on.
   // PERF: allocating these outparam lists isn't great.
-  fixedarray_t<content_ptr_t*> concurrents_dst_srcend;
-  fixedarray_t<content_ptr_t*> concurrents_dst_srcstart;
-  fixedarray_t<content_ptr_t*> concurrents_srcstart_srcend;
+  stack_nonresizeable_t<content_ptr_t*> concurrents_dst_srcend;
+  stack_nonresizeable_t<content_ptr_t*> concurrents_dst_srcstart;
+  stack_nonresizeable_t<content_ptr_t*> concurrents_srcstart_srcend;
   Alloc( concurrents_dst_srcend,      concurrents_len + 2 );
   Alloc( concurrents_dst_srcstart,    concurrents_len + 2 );
   Alloc( concurrents_srcstart_srcend, concurrents_len + 2 );
@@ -1872,7 +1872,7 @@ Move(
   idx_t nreordered = 0;
 
   // bitlist for cycle detection.
-  fixedarray_t<u64> bitlist;
+  stack_nonresizeable_t<u64> bitlist;
   {
     auto quo = total_len / 64;
     auto rem = total_len % 64;
@@ -1884,7 +1884,7 @@ Move(
   }
 
   // bitlist for tracking which concurrents we've already updated.
-  fixedarray_t<u64> bitlist_concurrents;
+  stack_nonresizeable_t<u64> bitlist_concurrents;
   {
     auto quo = concurrents_len / 64;
     auto rem = concurrents_len % 64;
@@ -2040,10 +2040,10 @@ Swap(
 
   // passing arbitrary numbers of outparams isn't pretty, when we have to tack some on.
   // PERF: allocating these outparam lists isn't great.
-  fixedarray_t<content_ptr_t*> concurrents_aend_bstart_bend;
-  fixedarray_t<content_ptr_t*> concurrents_astart_aend_bend;
-  fixedarray_t<content_ptr_t*> concurrents_astart_bstart_bend;
-  fixedarray_t<content_ptr_t*> concurrents_astart_aend_bstart;
+  stack_nonresizeable_t<content_ptr_t*> concurrents_aend_bstart_bend;
+  stack_nonresizeable_t<content_ptr_t*> concurrents_astart_aend_bend;
+  stack_nonresizeable_t<content_ptr_t*> concurrents_astart_bstart_bend;
+  stack_nonresizeable_t<content_ptr_t*> concurrents_astart_aend_bstart;
   Alloc( concurrents_aend_bstart_bend,   concurrents_len + 3 );
   Alloc( concurrents_astart_aend_bend,   concurrents_len + 3 );
   Alloc( concurrents_astart_bstart_bend, concurrents_len + 3 );
@@ -2149,7 +2149,7 @@ Swap(
   idx_t nreordered = 0;
 
   // bitlist for cycle detection.
-  fixedarray_t<u64> bitlist;
+  stack_nonresizeable_t<u64> bitlist;
   {
     auto quo = total_len / 64;
     auto rem = total_len % 64;
@@ -2161,7 +2161,7 @@ Swap(
   }
 
   // bitlist for tracking which concurrents we've already updated.
-  fixedarray_t<u64> bitlist_concurrents;
+  stack_nonresizeable_t<u64> bitlist_concurrents;
   {
     auto quo = concurrents_len / 64;
     auto rem = concurrents_len % 64;
@@ -2652,7 +2652,7 @@ MoveL(
 Inl bool
 MoveStopAtNonWordChar( u8 c, void* data )
 {
-  return !InWord( c );
+  return !AsciiInWord( c );
 }
 
 content_ptr_t

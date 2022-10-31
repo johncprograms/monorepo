@@ -47,12 +47,14 @@
 // TODO: B+ tree
 
 
-#define TemplTC template< typename T, idx_t C >
+#define TCA    template< typename T, idx_t C, typename Allocation = allocation_heap_or_virtual_t >
+#define TCAA   template< typename T, idx_t C, typename Allocator = allocator_heap_or_virtual_t, typename Allocation = allocation_heap_or_virtual_t >
 
-#define BTREENODE btree_node_t<T,C>
-#define BTREE btree_t<T,C>
+#define BTREENODE btree_node_t<T, C, Allocation>
+#define BTREE btree_t<T, C, Allocator, Allocation>
 
-TemplTC struct
+TCA
+struct
 btree_node_t
 {
   // the memory packing looks like:
@@ -62,36 +64,46 @@ btree_node_t
   u32 M;
   T keys[C];
   BTREENODE* children[C+1];
+  Allocation allocn;
 };
-TemplTC Inl T*
+TCA Inl T*
 Keys( BTREENODE* node )
 {
   return node->keys;
 }
-TemplTC Inl BTREENODE**
+TCA Inl BTREENODE**
 Children( BTREENODE* node )
 {
   return node->children;
 }
+TCAA Inl BTREENODE*
+AllocateBtreeNode( Allocator& alloc )
+{
+  Allocation allocn = {};
+  auto node = Allocate<BTREENODE>( alloc, allocn, 1 );
+  node->M = 0;
+  Arrayzero( node->keys );
+  Arrayzero( node->children );
+  node->allocn = allocn;
+  return node;
+}
 
-TemplTC struct
+TCAA
+struct
 btree_t
 {
   BTREENODE* root;
-  plist_t* mem;
-  idx_t nbytes_node;
+  idx_t nbytes_node; // TODO: delete this if possible
+  Allocator alloc;
 };
-TemplTC Inl void
-Init( BTREE* t, plist_t* mem )
+TCAA Inl void
+Init( BTREE* t )
 {
-  auto nbytes_node = sizeof( BTREENODE );
-  auto root = Cast( BTREENODE*, AddBackBytes( *mem, _SIZEOF_IDX_T, nbytes_node ) );
-  Memzero( root, nbytes_node );
+  auto root = AllocateBtreeNode<T, C, Allocator, Allocation>( t->alloc );
   t->root = root;
-  t->mem = mem;
-  t->nbytes_node = nbytes_node;
+  t->nbytes_node = sizeof( BTREENODE );
 }
-TemplTC Inl void
+TCAA Inl void
 Lookup(
   BTREE* t,
   T key,
@@ -135,11 +147,11 @@ Lookup(
   UnreachableCrash();
 }
 
-TemplTC Inl void
+TCAA Inl void
 _FlattenValues(
   BTREE* t,
   BTREENODE* node,
-  array_t<T>* result
+  stack_resizeable_cont_t<T>* result
   )
 {
   auto M = node->M;
@@ -160,16 +172,16 @@ _FlattenValues(
     }
   }
 }
-TemplTC void
+TCAA void
 FlattenValues(
   BTREE* t,
-  array_t<T>* result
+  stack_resizeable_cont_t<T>* result
   )
 {
   _FlattenValues( t, t->root, result );
 }
 
-TemplTC Inl void
+TCAA Inl void
 _Validate(
   BTREE* t,
   BTREENODE* node,
@@ -218,7 +230,7 @@ _Validate(
     }
   }
 }
-TemplTC Inl void
+TCAA Inl void
 Validate(
   BTREE* t
   )
@@ -229,7 +241,7 @@ Validate(
   AssertCrash( min_subtree <= max_subtree );
 }
 
-TemplTC ForceInl void
+TCA ForceInl void
 _InsertAtIdxAssumingRoom(
   BTREENODE* node,
   T* keys,
@@ -269,7 +281,9 @@ _InsertAtIdxAssumingRoom(
   node->M += 1;
 }
 
-TemplTC struct
+
+#define PARENTINFO   parent_info_t<T, C, Allocation>
+TCA struct
 parent_info_t
 {
   BTREENODE* node;
@@ -286,11 +300,11 @@ parent_info_t
     // for internal nodes as we walk upwards, child_left, child_right are the result of the previous iterations's split.
     // we need to store these in the node's children to maintain the tree structure.
     //
-    TemplTC Inl void
+    TCA Inl void
     _Insert_WalkUpwardsRecur(
       BTREE* t,
       T key,
-      array_t<parent_info_t<T,C>>* parent_chain,
+      stack_resizeable_cont_t<PARENTINFO>* parent_chain,
       BTREENODE* node,
       u32 idx,
       BTREENODE* child_left,
@@ -626,11 +640,11 @@ parent_info_t
 
 #endif
 
-TemplTC Inl void
+TCAA Inl void
 _Insert_WalkUpwards(
   BTREE* t,
   T key,
-  array_t<parent_info_t<T,C>>* parent_chain,
+  stack_resizeable_cont_t<PARENTINFO>* parent_chain,
   BTREENODE* node,
   u32 idx
   )
@@ -652,8 +666,7 @@ _Insert_WalkUpwards(
 
     AssertCrash( M == C );
 
-    auto new_right = Cast( BTREENODE*, AddBackBytes( *t->mem, _SIZEOF_IDX_T, nbytes_node ) );
-    Memzero( new_right, nbytes_node );
+    auto new_right = AllocateBtreeNode<T, C, Allocator, Allocation>( t->alloc );
     auto new_right_children = Children<T>( new_right );
     auto new_right_keys = Keys<T>( new_right );
 
@@ -902,8 +915,7 @@ _Insert_WalkUpwards(
       // we're at the root, and it's full.
       // this means we need to make a new root, and set it's children to [ left, new_right ].
       //
-      auto new_root = Cast( BTREENODE*, AddBackBytes( *t->mem, _SIZEOF_IDX_T, nbytes_node ) );
-      Memzero( new_root, nbytes_node );
+      auto new_root = AllocateBtreeNode<T, C, Allocator, Allocation>( t->alloc );
       new_root->M = 1;
       auto new_root_children = Children<T>( new_root );
       auto new_root_keys = Keys<T>( new_root );
@@ -973,12 +985,12 @@ _Insert_WalkUpwards(
   }
 }
 
-TemplTC Inl void
+TCAA Inl void
 Insert(
   BTREE* t,
   T key,
   bool* already_there,
-  array_t<parent_info_t<T,C>>* parent_chain
+  stack_resizeable_cont_t<PARENTINFO>* parent_chain
   )
 {
 #if DEBUGSLOW
@@ -1040,7 +1052,7 @@ Insert(
   }
 
   *already_there = 0;
-  _Insert_WalkUpwards<T,C>( t, key, parent_chain, node, idx );
+  _Insert_WalkUpwards( t, key, parent_chain, node, idx );
 
 #if DEBUGSLOW
   Validate( t );
@@ -1059,7 +1071,7 @@ Insert(
   if the leaf node has room for insertion,
 
 
-TemplTC Inl void
+TCAA Inl void
 Insert(
   BTREE* t,
   T key,
@@ -1116,10 +1128,10 @@ Insert(
 // - node is the leaf part of parent_chain
 // - node has fewer than the minimum allowed number of keys: ( M < C / 2 )
 //
-TemplTC Inl void
+TCAA Inl void
 _DeleteRebalance_WalkUpwardsRecur(
   BTREE* t,
-  array_t<parent_info_t<T,C>>* parent_chain,
+  stack_resizeable_cont_t<PARENTINFO>* parent_chain,
   BTREENODE* node
   )
 {
@@ -1263,12 +1275,12 @@ _DeleteRebalance_WalkUpwardsRecur(
   }
 }
 
-TemplTC Inl void
+TCAA Inl void
 DeleteRecur(
   BTREE* t,
   T key,
   bool* deleted,
-  array_t<parent_info_t<T,C>>* parent_chain
+  stack_resizeable_cont_t<PARENTINFO>* parent_chain
   )
 {
 #if DEBUGSLOW
@@ -1415,13 +1427,13 @@ static void
 TestBtree()
 {
   constexpr idx_t C = 10;
-  btree_t<u32, C> t;
-  plist_t mem;
+  btree_t<u32, C, allocator_pagelist_t, allocation_pagelist_t> t;
+  pagelist_t mem;
   Init( mem, 64000 );
-  Init( &t, &mem );
-  array_t<parent_info_t<u32, C>> infos;
+  Init( &t );
+  stack_resizeable_cont_t<parent_info_t<u32, C, allocation_pagelist_t>> infos;
   Alloc( infos, 1024 );
-  array_t<u32> flat;
+  stack_resizeable_cont_t<u32> flat;
   Alloc( flat, 1024 );
   u32 N = 100;
   Fori( u32, i, 0, N ) {
@@ -1577,8 +1589,7 @@ Insert(
       //
       // haven't yet created a child_node in this slot, and we're out of room.
       //
-      child_node = Cast( BTREENODE*, AddBackBytes( *t->mem, _SIZEOF_IDX_T, nbytes_node ) );
-      Memzero( child_node, nbytes_node );
+      child_node = AllocateBtreeNode<T, C, Allocator, Allocation>( t->alloc );
       auto child_keys = Keys<T>( child_node );
       auto child_children = Children<T>( child_node );
 
