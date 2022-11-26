@@ -4,7 +4,7 @@
 
 // COMPILE-TIME OPTIONS
 
-#ifndef OPENGL_INSTEAD_OF_SOFTWARE
+#if !defined(OPENGL_INSTEAD_OF_SOFTWARE)
 #error make a choice for OPENGL_INSTEAD_OF_SOFTWARE; either 0 or 1.
 #endif
 
@@ -26,7 +26,7 @@ glwkeybind_t
 
 
 
-#ifdef WIN
+#if defined(WIN)
 
   #define GET_X_LPARAM(lp)                        ((int)(short)LOWORD(lp))
   #define GET_Y_LPARAM(lp)                        ((int)(short)HIWORD(lp))
@@ -88,7 +88,7 @@ SliceFromMouseBtn( glwmousebtn_t t )
   }
 }
 
-#ifdef WIN
+#if defined(WIN)
   u32 c_mk_flags[] = {
     #define ENTRY( _name, _val, _win_mk, _win_vk )   _win_mk,
     MOUSEBTNMAP( ENTRY )
@@ -640,7 +640,7 @@ Enumc( glwcursortype_t )
 Inl void
 _SetCursortype( glwcursortype_t type )
 {
-#ifdef WIN
+#if defined(WIN)
   switch( type ) {
     case glwcursortype_t::arrow:  SetCursor( LoadCursor( 0, IDC_ARROW ) );  break;
     case glwcursortype_t::ibeam:  SetCursor( LoadCursor( 0, IDC_IBEAM ) );  break;
@@ -648,7 +648,7 @@ _SetCursortype( glwcursortype_t type )
     case glwcursortype_t::wait :  SetCursor( LoadCursor( 0, IDC_WAIT  ) );  break;
     default: UnreachableCrash();
   }
-#elifdef MAC
+#elif defined(MAC)
   ImplementCrash();
 #else
 #error Unsupported platform
@@ -700,9 +700,9 @@ glwclient_t
   vec2<s32> m;
   u32 dpi;
 
-#ifdef WIN
+#if defined(WIN)
   HANDLE timer_anim;
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unexpected platform
 #endif
@@ -716,7 +716,7 @@ glwclient_t
     __m128* fullscreen_bitmap_argb_unpacked;
   #endif
   
-#ifdef WIN
+#if defined(WIN)
   HDC window_dc; // handle to display context.
   #if OPENGL_INSTEAD_OF_SOFTWARE
     HGLRC hgl; // handle to opengl context.
@@ -727,7 +727,7 @@ glwclient_t
   #endif // OPENGL_INSTEAD_OF_SOFTWARE
   HWND hwnd; // handle to window.
   HINSTANCE hi; // handle to WinAPI module the window is running under.
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unexpected platform
 #endif
@@ -1011,9 +1011,9 @@ GlwSetCursorType( glwclient_t& client, glwcursortype_t type )
 void
 GlwSetCursorVisible( glwclient_t& client, bool visible )
 {
-#ifdef WIN
+#if defined(WIN)
   ShowCursor( visible );
-#elifdef MAC
+#elif defined(MAC)
   ImplementCrash();
 #else
 #error Unsupported platform
@@ -1038,7 +1038,7 @@ GlwSetCursorVisible( glwclient_t& client, bool visible )
 
 
 
-#ifdef WIN
+#if defined(WIN)
   struct
   glwkeyvkcode_t
   {
@@ -1093,13 +1093,13 @@ _InitKeyTable()
 {
   auto keycount = Cast( enum_t, glwkey_t::count );
 
-#ifdef WIN
+#if defined(WIN)
   Fori( enum_t, i, 0, keycount ) { // exclude 'count' as an entry
     auto keyvkcode = g_glwkeyvkcodes[i];
     g_key_os_from_glw[Cast( enum_t, keyvkcode.key )] = keyvkcode.vkcode;
     g_key_glw_from_os[keyvkcode.vkcode] = keyvkcode.key;
   }
-#elifdef MAC
+#elif defined(MAC)
   ImplementCrash();
 #else
 #error Unsupported platform
@@ -1145,7 +1145,7 @@ _KillKeyTable()
   Kill( &g_key_from_string );
 }
 
-#ifdef WIN
+#if defined(WIN)
   Inl glwkey_t
   KeyGlwFromOS( WPARAM key )
   {
@@ -1215,7 +1215,7 @@ GlwKeybind( glwkey_t key, glwkeybind_t& bind )
   }
 
   // make sure specified modifier keys are already dn.
-#ifdef WIN
+#if defined(WIN)
   #define ELIMINATE_ALREADYDN( name_ ) \
     if( bind.name_ != glwkey_t::none ) { \
       u16 key_state = GetKeyState( KeyOSFromGlw( bind.name_ ) ); \
@@ -1247,7 +1247,7 @@ GlwKeybind( glwkey_t key, glwkeybind_t& bind )
 
   #undef ELIMINATE_CONFLICT
 
-#elifdef MAC
+#elif defined(MAC)
   ImplementCrash();
 #else
 #error Unsupported platform
@@ -1297,13 +1297,13 @@ GlwKeybind( glwkey_t key, glwkeybind_t& bind )
   #if RENDER_UNPACKED
     MemHeapFree( client.fullscreen_bitmap_argb_unpacked );
   #endif
-  #ifdef WIN
+  #if defined(WIN)
     DeleteObject( client.fullscreen_bitmap );
     client.fullscreen_bitmap = 0;
     SelectObject( client.fullscreen_bitmap_dc, 0 );
     DeleteDC( client.fullscreen_bitmap_dc );
     client.fullscreen_bitmap_dc = 0;
-  #elifdef MAC
+  #elif defined(MAC)
     ImplementCrash();
   #else
     #error Unsupported platform
@@ -1313,7 +1313,7 @@ GlwKeybind( glwkey_t key, glwkeybind_t& bind )
   Inl void
   ResizeTargetToMatchDim( glwclient_t& client )
   {
-#ifdef WIN
+#if defined(WIN)
     DeleteTarget( client );
 
     client.fullscreen_bitmap_dc = CreateCompatibleDC( client.window_dc );
@@ -1346,7 +1346,7 @@ GlwKeybind( glwkey_t key, glwkeybind_t& bind )
     GetObject( client.fullscreen_bitmap, sizeof( ds ), &ds );
 
     SelectObject( client.fullscreen_bitmap_dc, client.fullscreen_bitmap );
-#elifdef MAC
+#elif defined(MAC)
     ImplementCrash();
 #else
 #error Unsupported platform
@@ -1400,7 +1400,7 @@ Viewport( glwclient_t& client )
 }
 
 
-#ifdef WIN
+#if defined(WIN)
   Inl vec2<u32>
   _GetMonitorSize( HWND hwnd )
   {
@@ -1554,7 +1554,7 @@ _Render( glwclient_t& client )
     glFlush();  glVerify();
 #else // !OPENGL_INSTEAD_OF_SOFTWARE
 
-#ifdef WIN
+#if defined(WIN)
     Prof( BlitToScreen );
     BOOL bitblt_success = BitBlt(
       client.window_dc,
@@ -1566,7 +1566,7 @@ _Render( glwclient_t& client )
       );
     AssertWarn( bitblt_success );
     ProfClose( BlitToScreen );
-#elifdef MAC
+#elif defined(MAC)
     ImplementCrash();
 #else
 #error Unsupported platform
@@ -1614,7 +1614,7 @@ _Render( glwclient_t& client )
 #endif // OPENGL_INSTEAD_OF_SOFTWARE
 }
 
-#ifdef WIN
+#if defined(WIN)
   Inl void
   CheckForMouseMoveAndTriggerEvent(
     glwclient_t* client,
@@ -1672,7 +1672,7 @@ FireMouseButtonEvent(
   }
 }
 
-#ifdef WIN
+#if defined(WIN)
   LRESULT CALLBACK
   WindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
   {
@@ -2011,11 +2011,11 @@ Inl glwkeymodifiersdown_t
 GlwKeyModifiersDown()
 {
   glwkeymodifiersdown_t r;
-#ifdef WIN
+#if defined(WIN)
   r.ctrl  = OSKeyIsDown( KeyOSFromGlw( glwkey_t::ctrl  ) );
   r.shift = OSKeyIsDown( KeyOSFromGlw( glwkey_t::shift ) );
   r.alt   = OSKeyIsDown( KeyOSFromGlw( glwkey_t::alt   ) );
-#elifdef MAC
+#elif defined(MAC)
   ImplementCrash();
 #else
 #error Unsupported platform
@@ -2032,7 +2032,7 @@ AnyDown( glwkeymodifiersdown_t m )
 void
 GlwInit()
 {
-#ifdef WIN
+#if defined(WIN)
   // Opt out of windows's dpi auto-scaling, so we can have hi-res fonts on hi-dpi screens!
   auto res = SetProcessDpiAwareness( PROCESS_PER_MONITOR_DPI_AWARE );
   if( res != S_OK ) {
@@ -2082,7 +2082,7 @@ GlwInitWindow(
 
   client.m = _vec2<s32>( 0, 0 );
 
-#ifdef WIN
+#if defined(WIN)
   // TODO: abstract this a bit, so it's not so flaky initializing a waitable timer.
   constant s64 delay_over_millisec = -10000;
   client.timer_anim = CreateWaitableTimer( 0, 0, 0 );
@@ -2107,7 +2107,7 @@ GlwInitWindow(
     );
 #endif // OPENGL_INSTEAD_OF_SOFTWARE
 
-#ifdef WIN
+#if defined(WIN)
   client.hi = GetModuleHandle( 0 );
 
   // CREATE THE WINDOW
@@ -2127,7 +2127,7 @@ GlwInitWindow(
   auto dst_title = AddBack( client.cstr_title, title_len + 1 );
   CstrCopy( dst_title, title, title_len );
 
-#ifdef WIN
+#if defined(WIN)
   // Autogen an icon with a random color
   vec3<f32> palette[] = {
     _vec3<f32>( 1, 0, 0 ),
@@ -2290,7 +2290,7 @@ GlwInitWindow(
     WGL_CONTEXT_MINOR_VERSION_ARB, 3,
     WGL_CONTEXT_FLAGS_ARB, 0
       | WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB
-#ifdef _DEBUG
+#if defined(_DEBUG)
       | WGL_CONTEXT_DEBUG_BIT_ARB
 #endif
     ,
@@ -2349,7 +2349,7 @@ GlwInitWindow(
   client.target_valid = 0;
 
   if( auto_dim_windowed ) {
-#ifdef WIN
+#if defined(WIN)
     auto monitor_size = _GetMonitorSize( client.hwnd );
     dim_windowed = monitor_size / 2u;
 #endif
@@ -2360,7 +2360,7 @@ GlwInitWindow(
   client.dimf.x = Cast( f32, client.dim.x );
   client.dimf.y = Cast( f32, client.dim.y );
   
-#ifdef WIN
+#if defined(WIN)
   // WARNING!!!
   // this triggers a WM_SIZE message, which we also use for handling resize.
   // our methodology here is to create everything with a dummy size, then resize at the last possible moment, here.
@@ -2377,7 +2377,7 @@ GlwInitWindow(
 
   _SetCursortype( cursortype );
   client.cursortype = cursortype;
-#ifdef WIN
+#if defined(WIN)
   ShowCursor( cursor_visible );
 
   client.dpi = GetDpiForWindow( client.hwnd );
@@ -2417,7 +2417,7 @@ GlwKillWindow( glwclient_t& client )
   AssertWarn( wglDeleteContext( client.hgl ) );
 #endif // !OPENGL_INSTEAD_OF_SOFTWARE
 
-#ifdef WIN
+#if defined(WIN)
   AssertWarn( ReleaseDC( client.hwnd, client.window_dc ) );
   AssertWarn( DestroyWindow( client.hwnd ) );
   AssertWarn( UnregisterClass( Cast( char*, client.cstr_title.mem ), client.hi ) );
@@ -2439,7 +2439,7 @@ GlwKillWindow( glwclient_t& client )
   Kill( client.texid_map );
 #endif // OPENGL_INSTEAD_OF_SOFTWARE
 
-#ifdef WIN
+#if defined(WIN)
   CloseHandle( client.timer_anim );
 #endif
 }
@@ -2454,7 +2454,7 @@ GlwKill()
 Inl void
 SendToClipboardText( glwclient_t& client, u8* text, idx_t text_len )
 {
-#ifdef WIN
+#if defined(WIN)
   HGLOBAL win_mem = {};
 
 #if 0
@@ -2494,7 +2494,7 @@ SendToClipboardText( glwclient_t& client, u8* text, idx_t text_len )
 
   // cannot be freed before CloseClipboard call.
   GlobalFree( win_mem );
-#elifdef MAC
+#elif defined(MAC)
   ImplementCrash();
 #else
 #error Unsupported platform
@@ -2508,7 +2508,7 @@ typedef USECLIPBOARDTXT( *pfn_useclipboardtxt_t );
 Inl void
 GetFromClipboardText( glwclient_t& client, pfn_useclipboardtxt_t UseClipboardTxt, void* misc )
 {
-#ifdef WIN
+#if defined(WIN)
 #if 0
   HWND hwnd = GetForegroundWindow();
   AssertWarn( hwnd );
@@ -2539,7 +2539,7 @@ GetFromClipboardText( glwclient_t& client, pfn_useclipboardtxt_t UseClipboardTxt
   }
 
   AssertWarn( CloseClipboard() );
-#elifdef MAC
+#elif defined(MAC)
   ImplementCrash();
 #else
 #error Unsupported platform
@@ -2562,7 +2562,7 @@ ReserveGlStreams( glwclient_t& client, idx_t count )
 }
 #endif
 
-#ifdef WIN
+#if defined(WIN)
 
 #if OPENGL_INSTEAD_OF_SOFTWARE
 
@@ -2679,7 +2679,7 @@ GlwMainLoop( glwclient_t& client )
   } while( client.alive );
 }
 
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif

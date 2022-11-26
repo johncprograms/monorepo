@@ -31,6 +31,7 @@
 #include "ds_hashset_cstyle.h"
 #include "filesys.h"
 #include "timedate.h"
+#include "thread_atomics.h"
 #include "threading.h"
 #define LOGGER_ENABLED   0
 #include "logger.h"

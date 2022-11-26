@@ -1,6 +1,6 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#ifdef WIN
+#if defined(WIN)
   Inl void
   MemVirtualFree( void* mem )
   {
@@ -15,7 +15,7 @@
     void* mem = VirtualAlloc( 0, nbytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE );
     return mem;
   }
-#elifdef MAC
+#elif defined(MAC)
 
   #define stack_resizeable_cont_t signalstack_t
   #include <sys/types.h>

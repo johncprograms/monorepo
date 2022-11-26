@@ -235,6 +235,8 @@ Inl void Reset( allocator_pagelist_t& alloc )
 
 
 
+#if defined(TEST)
+
 Inl void
 TestPagelist()
 {
@@ -275,6 +277,10 @@ TestPagelist()
     Kill( list );
   }
 }
+
+#endif // defined(TEST)
+
+
 
 #if 0 // This doesn't work as-is, since each page doesn't maintain a 'top' count.
 

@@ -38,6 +38,7 @@
 #include "ds_mtqueue_mrsw_nonresizeable.h"
 #include "ds_mtqueue_srmw_nonresizeable.h"
 #include "ds_mtqueue_srsw_nonresizeable.h"
+#include "thread_atomics.h"
 #include "threading.h"
 #define LOGGER_ENABLED   0
 #include "logger.h"
@@ -3001,7 +3002,7 @@ vartable_t
   // note vartables form a tree, since you can have arbitrary nested scopes.
   list_t<vartable_t> vartables;
   list_t<namedvar_t> namedvars;
-#ifdef _DEBUG
+#if defined(_DEBUG)
   scope_t* scope; // TODO: probably helpful for debugging, but not really necessary.
 #endif
 };
@@ -5848,7 +5849,7 @@ TypeScope(
   else {
     auto vartable_parent = ctx->scopestack.mem[ ctx->scopestack.len - 1 ];
     auto vartable = AddBackList( ctx, &vartable_parent->vartables );
-#ifdef _DEBUG
+#if defined(_DEBUG)
     vartable->scope = scope;
 #endif
     *AddBack( ctx->scopestack ) = vartable;
@@ -6150,7 +6151,7 @@ TypeGlobalScope(
       function->bytecount_rets += bytecount_ret;
       function->bytecount_frame += bytecount_ret;
     }
-#ifdef _DEBUG
+#if defined(_DEBUG)
     function->vartable.scope = fndefn->scope;
 #endif
     ctx->current_function = function;

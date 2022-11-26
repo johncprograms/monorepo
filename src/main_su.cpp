@@ -1,7 +1,7 @@
 // build:window_x64_debug
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#ifdef WIN
+#if defined(WIN)
 
 #define FINDLEAKS 0
 #include "core_cruntime.h"
@@ -33,6 +33,7 @@
 #include "ds_hashset_cstyle.h"
 #include "filesys.h"
 #include "timedate.h"
+#include "thread_atomics.h"
 #include "threading.h"
 #define LOGGER_ENABLED   0
 #include "logger.h"
@@ -428,7 +429,7 @@ Main( u8* cmdline, idx_t cmdline_len )
 
 
 
-#ifdef _DEBUG
+#if defined(_DEBUG)
 
 int
 main( int argc, char** argv )

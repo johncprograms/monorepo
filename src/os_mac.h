@@ -1,6 +1,6 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#ifdef MAC
+#if defined(MAC)
 
   #define _countof( array )   ( sizeof( array ) / sizeof( ( array )[0] ) )
 

@@ -35,6 +35,7 @@
 #include "ds_mtqueue_mrsw_nonresizeable.h"
 #include "ds_mtqueue_srmw_nonresizeable.h"
 #include "ds_mtqueue_srsw_nonresizeable.h"
+#include "thread_atomics.h"
 #include "threading.h"
 #define LOGGER_ENABLED   0
 #include "logger.h"
@@ -46,7 +47,7 @@
 #include "mainthread.h"
 
 
-#ifdef WIN
+#if defined(WIN)
 
 // TODO: move this to test!
 
@@ -496,7 +497,7 @@ Main( u8* cmdline, idx_t cmdline_len )
 
 
 
-#ifdef _DEBUG
+#if defined(_DEBUG)
 
 int
 main( int argc, char** argv )

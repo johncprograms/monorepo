@@ -401,6 +401,8 @@ SplitBySpacesAndCopyContents(
 
 
 
+#if defined(TEST)
+
 static void
 TestCoreText()
 {
@@ -458,3 +460,5 @@ TestCoreText()
     }
   }
 }
+
+#endif // defined(TEST)

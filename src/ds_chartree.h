@@ -61,6 +61,10 @@ Uniquify( CHARTREE* tree, slice_t str )
   return Cast( idx_t, page->child_pages[0] );
 }
 
+
+
+#if defined(TEST)
+
 void
 TestChartree()
 {
@@ -86,3 +90,5 @@ TestChartree()
 
   Kill( mem );
 }
+
+#endif // defined(TEST)

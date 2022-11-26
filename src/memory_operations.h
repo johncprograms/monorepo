@@ -123,6 +123,14 @@
 #endif
 
 Templ Inl void
+TSet( T* src, idx_t src_len, T value )
+{
+  For( i, 0, src_len ) {
+    src[i] = value;
+  }
+}
+
+Templ Inl void
 TMove( T* dst, T* src, idx_t num_elements )
 {
   Memmove( dst, src, num_elements * sizeof( T ) );
@@ -289,7 +297,7 @@ MemScanL( const void* src, idx_t src_len, const void* key, idx_t elemsize )
   return 0;
 }
 
-#ifdef WIN
+#if defined(WIN)
   Inl void
   MemzeroAligned16( void* mem, idx_t len )
   {

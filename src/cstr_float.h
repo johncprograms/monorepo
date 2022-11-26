@@ -1,6 +1,6 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#ifdef MAC
+#if defined(MAC)
   int sprintf_s(
      char *buffer,
      size_t sizeOfBuffer,
@@ -984,6 +984,8 @@ CsToFloat32(
 
 
 
+#if defined(TEST)
+
 static void
 TestCstrFloat()
 {
@@ -1037,3 +1039,5 @@ TestCstrFloat()
     Kill( e );
   }
 }
+
+#endif // defined(TEST)

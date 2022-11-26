@@ -395,6 +395,8 @@ GetElement(
 
 
 
+#if defined(TEST)
+
 static void
 TestIdxHashset()
 {
@@ -499,3 +501,5 @@ TestIdxHashset()
 
   Kill( set );
 }
+
+#endif // defined(TEST)

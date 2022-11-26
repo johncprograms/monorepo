@@ -10,8 +10,16 @@ u64 _tzcnt_u64( u64 a );
 u32 _tzcnt_u32( u32 a );
 s32 _popcnt64( s64 a );
 s32 _popcnt32( s32 a );
-u8 _BitScanForward64( u32* index, u64 mask );
-u8 _BitScanForward( u32* index, u32 mask );
+
+#if defined(WIN)
+  #define BitScanForward_u32( a, b )     _BitScanForward( Cast( unsigned long*, ( a ) ), b )
+  #define BitScanForward_u64( a, b )   _BitScanForward64( Cast( unsigned long*, ( a ) ), b )
+#elif defined(MAC)
+  u8 _BitScanForward64( u32* index, u64 mask );
+  u8 _BitScanForward( u32* index, u32 mask );
+#else
+#error
+#endif
 
 
 #if _SIZEOF_IDX_T == 4
@@ -25,8 +33,8 @@ u8 _BitScanForward( u32* index, u32 mask );
   #define _popcnt_idx_t( x ) \
     Cast( u32, _popcnt32( x ) )
 
-  #define _BitScanForward_idx_t( a, b ) \
-    _BitScanForward( ( a ), ( b ) )
+  #define BitScanForward_idx_t( a, b ) \
+    BitScanForward_u32( ( a ), ( b ) )
 
 #elif _SIZEOF_IDX_T == 8
 
@@ -39,8 +47,8 @@ u8 _BitScanForward( u32* index, u32 mask );
   #define _popcnt_idx_t( x ) \
     Cast( u32, _popcnt64( x ) )
 
-  #define _BitScanForward_idx_t( a, b ) \
-    _BitScanForward64( ( a ), ( b ) )
+  #define BitScanForward_idx_t( a, b ) \
+    BitScanForward_u64( ( a ), ( b ) )
 
 #else
   #error Unexpected _SIZEOF_IDX_T value!
@@ -187,6 +195,8 @@ AModB( s64 a, u64 b )
 }
 
 
+#if defined(TEST)
+
 static void
 TestMathInteger()
 {
@@ -241,3 +251,5 @@ TestMathInteger()
     AssertCrash( r == test.r );
   }
 }
+
+#endif // defined(TEST)

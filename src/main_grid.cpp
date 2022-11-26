@@ -1,7 +1,7 @@
 // build:window_x64_debug
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#ifdef WIN
+#if defined(WIN)
 
 #define FINDLEAKS   0
 #include "core_cruntime.h"
@@ -35,6 +35,7 @@
 #include "allocator_pagelist.h"
 #include "filesys.h"
 #include "timedate.h"
+#include "thread_atomics.h"
 #include "threading.h"
 #define LOGGER_ENABLED   1
 #include "logger.h"
@@ -4186,7 +4187,7 @@ __OnRender( AppOnRender )
   auto& font = GetFont( app, Cast( enum_t, fontid_t::normal ) );
   auto zrange = _vec2<f32>( 0, 1 );
 
-#ifdef _DEBUG
+#if defined(_DEBUG)
   cell2_t c_foo = {};
   c_foo.eval_generation = 2;
 #endif
@@ -4754,7 +4755,7 @@ __OnWindowEvent( AppOnWindowEvent )
 
 
 
-#ifdef _DEBUG
+#if defined(_DEBUG)
   struct
   testcase_t
   {
@@ -4809,7 +4810,7 @@ Main( stack_resizeable_cont_t<slice_t>& args )
   auto fontsize_normal = GetPropFromDb( f32, f32_fontsize_normal );
   auto filename_font_normal = GetPropFromDb( slice_t, string_filename_font_normal );
 
-#ifdef _DEBUG // tokenize/parse testing
+#if defined(_DEBUG) // tokenize/parse testing
     compileerror_t error = {};
     stack_resizeable_cont_t<token_t> tokens;
     Alloc( tokens, 1024 );

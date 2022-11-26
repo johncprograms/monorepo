@@ -3,10 +3,10 @@
 
 #if _SIZEOF_IDX_T == 4
 
-  #ifdef WIN
+  #if defined(WIN)
     #define GetThreadIdFast() \
       ( *Cast( u32*, Cast( u8*, __readfsdword( 0x18 ) ) + 0x24 ) )
-  #elifdef MAC
+  #elif defined(MAC)
     #define GetThreadIdFast()   (0)
   #else
     #error Unsupported platform
@@ -14,10 +14,10 @@
 
 #elif _SIZEOF_IDX_T == 8
 
-  #ifdef WIN
+  #if defined(WIN)
     #define GetThreadIdFast() \
       ( *Cast( u32*, Cast( u8*, __readgsqword( 0x30 ) ) + 0x48 ) )
-  #elifdef MAC
+  #elif defined(MAC)
     #define GetThreadIdFast()   (0)
   #else
     #error Unsupported platform
@@ -110,7 +110,7 @@ Execute(
   void* misc1
   )
 {
-#ifdef WIN
+#if defined(WIN)
   HANDLE child_stdout_r = INVALID_HANDLE_VALUE;
   HANDLE child_stdout_w = INVALID_HANDLE_VALUE;
   HANDLE child_stdin_r = INVALID_HANDLE_VALUE;
@@ -252,7 +252,7 @@ Execute(
   CloseHandle( process.hProcess );
   CloseHandle( process.hThread );
   return exit;
-#elifdef MAC
+#elif defined(MAC)
   return 0;
 #else
 #error Unsupported platform
@@ -263,7 +263,7 @@ Execute(
 Inl void
 PinThreadToOneCore()
 {
-#ifdef WIN
+#if defined(WIN)
   DWORD_PTR process_mask, system_mask;
   CompileAssert( sizeof( DWORD_PTR ) == sizeof( sidx_t ) );
   AssertWarn( GetProcessAffinityMask( GetCurrentProcess(), &process_mask, &system_mask ) );
@@ -283,53 +283,14 @@ PinThreadToOneCore()
 
   u64 prev_thread_mask = SetThreadAffinityMask( GetCurrentThread(), process_mask );
   AssertWarn( prev_thread_mask );
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
 }
 
 
-u32 InterlockedCompareExchange( volatile u32* dst, u32 exchange, u32 compare );
-u64 InterlockedCompareExchange( volatile u64* dst, u64 exchange, u64 compare );
-void _mm_pause();
-void _ReadWriteBarrier();
-
-#define CAS( dst, compare, exchange ) \
-  ( compare == InterlockedCompareExchange( dst, exchange, compare ) )
-
-
-u32 InterlockedIncrement( volatile u32* x );
-u64 InterlockedIncrement( volatile u64* x );
-
-#define GetValueBeforeAtomicInc( dst ) \
-  ( InterlockedIncrement( dst ) - 1 )
-
-#define GetValueAfterAtomicInc( dst ) \
-  ( InterlockedIncrement( dst ) )
-
-
-typedef volatile idx_t lock_t;
-
-Inl void
-Lock( lock_t* lock )
-{
-  while( !CAS( lock, 0, 1 ) ) {
-    _mm_pause();
-  }
-}
-
-Inl void
-Unlock( lock_t* lock )
-{
-  *lock = 0;
-  _ReadWriteBarrier();
-}
-
-
-
-
-#ifdef WIN
+#if defined(WIN)
 #define STDCALLWIN __stdcall
 #else
 #define STDCALLWIN
@@ -445,9 +406,9 @@ maincompletedqueue_entry_t
 struct
 taskthread_t
 {
-#ifdef WIN
+#if defined(WIN)
   HANDLE wake;
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -476,9 +437,9 @@ Kill( taskthread_t& t )
 struct
 mainthread_t
 {
-#ifdef WIN
+#if defined(WIN)
   volatile HANDLE wake_asynctaskscompleted;
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -490,9 +451,9 @@ mainthread_t
 #else
 #endif
 
-#ifdef WIN
+#if defined(WIN)
   stack_resizeable_cont_t<HANDLE> taskthread_handles; // TODO: stack_nonresizeable_t / buffer_t
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -509,7 +470,7 @@ TaskThread( void* misc )
 {
   ThreadInit();
 
-#ifdef WIN
+#if defined(WIN)
 // Only supported on Win10+.
 //  HRESULT hr = SetThreadDescription( GetCurrentThread(), L"TaskThread" );
 //  AssertWarn( SUCCEEDED( hr ) );
@@ -544,7 +505,7 @@ TaskThread( void* misc )
       Log( "Task thread failed WaitForSingleObject with %d", wait );
     }
   }
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -590,12 +551,12 @@ PushAsyncTask( idx_t taskthreadidx, asyncqueue_entry_t* entry )
   // note that we kind of need to ensure at least one thread gets woken up.
   // i probably need to do more reading/testing of SetEvent/WaitFor calls to make sure we're doing this right.
   //
-#ifdef WIN
+#if defined(WIN)
   FORLEN( t, i, g_mainthread.taskthreads )
     auto r = SetEvent( t->wake );
     AssertCrash( r );
   }
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -635,10 +596,10 @@ PushMainTaskCompleted( taskthread_t* t, maincompletedqueue_entry_t* me )
     EnqueueS( t->output, me, &success );
   }
 
-#ifdef WIN
+#if defined(WIN)
   auto r = SetEvent( g_mainthread.wake_asynctaskscompleted );
   AssertCrash( r );
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -660,7 +621,7 @@ MainThreadInit()
 
   ThreadInit();
 
-#ifdef WIN
+#if defined(WIN)
   SYSTEM_INFO si = { 0 };
   GetSystemInfo( &si );
   AssertCrash( si.dwNumberOfProcessors > 0 );
@@ -700,7 +661,7 @@ MainThreadInit()
     *handle = Cast( HANDLE, _beginthreadex( 0, 0, TaskThread, t, 0, 0 ) );
     AssertCrash( *handle );
   }
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -712,7 +673,7 @@ SignalQuitAndWaitForTaskThreads()
   g_mainthread.signal_quit = 1;
   _ReadWriteBarrier();
 
-#ifdef WIN
+#if defined(WIN)
   ForLen( i, g_mainthread.taskthreads ) {
     auto taskthread = g_mainthread.taskthreads.mem + i;
     auto r = SetEvent( taskthread->wake );
@@ -728,7 +689,7 @@ SignalQuitAndWaitForTaskThreads()
     );
   AssertCrash( waitres != WAIT_FAILED );
   AssertCrash( waitres != WAIT_TIMEOUT );
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -737,9 +698,9 @@ SignalQuitAndWaitForTaskThreads()
 void
 MainThreadKill()
 {
-#ifdef WIN
+#if defined(WIN)
   Free( g_mainthread.taskthread_handles );
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -765,6 +726,8 @@ MainThreadKill()
 
 
 
+#if defined(TEST)
+
 __ExecuteOutput( OutputForExecute )
 {
   using pa_t = stack_resizeable_pagelist_t<u8>;
@@ -772,6 +735,7 @@ __ExecuteOutput( OutputForExecute )
   auto dst = AddBack( *pa, message->len );
   Memmove( dst, ML( *message ) );
 }
+
 Inl void
 TestExecute()
 {
@@ -785,3 +749,5 @@ TestExecute()
   AssertCrash( MemEqual( ML( expected ), ML( *output_pos.page ) ) );
   Kill( output );
 }
+
+#endif // defined(TEST)

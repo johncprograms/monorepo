@@ -33,9 +33,9 @@ TimeTSC()
 Inl void
 TimeSleep( u32 milliseconds )
 {
-#ifdef WIN
+#if defined(WIN)
   Sleep( milliseconds ); // arg, winAPI! let me have a nano TimeSleep!
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -45,7 +45,7 @@ TimeSleep( u32 milliseconds )
 void
 TimeInit()
 {
-#ifdef WIN
+#if defined(WIN)
   u64 t0 = __rdtsc();
 
   u64 qpc_per_sec;
@@ -281,7 +281,7 @@ TimeInit()
 
   LogAddIndent( -1 );
   Log( "" );
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -313,7 +313,11 @@ FormatTimeDate( u8* dst, idx_t dst_len, idx_t* written_size, struct tm* time_dat
     );
   *written_size = written;
 }
-void localtime_s( struct tm* time_data, time_t* dst );
+
+#if defined(MAC)
+  void localtime_s( struct tm* time_data, time_t* dst );
+#endif
+
 Inl struct tm
 LocalTimeDate()
 {
@@ -356,11 +360,11 @@ TimeSecFromTSC64( u64 delta )
 Inl u64
 TimeClock()
 {
-#ifdef WIN
+#if defined(WIN)
   u64 qpc;
   QueryPerformanceCounter( Cast( LARGE_INTEGER*, &qpc ) );
   return qpc;
-#elifdef MAC
+#elif defined(MAC)
   ImplementCrash();
   return 0;
 #else

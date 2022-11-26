@@ -1,17 +1,17 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#ifndef FINDLEAKS
+#if !defined(FINDLEAKS)
   #error You have to decide if you want leak detection hooks or not. Usually you want them in debug.
 #endif
 
 // ============================================================================
 // ALIGNED ALLOCATION ENTRY POINTS
 
-#ifdef WIN
+#if defined(WIN)
   #define AlignedAlloc( num_bytes, alignment )   _aligned_malloc( num_bytes, alignment );
   #define AlignedRealloc( old_mem, new_num_bytes, new_alignment )   _aligned_realloc( old_mem, new_num_bytes, new_alignment )
   #define AlignedFree( mem )   _aligned_free( mem )
-#elifdef MAC
+#elif defined(MAC)
   Inl void* AlignedAlloc( idx_t num_bytes, idx_t alignment )
   {
     AssertCrash( IsPowerOf2( alignment ) );

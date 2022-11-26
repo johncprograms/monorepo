@@ -313,6 +313,10 @@ Remove(
   }
 }
 
+
+
+#if defined(TEST)
+
 static void
 TestHashsetNonzeroptrs()
 {
@@ -396,3 +400,5 @@ TestHashsetNonzeroptrs()
   Free( values );
   Kill( &set );
 }
+
+#endif // defined(TEST)

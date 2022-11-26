@@ -215,6 +215,8 @@ Zeta( rng_mt_t& rng, f64* dst, u32 n )
 
 
 
+#if defined(TEST)
+
 static void
 TestRng()
 {
@@ -277,3 +279,5 @@ TestRng()
   printf( "%f\n", var );
 #endif
 }
+
+#endif // defined(TEST)

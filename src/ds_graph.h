@@ -1865,6 +1865,8 @@ LayoutSimpleSpring(
 
 
 
+#if defined(TEST)
+
 Inl void
 TestGraph()
 {
@@ -2126,6 +2128,8 @@ TestGraph()
     }
   }
 }
+
+#endif // defined(TEST)
 
 //ShortestPathsFloydWarshall(
 //  n_t N,

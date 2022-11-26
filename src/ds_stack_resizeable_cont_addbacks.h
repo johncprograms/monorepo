@@ -75,9 +75,12 @@ AddBackSInt(
 
 
 
+#if defined(TEST)
 
 static void
 TestArrayAddBackCustom()
 {
 
 }
+
+#endif // defined(TEST)

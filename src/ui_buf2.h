@@ -67,7 +67,7 @@
 //   line ins/dels: O( 1 )  or O( log( num_lines ) ) if we need to do tree maintenance for that tree kind.
 // that's probably better than pagearrays for exceedingly large files.
 // but is it better for medium files? hard to say.
-// if we say num_lines = 1M, then log( 1M ) = 20. so if we used a binary tree, that's 20 levels deep. 
+// if we say num_lines = 1M, then log( 1M ) = 20. so if we used a binary tree, that's 20 levels deep.
 //
 // measuring stack_resizeable_cont_t<slice_t> addat(0) shows ~100K entries is fine, but ~1M is not.
 // at that many, we've blown the last level cache size, and are presumably stalling for memory.
@@ -457,8 +457,8 @@ buf_t
   //   our current limit is 100MB for regular arrays, which is 25M lines.
   // this is what's encoding line ordering, so we can't use an unordered hash map for example.
   // one interesting idea is maybe to use a linked list, so we don't have to slide array elements over.
-  // 
-  // 
+  //
+  //
   stack_resizeable_cont_t<u32> internal_idx_from_line; // len = number of actual lines.
   stack_resizeable_cont_t<u32> unused_internal_idxs; // len = O( max len of internal_idx_from_line )
 #if LB
@@ -1399,7 +1399,8 @@ Replace(
       *x_finish = add_last.len;
     }
     if( y_finish ) {
-      *y_finish = y_start + lines.len - 1;
+      AssertCrash( lines.len <= MAX_u32 );
+      *y_finish = y_start + Cast( u32, lines.len ) - 1;
     }
     line_t line_new;
     line_new.len = x_start + add_first.len;
@@ -1414,7 +1415,8 @@ Replace(
       &line_new,
       undoableopertype_t::mod
       );
-    Fori( u32, i, 1, lines.len - 1 ) {
+    AssertCrash( lines.len <= MAX_u32 );
+    Fori( u32, i, 1, Cast( u32, lines.len ) - 1 ) {
       auto add = lines.mem[i];
       line_new.len = add.len;
       line_new.mem = AddPagelist( buf->pagelist, u8, 1, line_new.len );
@@ -1433,9 +1435,10 @@ Replace(
     line_new.flags = 0;
     Memmove( line_new.mem, ML( add_last ) );
     Memmove( line_new.mem + add_last.len, line_orig.mem + x_end, line_orig.len - x_end );
+    AssertCrash( lines.len <= MAX_u32 );
     ForwardLineOper(
       buf,
-      y_start + lines.len - 1,
+      y_start + Cast( u32, lines.len ) - 1,
       0,
       &line_new,
       undoableopertype_t::add
@@ -1452,7 +1455,8 @@ Replace(
       *x_finish = add_last.len;
     }
     if( y_finish ) {
-      *y_finish = y_start + lines.len - 1;
+      AssertCrash( lines.len <= MAX_u32 );
+      *y_finish = y_start + Cast( u32, lines.len ) - 1;
     }
     line_t line_new;
     line_new.len = x_start + add_first.len;
@@ -1498,9 +1502,10 @@ Replace(
     line_new.flags = 0;
     Memmove( line_new.mem, ML( add_last ) );
     Memmove( line_new.mem + add_last.len, line_end->mem + x_end, line_end->len - x_end );
+    AssertCrash( lines.len <= MAX_u32 );
     ForwardLineOper(
       buf,
-      y_start + lines.len - 1,
+      y_start + Cast( u32, lines.len ) - 1,
       0,
       &line_new,
       undoableopertype_t::add
@@ -1932,6 +1937,8 @@ AllocContents(
 
 
 
+
+#if defined(TEST)
 
 struct
 test_bufchange_t
@@ -2494,3 +2501,5 @@ TestBuf()
     Kill( &buf );
   }
 }
+
+#endif // defined(TEST)

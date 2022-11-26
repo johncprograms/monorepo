@@ -124,6 +124,10 @@ MinHeapVerify( Data* data, idx_t len )
   }
 }
 
+
+
+#if defined(TEST)
+
 Inl void
 TestMinHeapGeneric()
 {
@@ -164,3 +168,5 @@ TestMinHeapGeneric()
     Free( data );
   }
 }
+
+#endif // defined(TEST)

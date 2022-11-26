@@ -120,7 +120,7 @@ AllocCstr( TSTRING& str )
   return AllocCstr( ML( str ) );
 }
 
-#ifdef MAC
+#if defined(MAC)
   int vsprintf_s(
      char *buffer,
      size_t numberOfElements,
@@ -145,3 +145,83 @@ AllocFormattedString( const void* cstr ... )
 
   return str;
 }
+
+
+
+#if defined(TEST)
+
+struct
+test_bool_void_t
+{
+  bool b;
+  void* p;
+};
+
+static void
+TestString()
+{
+  idx_t indices[] = {
+    10, 5, 7, 8, 1, 3, 5, 5000, 1221, 200, 0, 20,
+  };
+  u8 values[] = {
+    0, 1, 2, 255, 128, 50, 254, 253, 3, 100, 200, 222,
+  };
+  AssertCrash( _countof( indices ) == _countof( values ) );
+  idx_t fill_count = _countof( indices );
+
+  idx_t sizes[] = {
+    1, 2, 3, 4, 5, 8, 10, 16, 24, 1024, 65536, 100000,
+  };
+  ForEach( size, sizes ) {
+    auto str = AllocString<u8, allocator_heap_t, allocation_heap_t>( size );
+    For( i, 0, fill_count ) {
+      auto idx = indices[i];
+      auto value = values[i];
+      if( idx < size ) {
+        str.mem[idx] = value;
+        AssertCrash( str.mem[idx] == value );
+      }
+    }
+
+    test_bool_void_t testcases[] = {
+      { 0, str.mem - 5000 },
+      { 0, str.mem - 50 },
+      { 0, str.mem - 2 },
+      { 0, str.mem - 1 },
+      { 1, str.mem + 0 },
+      { 1, str.mem + str.len / 2 },
+      { 1, str.mem + str.len - 1 },
+      { 0, str.mem + str.len + 0 },
+      { 0, str.mem + str.len + 1 },
+      { 0, str.mem + str.len + 2 },
+      { 0, str.mem + str.len + 200 },
+    };
+    ForEach( testcase, testcases ) {
+      AssertCrash( testcase.b == PtrInsideMem( str, testcase.p ) );
+    }
+
+    idx_t onesize = str.len;
+    idx_t twosize = 2 * str.len;
+    ExpandTo( str, twosize );
+    AssertCrash( str.len == twosize );
+    ShrinkTo( str, onesize );
+    AssertCrash( str.len == onesize );
+
+    Reserve( str, 0 );
+    AssertCrash( str.len == onesize );
+    Reserve( str, 1 );
+    AssertCrash( str.len == onesize );
+    Reserve( str, str.len - 1 );
+    AssertCrash( str.len == onesize );
+    Reserve( str, str.len + 0 );
+    AssertCrash( str.len == onesize );
+    Reserve( str, str.len + 1 );
+    AssertCrash( str.len == twosize );
+    Reserve( str, str.len + 1 );
+    AssertCrash( str.len == 4 * onesize );
+
+    Free( str );
+  }
+}
+
+#endif // defined(TEST)

@@ -94,6 +94,8 @@ LOOP:
 }
 
 
+#if defined(TEST)
+
 void
 TestSimplex()
 {
@@ -188,3 +190,5 @@ LOOP:
   auto z = slack[M][N];
   AssertCrash( z == 13.0f );
 #endif
+
+#endif // defined(TEST)

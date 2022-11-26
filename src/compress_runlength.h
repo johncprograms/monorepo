@@ -48,6 +48,9 @@ RunLengthDecode(
   *output_len_ = output_len;
 }
 
+
+#if defined(TEST)
+
 static void
 TestRLE()
 {
@@ -83,3 +86,5 @@ TestRLE()
     }
   }
 }
+
+#endif // defined(TEST)

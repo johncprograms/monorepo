@@ -7,16 +7,19 @@ LogUI( const void* cstr ... )
 {
 }
 
+#define TEST 1
+
+#include "os_mac.h"
+#include "os_windows.h"
+
 #define FINDLEAKS 1 // make it a test failure to leak memory.
 #define DEBUGSLOW 0 // enable some slower debug checks.
 #define WEAKINLINING 1
 #include "core_cruntime.h"
 #include "core_types.h"
 #include "core_language_macros.h"
-#include "os_mac.h"
-#include "os_windows.h"
-#include "memory_operations.h"
 #include "asserts.h"
+#include "memory_operations.h"
 #include "math_integer.h"
 #include "math_float.h"
 #include "math_lerp.h"
@@ -29,7 +32,6 @@ LogUI( const void* cstr ... )
 #include "cstr.h"
 #include "ds_slice.h"
 #include "ds_string.h"
-#include "optimize_string_sequence_alignment.h"
 #include "allocator_pagelist.h"
 #include "allocator_ringbuffer.h"
 #include "ds_chartree.h"
@@ -62,17 +64,19 @@ LogUI( const void* cstr ... )
 #include "compress_huffman.h"
 #include "allocator_fixedsize.h"
 #include "filesys.h"
+#include "cstr_integer.h"
+#include "cstr_float.h"
 #include "timedate.h"
+#include "thread_atomics.h"
 #include "ds_mtqueue_mrmw_nonresizeable.h"
 #include "ds_mtqueue_mrsw_nonresizeable.h"
 #include "ds_mtqueue_srmw_nonresizeable.h"
 #include "ds_mtqueue_srsw_nonresizeable.h"
 #include "threading.h"
 #include "ds_btree.h"
-#include "cstr_integer.h"
-#include "cstr_float.h"
 #include "ds_stack_resizeable_cont_addbacks.h"
 #include "asserts_ship.h"
+#include "optimize_string_sequence_alignment.h"
 
 #define LOGGER_ENABLED   1
 #include "logger.h"
@@ -102,7 +106,7 @@ LogUI( const void* cstr ... )
 #include "ui_cmd.h"
 #include "ui_edit2.h"
 
-#ifdef WIN
+#if defined(WIN)
   #include <ehdata.h>
   #include "prototest_exeformat.h"
 #endif
@@ -117,7 +121,7 @@ Main( u8* cmdline, idx_t cmdline_len )
 
   // we test copy/paste here, so we need to set up the g_client.hwnd
   glwclient_t client = {};
-  #ifdef WIN
+  #if defined(WIN)
     client.hwnd = GetActiveWindow();
   #endif
   g_client = &client;
@@ -125,6 +129,7 @@ Main( u8* cmdline, idx_t cmdline_len )
   TestSimplex();
   TestMathInteger();
   TestString();
+  TestStringSequenceAlignment();
   TestArray();
   TestArrayAddBackCustom();
   TestBinSearch();
@@ -153,8 +158,8 @@ Main( u8* cmdline, idx_t cmdline_len )
   TestFsalloc();
 
   CalcJunk();
-  
-#ifdef WIN
+
+#if defined(WIN)
   ExeJunk();
 #endif
 

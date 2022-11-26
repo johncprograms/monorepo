@@ -1,11 +1,11 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
 
-#ifndef PROF_ENABLED
+#if !defined(PROF_ENABLED)
 #error make a choice for PROF_ENABLED; either 0 or 1.
 #endif
 
-#ifndef PROF_ENABLED_AT_LAUNCH
+#if !defined(PROF_ENABLED_AT_LAUNCH)
 #error make a choice for PROF_ENABLED_AT_LAUNCH; either 0 or 1.
 #endif
 

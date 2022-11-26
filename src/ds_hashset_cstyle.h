@@ -384,6 +384,8 @@ HASHSET_ELEM_HASH( Hash_SliceContents )
 
 
 
+#if defined(TEST)
+
 static void
 TestHashset()
 {
@@ -468,3 +470,5 @@ TestHashset()
 
   Kill( set );
 }
+
+#endif // defined(TEST)

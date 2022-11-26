@@ -2,17 +2,18 @@
 // build:console_x64_optimized
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#ifdef WIN
+#if defined(WIN)
+
+#include "os_mac.h"
+#include "os_windows.h"
 
 #define FINDLEAKS   0
 #define WEAKINLINING   0
 #include "core_cruntime.h"
 #include "core_types.h"
 #include "core_language_macros.h"
-#include "os_mac.h"
-#include "os_windows.h"
-#include "memory_operations.h"
 #include "asserts.h"
+#include "memory_operations.h"
 #include "math_integer.h"
 #include "math_float.h"
 #include "math_lerp.h"
@@ -35,7 +36,14 @@
 #include "ds_stack_cstyle.h"
 #include "ds_hashset_cstyle.h"
 #include "filesys.h"
+#include "cstr_integer.h"
+#include "cstr_float.h"
 #include "timedate.h"
+#include "thread_atomics.h"
+#include "ds_mtqueue_srsw_nonresizeable.h"
+#include "ds_mtqueue_srmw_nonresizeable.h"
+#include "ds_mtqueue_mrsw_nonresizeable.h"
+#include "ds_mtqueue_mrmw_nonresizeable.h"
 #include "threading.h"
 #define LOGGER_ENABLED   0
 #include "logger.h"
@@ -45,6 +53,8 @@
 #include "rand.h"
 #include "allocator_heap_findleaks.h"
 #include "mainthread.h"
+#include "text_parsing.h"
+#include "ds_stack_resizeable_cont_addbacks.h"
 
 
 #define PRINT_TOOL_COMMANDS   0
@@ -731,6 +741,7 @@ Main( stack_resizeable_cont_t<slice_t>& args )
     "/c",
     "/arch:AVX2",
     "/bigobj",
+    "/DWIN", // our custom switch to denote windows builds.
     "/D_USING_V110_SDK71_",
     "/D_MBCS",
     "/errorReport:none",

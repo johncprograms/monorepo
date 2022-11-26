@@ -1,6 +1,6 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#ifndef LOGGER_ENABLED
+#if !defined(LOGGER_ENABLED)
 #error make a choice for LOGGER_ENABLED; either 0 or 1.
 #endif
 
@@ -35,12 +35,12 @@ LogUseConsole( bool x )
 }
 
 void
-Log( void* cstr ... )
+Log( const void* cstr ... )
 {
 }
 
 void
-LogInline( void* cstr ... )
+LogInline( const void* cstr ... )
 {
 }
 
@@ -174,7 +174,7 @@ LogDirect( slice_t slice )
 }
 
 void
-_Log( void* cstr, va_list& args )
+_Log( const void* cstr, va_list& args )
 {
   auto log = AcquireLog();
 
@@ -205,7 +205,7 @@ _Log( void* cstr, va_list& args )
 }
 
 void
-_LogInline( void* cstr, va_list& args )
+_LogInline( const void* cstr, va_list& args )
 {
   auto log = AcquireLog();
 
@@ -228,7 +228,7 @@ _LogInline( void* cstr, va_list& args )
 
 // TODO: deprecate this, or rename to LogCriticalAndFlushToFile
 void
-Log( void* cstr ... )
+Log( const void* cstr ... )
 {
   va_list args;
   va_start( args, cstr );
@@ -238,7 +238,7 @@ Log( void* cstr ... )
 
 // TODO: deprecate this, or rename to LogCriticalAndFlushToFile
 void
-LogInline( void* cstr ... )
+LogInline( const void* cstr ... )
 {
   va_list args;
   va_start( args, cstr );

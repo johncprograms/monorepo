@@ -1,9 +1,9 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#ifdef WIN
+#if defined(WIN)
 
   // for memory leak checking, put CrtShowMemleaks() first in every entry point.
-  #ifdef _DEBUG
+  #if defined(_DEBUG)
     #define _CRTDBG_MAP_ALLOC
     #include <crtdbg.h>
     #define CrtShowMemleaks()   _CrtSetDbgFlag( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF )

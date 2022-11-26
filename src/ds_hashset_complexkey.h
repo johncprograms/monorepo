@@ -346,7 +346,13 @@ Remove(
 #undef HASHSET
 #undef TKCHE
 
+
+
+#if defined(TEST)
+
 static void
 TestHashsetComplexkey()
 {
 }
+
+#endif // defined(TEST)

@@ -280,6 +280,8 @@ CsTo_s8( u8* src, idx_t src_len, u8 radix = 10 )
 
 
 
+#if defined(TEST)
+
 Templ struct
 test_cstr_t
 {
@@ -388,3 +390,5 @@ TestCstrInteger()
     ValidateS( test );
   }
 }
+
+#endif // defined(TEST)

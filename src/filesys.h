@@ -16,7 +16,7 @@ _fsobj( const void* cstr )
   return r;
 }
 
-#ifdef WIN
+#if defined(WIN)
   Inl u64
   _GetFileTime( WIN32_FIND_DATA& f )
   {
@@ -49,7 +49,7 @@ _fsobj( const void* cstr )
   {
     return !( f.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY );
   }
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -59,7 +59,7 @@ _fsobj( const void* cstr )
 static bool
 _ObjectExists( u8* name )
 {
-#ifdef WIN
+#if defined(WIN)
   WIN32_FIND_DATA f;
   HANDLE h = FindFirstFile( Cast( char*, name ), &f );
   if( INVALID_HANDLE_VALUE == h ) {
@@ -67,7 +67,7 @@ _ObjectExists( u8* name )
   }
   AssertWarn( FindClose( h ) );
   return 1;
-#elifdef MAC
+#elif defined(MAC)
   return 0;
 #else
 #error Unsupported platform
@@ -77,7 +77,7 @@ _ObjectExists( u8* name )
 static bool
 _RecycleFsObj( u8* name, idx_t len )
 {
-#ifdef WIN
+#if defined(WIN)
   AssertCrash( name[len] == 0 );
 
   u8 fullpath[c_fspath_len + 2];
@@ -109,7 +109,7 @@ _RecycleFsObj( u8* name, idx_t len )
   }
 
   return 1;
-#elifdef MAC
+#elif defined(MAC)
   return 0;
 #else
 #error Unsupported platform
@@ -221,13 +221,13 @@ FileNameOnly( u8* name, idx_t len )
 Inl void
 FsGetExe( u8* dst, idx_t dst_len, idx_t* exe_len )
 {
-#ifdef WIN
+#if defined(WIN)
   AssertCrash( dst_len <= MAX_s32 );
   DWORD r = GetModuleFileNameA( 0, Cast( char*, dst ), Cast( s32, dst_len ) );
   AssertWarn( r );
   *exe_len = CstrLength( dst );
   _FixupFile( dst, exe_len );
-#elifdef MAC
+#elif defined(MAC)
   ImplementCrash();
 #else
 #error Unsupported platform
@@ -250,13 +250,13 @@ FsGetExe()
 void
 FsGetCwd( u8* dst, idx_t dst_len, idx_t* cwd_len )
 {
-#ifdef WIN
+#if defined(WIN)
   AssertCrash( dst_len <= UINT_MAX );
   DWORD res = GetCurrentDirectory( Cast( DWORD, dst_len ), Cast( char*, dst ) );
   AssertWarn( res );
   *cwd_len = CstrLength( dst );
   _FixupDir( dst, cwd_len );
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -271,11 +271,11 @@ FsGetCwd( fsobj_t& obj )
 void
 FsSetCwd( u8* cwd, idx_t cwd_len )
 {
-#ifdef WIN
+#if defined(WIN)
   fsobj_t dir = _StandardDirname( cwd, cwd_len );
   BOOL res = SetCurrentDirectory( Cast( char*, dir.mem ) );
   AssertWarn( res );
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -318,7 +318,7 @@ FsIterate(
   void* misc
   )
 {
-#ifdef WIN
+#if defined(WIN)
   stack_resizeable_cont_t<fsobj_t> searchdirs;
   Alloc( searchdirs, 32 );
   *AddBack( searchdirs ) = _StandardDirname( path, path_len );
@@ -373,7 +373,7 @@ NO_MORE_FILES:
     FindClose( h );
   }
   Free( searchdirs );
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -389,14 +389,14 @@ NO_MORE_FILES:
 bool
 DirExists( u8* name, idx_t len )
 {
-#ifdef WIN
+#if defined(WIN)
   fsobj_t dir = _StandardDirname( name, len );
   DWORD attribs = GetFileAttributes( Cast( char*, dir.mem ) );
   if( attribs == INVALID_FILE_ATTRIBUTES ) {
     return 0;
   }
   return !!( attribs & FILE_ATTRIBUTE_DIRECTORY );
-#elifdef MAC
+#elif defined(MAC)
   return 0;
 #else
 #error Unsupported platform
@@ -407,7 +407,7 @@ DirExists( u8* name, idx_t len )
 bool
 DirCreate( u8* name, idx_t len )
 {
-#ifdef WIN
+#if defined(WIN)
   fsobj_t dir = _StandardDirname( name, len );
 
   u8* slash = dir.mem;
@@ -429,7 +429,7 @@ DirCreate( u8* name, idx_t len )
     }
   }
   return 1;
-#elifdef MAC
+#elif defined(MAC)
   return 0;
 #else
 #error Unsupported platform
@@ -440,13 +440,13 @@ DirCreate( u8* name, idx_t len )
 bool
 FileDelete( u8* name, idx_t len )
 {
-#ifdef WIN
+#if defined(WIN)
   fsobj_t file = _StandardFilename( name, len );
   if( !DeleteFile( Cast( char*, file.mem ) ) ) {
     return 0;
   }
   return 1;
-#elifdef MAC
+#elif defined(MAC)
   return 0;
 #else
 #error Unsupported platform
@@ -479,7 +479,7 @@ FS_ITERATOR( _IterDirDeleteContents )
 bool
 DirDeleteContents( u8* name, idx_t len )
 {
-#ifdef WIN
+#if defined(WIN)
   fsobj_t dir = _StandardDirname( name, len );
   stack_resizeable_cont_t<fsobj_t> dirs_to_delete;
   Alloc( dirs_to_delete, 32 );
@@ -494,7 +494,7 @@ DirDeleteContents( u8* name, idx_t len )
   }
   Free( dirs_to_delete );
   return r;
-#elifdef MAC
+#elif defined(MAC)
   return 0;
 #else
 #error Unsupported platform
@@ -506,7 +506,7 @@ DirDeleteContents( u8* name, idx_t len )
 bool
 DirDelete( u8* name, idx_t len )
 {
-#ifdef WIN
+#if defined(WIN)
   fsobj_t dir = _StandardDirname( name, len );
   if( !DirDeleteContents( name, len ) ) {
     return 0;
@@ -515,7 +515,7 @@ DirDelete( u8* name, idx_t len )
     return 0;
   }
   return 1;
-#elifdef MAC
+#elif defined(MAC)
   return 0;
 #else
 #error Unsupported platform
@@ -525,10 +525,10 @@ DirDelete( u8* name, idx_t len )
 bool
 DirRecycle( u8* name, idx_t len )
 {
-#ifdef WIN
+#if defined(WIN)
   fsobj_t dir = _StandardDirname( name, len );
   return _RecycleFsObj( ML( dir ) );
-#elifdef MAC
+#elif defined(MAC)
   return 0;
 #else
 #error Unsupported platform
@@ -606,7 +606,7 @@ DirCopyOverwrite( u8* dst, idx_t dst_len, u8* src, idx_t src_len )
 bool
 DirMove( u8* dst, idx_t dst_len, u8* src, idx_t src_len )
 {
-#ifdef WIN
+#if defined(WIN)
   fsobj_t srcdir = _StandardDirname( src, src_len );
   fsobj_t dstdir = _StandardDirname( dst, dst_len );
 
@@ -615,7 +615,7 @@ DirMove( u8* dst, idx_t dst_len, u8* src, idx_t src_len )
   }
   bool moved = !!MoveFile( Cast( char*, srcdir.mem ), Cast( char*, dstdir.mem ) );
   return moved;
-#elifdef MAC
+#elif defined(MAC)
   return 0;
 #else
 #error Unsupported platform
@@ -655,13 +655,13 @@ _EnsureDstDirectory( fsobj_t& dstfile )
   return 1;
 }
 
-#ifdef WIN
+#if defined(WIN)
   #define _GetHandle( file ) \
     Cast( HANDLE, file.loaded )
 
   #define _u64_from_FILETIME( ft ) \
     Pack( ft.dwHighDateTime, ft.dwLowDateTime )
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -669,7 +669,7 @@ _EnsureDstDirectory( fsobj_t& dstfile )
 Inl void
 _PopulateMetadata( file_t& file )
 {
-#ifdef WIN
+#if defined(WIN)
   BY_HANDLE_FILE_INFORMATION fileinfo = {};
   AssertWarn( GetFileInformationByHandle( _GetHandle( file ), &fileinfo ) );
   file.size = Pack( fileinfo.nFileSizeHigh, fileinfo.nFileSizeLow );
@@ -677,7 +677,7 @@ _PopulateMetadata( file_t& file )
   file.time_lastaccess = _u64_from_FILETIME( fileinfo.ftLastAccessTime );
   file.time_lastwrite  = _u64_from_FILETIME( fileinfo.ftLastWriteTime  );
   file.readonly = fileinfo.dwFileAttributes & FILE_ATTRIBUTE_READONLY;
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -686,7 +686,7 @@ _PopulateMetadata( file_t& file )
 void
 _SetFilePtr( file_t& file, u64 file_offset )
 {
-#ifdef WIN
+#if defined(WIN)
   BOOL res = SetFilePointerEx(
     _GetHandle( file ),
     *Cast( LARGE_INTEGER*, &file_offset ),
@@ -694,7 +694,7 @@ _SetFilePtr( file_t& file, u64 file_offset )
     FILE_BEGIN
     );
   AssertWarn( res );
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -726,7 +726,7 @@ Enumc( fileopen_t )
   always,
 };
 
-#ifdef WIN
+#if defined(WIN)
   static const DWORD g_accessBits[] = {
     0,
     GENERIC_READ,
@@ -756,7 +756,7 @@ Enumc( fileopen_t )
   #define _GetOpenType( open ) \
     g_opentype[Cast( enum_t, open )]
 
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -767,7 +767,7 @@ FileOpen( u8* name, idx_t len, fileopen_t type, fileop_t access, fileop_t share 
 {
   file_t file = {};
   
-#ifdef WIN
+#if defined(WIN)
   file.obj = _StandardFilename( name, len );
   DWORD attribs = FILE_ATTRIBUTE_NORMAL;
 
@@ -811,7 +811,7 @@ FileOpen( u8* name, idx_t len, fileopen_t type, fileop_t access, fileop_t share 
   }
   file.loaded = Cast( void*, h );
   _PopulateMetadata( file );
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -824,7 +824,7 @@ FileOpen( u8* name, idx_t len, fileopen_t type, fileop_t access, fileop_t share 
 void
 FileRead( file_t& file, u64 file_offset, u8* dst, u64 dst_len, u32 chunk_size )
 {
-#ifdef WIN
+#if defined(WIN)
   _SetFilePtr( file, file_offset );
   u64 ntoread = MIN( file.size - file_offset, dst_len );
   u32 nchunks = Cast( u32, ntoread / chunk_size );
@@ -859,7 +859,7 @@ FileRead( file_t& file, u64 file_offset, u8* dst, u64 dst_len, u32 chunk_size )
 
   // update file info.
   _PopulateMetadata( file );
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -870,7 +870,7 @@ FileRead( file_t& file, u64 file_offset, u8* dst, u64 dst_len, u32 chunk_size )
 void
 FileWrite( file_t& file, u64 file_offset, u8* src, u64 src_len )
 {
-#ifdef WIN
+#if defined(WIN)
   _SetFilePtr( file, file_offset );
   u32 nchunks = Cast( u32, src_len / MAX_u32 );
   u32 nrem    = Cast( u32, src_len % MAX_u32 );
@@ -902,7 +902,7 @@ FileWrite( file_t& file, u64 file_offset, u8* src, u64 src_len )
 
   // update file info.
   _PopulateMetadata( file );
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -918,11 +918,11 @@ FileWriteAppend( file_t& file, u8* src, u64 src_len )
 void
 FileSetEOF( file_t& file, u64 file_offset )
 {
-#ifdef WIN
+#if defined(WIN)
   _SetFilePtr( file, file_offset );
   AssertWarn( SetEndOfFile( _GetHandle( file ) ) );
   _PopulateMetadata( file );
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -937,12 +937,12 @@ FileSetEOF( file_t& file )
 u64
 FileTimeLastWrite( u8* name, idx_t len )
 {
-#ifdef WIN
+#if defined(WIN)
   fsobj_t file = _StandardFilename( name, len );
   WIN32_FILE_ATTRIBUTE_DATA metadata;
   AssertWarn( GetFileAttributesEx( Cast( char*, file.mem ), GetFileExInfoStandard, &metadata ) );
   return Pack( metadata.ftLastWriteTime.dwHighDateTime, metadata.ftLastWriteTime.dwLowDateTime );
-#elifdef MAC
+#elif defined(MAC)
   return 0;
 #else
 #error Unsupported platform
@@ -952,11 +952,11 @@ FileTimeLastWrite( u8* name, idx_t len )
 void
 FileFree( file_t& file )
 {
-#ifdef WIN
+#if defined(WIN)
   if( file.loaded ) {
     AssertWarn( CloseHandle( _GetHandle( file ) ) );
   }
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -969,10 +969,10 @@ FileFree( file_t& file )
 bool
 FileRecycle( u8* name, idx_t len )
 {
-#ifdef WIN
+#if defined(WIN)
   fsobj_t file = _StandardFilename( name, len );
   return _RecycleFsObj( ML( file ) );
-#elifdef MAC
+#elif defined(MAC)
   return false;
 #else
 #error Unsupported platform
@@ -984,7 +984,7 @@ FileRecycle( u8* name, idx_t len )
 bool
 FileExists( u8* name, idx_t len )
 {
-#ifdef WIN
+#if defined(WIN)
   fsobj_t file = _StandardFilename( name, len );
   WIN32_FIND_DATA f;
   HANDLE h = FindFirstFile( Cast( char*, file.mem ), &f );
@@ -994,7 +994,7 @@ FileExists( u8* name, idx_t len )
   bool r = _IsFile( f );
   AssertWarn( FindClose( h ) );
   return r;
-#elifdef MAC
+#elif defined(MAC)
   return false;
 #else
 #error Unsupported platform
@@ -1007,7 +1007,7 @@ FileExists( u8* name, idx_t len )
 bool
 FileCopy( u8* dstname, idx_t dstname_len, u8* srcname, idx_t srcname_len )
 {
-#ifdef WIN
+#if defined(WIN)
   fsobj_t dst = _StandardFilename( dstname, dstname_len );
   fsobj_t src = _StandardFilename( srcname, srcname_len );
   if( !FileExists( ML( src ) ) ) {
@@ -1018,7 +1018,7 @@ FileCopy( u8* dstname, idx_t dstname_len, u8* srcname, idx_t srcname_len )
   }
   bool copied = !!CopyFile( Cast( char*, src.mem ), Cast( char*, dst.mem ), 1 /* FAIL if exists */ );
   return copied;
-#elifdef MAC
+#elif defined(MAC)
   return false;
 #else
 #error Unsupported platform
@@ -1028,7 +1028,7 @@ FileCopy( u8* dstname, idx_t dstname_len, u8* srcname, idx_t srcname_len )
 bool
 FileCopyOverwrite( u8* dstname, idx_t dstname_len, u8* srcname, idx_t srcname_len )
 {
-#ifdef WIN
+#if defined(WIN)
   fsobj_t dst = _StandardFilename( dstname, dstname_len );
   fsobj_t src = _StandardFilename( srcname, srcname_len );
   if( !_EnsureDstDirectory( dst ) ) {
@@ -1036,7 +1036,7 @@ FileCopyOverwrite( u8* dstname, idx_t dstname_len, u8* srcname, idx_t srcname_le
   }
   bool copied = !!CopyFile( Cast( char*, src.mem ), Cast( char*, dst.mem ), 0 /* OVR if exists */ );
   return copied;
-#elifdef MAC
+#elif defined(MAC)
   return false;
 #else
 #error Unsupported platform
@@ -1046,7 +1046,7 @@ FileCopyOverwrite( u8* dstname, idx_t dstname_len, u8* srcname, idx_t srcname_le
 bool
 FileMove( u8* dstname, idx_t dstname_len, u8* srcname, idx_t srcname_len )
 {
-#ifdef WIN
+#if defined(WIN)
   fsobj_t dst = _StandardFilename( dstname, dstname_len );
   fsobj_t src = _StandardFilename( srcname, srcname_len );
   if( FileExists( ML( dst ) ) ) {
@@ -1054,7 +1054,7 @@ FileMove( u8* dstname, idx_t dstname_len, u8* srcname, idx_t srcname_len )
   }
   bool moved = !!MoveFile( Cast( char*, src.mem ), Cast( char*, dst.mem ) );
   return moved;
-#elifdef MAC
+#elif defined(MAC)
   // TODO:
   return false;
 #endif
@@ -1105,7 +1105,7 @@ FileOpenMappedExistingReadShareRead( u8* filename, idx_t filename_len )
 {
   filemapped_t ret = {};
 
-#ifdef WIN
+#if defined(WIN)
   fsobj_t file = _StandardFilename( filename, filename_len );
 
   HANDLE f = CreateFile(
@@ -1166,7 +1166,7 @@ FileOpenMappedExistingReadShareRead( u8* filename, idx_t filename_len )
 void
 FileFree( filemapped_t& file )
 {
-#ifdef WIN
+#if defined(WIN)
   if( file.size ) {
     AssertWarn( UnmapViewOfFile( file.mapped_mem ) );
     CloseHandle( Cast( HANDLE, file.m ) );
@@ -1513,6 +1513,8 @@ FsFindDirs(
 
 
 
+#if defined(TEST)
+
 static void
 TestFilesys()
 {
@@ -1607,3 +1609,5 @@ TestFilesys()
   Free( spans );
 #endif
 }
+
+#endif // defined(TEST)

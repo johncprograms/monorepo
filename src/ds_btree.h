@@ -97,8 +97,9 @@ btree_t
   Allocator alloc;
 };
 TCAA Inl void
-Init( BTREE* t )
+Init( BTREE* t, Allocator alloc = {} )
 {
+  t->alloc = alloc;
   auto root = AllocateBtreeNode<T, C, Allocator, Allocation>( t->alloc );
   t->root = root;
   t->nbytes_node = sizeof( BTREENODE );
@@ -1423,6 +1424,8 @@ DeleteRecur(
 
 
 
+#if defined(TEST)
+
 static void
 TestBtree()
 {
@@ -1430,7 +1433,7 @@ TestBtree()
   btree_t<u32, C, allocator_pagelist_t, allocation_pagelist_t> t;
   pagelist_t mem;
   Init( mem, 64000 );
-  Init( &t );
+  Init( &t, allocator_pagelist_t{ &mem } );
   stack_resizeable_cont_t<parent_info_t<u32, C, allocation_pagelist_t>> infos;
   Alloc( infos, 1024 );
   stack_resizeable_cont_t<u32> flat;
@@ -1454,6 +1457,8 @@ TestBtree()
   Free( infos );
   Kill( mem );
 }
+
+#endif // defined(TEST)
 
 
 

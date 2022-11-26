@@ -36,6 +36,7 @@
 #include "ds_mtqueue_mrsw_nonresizeable.h"
 #include "ds_mtqueue_srmw_nonresizeable.h"
 #include "ds_mtqueue_srsw_nonresizeable.h"
+#include "thread_atomics.h"
 #include "threading.h"
 #define LOGGER_ENABLED   0
 #include "logger.h"

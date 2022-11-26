@@ -5436,6 +5436,7 @@ TxtControlKeyboardSingleLineNotModal(
 
 
 
+#if defined(TEST)
 
 Inl void
 AssertCrashTxt( txt_t& txt, u8* str, eoltype_t eoltype )
@@ -6300,3 +6301,5 @@ PUBLIC	??_C@_08DLICDMBN@continue?$AA@			; `string'
     Kill( txt );
   }
 }
+
+#endif // defined(TEST)

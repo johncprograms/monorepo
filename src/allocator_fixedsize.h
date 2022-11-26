@@ -102,7 +102,7 @@ _AllocBytesFromPage(
     // do a bit-scan-forward on the bitwise-negated bitarray_elem,
     // which will find the index of first un-set bit of bitarray_elem.
     u32 bit_idx;
-    auto found = _BitScanForward_idx_t( &bit_idx, ~bitarray_elem );
+    auto found = BitScanForward_idx_t( &bit_idx, ~bitarray_elem );
     if( !found ) {
       // bitarray_elem is all 1s, no space here.
       continue;
@@ -275,6 +275,8 @@ Free( generalfsalloc_t* g, void* pv )
 
 
 
+#if defined(TEST)
+
 Inl void
 TestFsalloc()
 {
@@ -290,7 +292,7 @@ TestFsalloc()
     Init( &f, nbits );
     auto nbytes = 1ull << nbits;
     auto N = ( c_target_page_size / nbytes );
-    N = MAX( 10, N / 100 );
+    N = MAX( 10, N / 1000 );
     For( i, 0, N ) {
       if( Zeta32( rng ) > 0.2f ) {
         u8* bytes = Alloc( &f );
@@ -332,7 +334,7 @@ TestFsalloc()
 
     generalfsalloc_t g;
     Init( &g );
-    constant idx_t N = 100000;
+    constant idx_t N = 10000;
     For( i, 0, N ) {
       if( Zeta32( rng ) > 0.2f ) {
         auto zeta = Zeta32( rng );
@@ -369,3 +371,5 @@ TestFsalloc()
 
   Free( allocs );
 }
+
+#endif // defined(TEST)

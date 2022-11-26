@@ -150,6 +150,7 @@ AddNewPage( STACKRESIZEABLEPAGELIST& list, idx_t nelems_capacity )
   page->mem = Cast( T*, Cast( u8*, page ) + list.hdrbytes );
   page->capacity = nelems_capacity;
   page->len = 0;
+  page->allocn = str.allocn;
 
   page->prev = list.current_page;
   list.current_page->next = page;

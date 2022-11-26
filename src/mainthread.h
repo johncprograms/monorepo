@@ -27,7 +27,7 @@ RegisterOnMainKill(
 }
 
 
-#ifdef WIN
+#if defined(WIN)
   typedef BOOL ( WINAPI *pfn_minidumpwritedump_t )(
     HANDLE hProcess,
     DWORD dwPid,
@@ -98,7 +98,7 @@ RegisterOnMainKill(
     return EXCEPTION_EXECUTE_HANDLER;
   }
 
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
@@ -129,7 +129,7 @@ void HandleCRTInvalidParameter(
 Inl void
 MainInit()
 {
-#ifdef WIN
+#if defined(WIN)
   CrtShowMemleaks();
   SetUnhandledExceptionFilter( UnhandledSEHWriteDump );
 
@@ -149,7 +149,7 @@ MainInit()
 
   // caused problems with Execute wiring of stdout/stdin, so turn this off.
   // keeping for future reference if we need it again.
-#if 0 // #ifdef _DEBUG
+#if 0 // #if defined(_DEBUG)
   AllocConsole();
   FILE* tmp;
   freopen_s( &tmp, "CONOUT$", "wb", stdout );

@@ -148,6 +148,10 @@ MinHeapExtract(
   _MinHeapifyDown( external_from_internal, internal_from_external, data, len, Cast( IntIndex, 0 ) );
 }
 
+
+
+#if defined(TEST)
+
 Inl void
 TestMinHeap()
 {
@@ -195,3 +199,5 @@ TestMinHeap()
     MemHeapFree( ext_from_int.mem );
   }
 }
+
+#endif // defined(TEST)

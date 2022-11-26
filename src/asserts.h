@@ -2,7 +2,7 @@
 
 // ASSERT MACROS
 
-#ifdef _DEBUG
+#if defined(_DEBUG)
 
   #define AssertWarn( break_if_false )   \
     do{ \

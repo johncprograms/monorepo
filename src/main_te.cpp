@@ -3,6 +3,9 @@
 // build:window_x64_releaseversion
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
+#include "os_mac.h"
+#include "os_windows.h"
+
 void
 LogUI( const void* cstr ... );
 
@@ -12,10 +15,8 @@ LogUI( const void* cstr ... );
 #include "core_cruntime.h"
 #include "core_types.h"
 #include "core_language_macros.h"
-#include "os_mac.h"
-#include "os_windows.h"
-#include "memory_operations.h"
 #include "asserts.h"
+#include "memory_operations.h"
 #include "math_integer.h"
 #include "math_float.h"
 #include "math_lerp.h"
@@ -39,7 +40,10 @@ LogUI( const void* cstr ... );
 #include "ds_hashset_cstyle.h"
 #include "ds_bitarray_nonresizeable_stack.h"
 #include "filesys.h"
+#include "cstr_integer.h"
+#include "cstr_float.h"
 #include "timedate.h"
+#include "thread_atomics.h"
 #include "ds_mtqueue_mrmw_nonresizeable.h"
 #include "ds_mtqueue_mrsw_nonresizeable.h"
 #include "ds_mtqueue_srmw_nonresizeable.h"
@@ -53,8 +57,6 @@ LogUI( const void* cstr ... );
 #include "rand.h"
 #include "allocator_heap_findleaks.h"
 #include "mainthread.h"
-#include "cstr_integer.h"
-#include "cstr_float.h"
 #include "ds_hashset_complexkey.h"
 #include "text_parsing.h"
 #include "ds_stack_resizeable_cont_addbacks.h"
@@ -206,7 +208,7 @@ AppInit( app_t* app )
 // TODO: do this better when version is not defined? or make it always defined?
 // this should be defined to a "yy.mm.dd.hh.mm.ss" datetime string by the build system.
 // this is how we know what version to display, to allow matching of .exe to source code.
-#ifndef JCVERSION
+#if !defined(JCVERSION)
 #define JCVERSION "unknown_version"
 #endif
 

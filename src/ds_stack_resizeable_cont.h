@@ -157,6 +157,8 @@ UnorderedRemAt( STACK& stack, idx_t idx )
 
 
 
+#if defined(TEST)
+
 static void
 TestArray()
 {
@@ -310,3 +312,5 @@ TestBinSearch()
     }
   }
 }
+
+#endif // defined(TEST)

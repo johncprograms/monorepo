@@ -1,6 +1,6 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#ifndef _DEBUG
+#if !defined(_DEBUG)
 
   Inl void
   BuildLocationString(
@@ -45,9 +45,9 @@
     // TODO: abort/retry/ignore kind of thing here?
     //   probably a hashtable of some arg subset to identify manually ignored asserts.
     //   we could also save that out to some file eventually, if we want to ignore asserts across program runs.
-#ifdef WIN
+#if defined(WIN)
     MessageBoxA( 0, Cast( LPCSTR, str.mem ), "Crash!", 0 );
-#elifdef MAC
+#elif defined(MAC)
 #else
 #error Unsupported platform
 #endif
