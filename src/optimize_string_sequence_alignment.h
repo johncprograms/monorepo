@@ -315,6 +315,14 @@ _CopyMatching(
     );
   return copied_matching;
 };
+//
+// Returns all possible optimal matchings of A and B.
+// Note that the order of results is somewhat arbitrary, although deterministic.
+//
+// Implementation details:
+// This uses a copy-on-write strategy for the results as it does the backtracking.
+// This gives us a somewhat minimal memory footprint, given the problem complexity.
+//
 template< typename Char, typename Score >
 Inl void
 GetAllOptimalMatchings(
@@ -326,7 +334,6 @@ GetAllOptimalMatchings(
   stack_resizeable_cont_t<fmatching_t<Char>>* results
   )
 {
-
   auto stride = A.len + 1;
 
   struct
@@ -531,15 +538,192 @@ GetArbitraryOptimalDiffs(
   }
 }
 
-// TODO: GetAllOptimalDiffs
+template< typename Char >
+Inl idx_t
+_NewDiffs(
+  stack_resizeable_cont_t<stack_resizeable_cont_t<fdiff_string_t<Char>>>* results,
+  idx_t initial_capacity
+  )
+{
+  auto which_path = results->len;
+  auto diffs = AddBack( *results );
+  Alloc( *diffs, initial_capacity );
+  return which_path;
+}
+template< typename Char >
+Inl idx_t
+_CopyDiffs(
+  stack_resizeable_cont_t<stack_resizeable_cont_t<fdiff_string_t<Char>>>* results,
+  idx_t which_path
+  )
+{
+  AssertCrash( which_path < results->len );
+  auto diffs = results->mem + which_path;
 
+  auto copied_which_path = _NewDiffs( results, diffs->capacity );
+  auto copied_diffs = results->mem + copied_which_path;
+  auto num_copy = diffs->len;
+  TMove(
+    AddBack( *copied_diffs, num_copy ),
+    diffs->mem,
+    num_copy
+    );
+  return copied_which_path;
+}
+template< typename Char, typename Score >
+Inl void
+GetAllOptimalDiffs(
+  tslice_t<Char> A,
+  tslice_t<Char> B,
+  fcell_t<Score>* F, // length ( A.len + 1 ) * ( B.len + 1 )
+  stack_resizeable_cont_t<stack_resizeable_cont_t<fdiff_string_t<Char>>>* results
+  )
+{
+  auto stride = A.len + 1;
+  constant auto num_diffs_estimate = 10u; // TODO: what's a good value here?
+
+  struct
+  ij_t
+  {
+    idx_t i;
+    idx_t j;
+    idx_t which_path; // index into results
+  };
+  stack_resizeable_cont_t<ij_t> cells;
+  Alloc( cells, A.len + B.len );
+  {
+    auto i = A.len;
+    auto j = B.len;
+    if( i  ||  j ) {
+      auto which_path = _NewDiffs( results, num_diffs_estimate );
+      *AddBack( cells ) = { i, j, which_path };
+    }
+  }
+  while( cells.len ) {
+    auto cell = cells.mem[ cells.len - 1 ];
+    RemBack( cells );
+    auto i = cell.i;
+    auto j = cell.j;
+    if( !i  &&  !j ) {
+      // Done with this path traversal.
+      continue;
+    }
+    auto Fij = F + i + j * stride;
+    auto incoming_walkdir = Fij->incoming_walkdir;
+    AssertCrash( !( incoming_walkdir & walk_start ) );
+    auto num_walkdirs = _mm_popcnt_u32( incoming_walkdir );
+    AssertCrash( num_walkdirs <= 3u );
+    if( incoming_walkdir & walk_AB ) {
+      AssertCrash( i );
+      AssertCrash( j );
+      auto u = i - 1;
+      auto v = j - 1;
+      AssertCrash( num_walkdirs );
+      num_walkdirs -= 1;
+      auto which_path = cell.which_path;
+      if( num_walkdirs ) {
+        which_path = _CopyDiffs( results, which_path );
+      }
+      AssertCrash( which_path < results->len );
+      auto diffs = results->mem + which_path;
+      auto Au = A.mem[u];
+      auto Bv = B.mem[v];
+      if( Au != Bv ) {
+        bool add_new_diff = 1;
+        if( diffs->len ) {
+          auto last_diff = diffs->mem + diffs->len - 1;
+          if( last_diff->type == fdiff_type_t::AB  &&
+              last_diff->valueA.mem == A.mem + u + 1  &&
+              last_diff->valueB.mem == B.mem + v + 1 )
+          {
+            last_diff->valueA.mem = A.mem + u;
+            last_diff->valueA.len += 1;
+            last_diff->valueB.mem = B.mem + v;
+            last_diff->valueB.len += 1;
+            add_new_diff = 0;
+          }
+        }
+        if( add_new_diff ) {
+          auto diff = AddBack( *diffs );
+          diff->type = fdiff_type_t::AB;
+          diff->valueA = { A.mem + u, 1 };
+          diff->valueB = { B.mem + v, 1 };
+        }
+      }
+      *AddBack( cells ) = { u, v, which_path };
+    }
+    if( incoming_walkdir & walk_A ) {
+      AssertCrash( i );
+      auto u = i - 1;
+      auto v = j;
+      AssertCrash( num_walkdirs );
+      num_walkdirs -= 1;
+      auto which_path = cell.which_path;
+      if( num_walkdirs ) {
+        which_path = _CopyDiffs( results, which_path );
+      }
+      AssertCrash( which_path < results->len );
+      auto diffs = results->mem + which_path;
+      bool add_new_diff = 1;
+      if( diffs->len ) {
+        auto last_diff = diffs->mem + diffs->len - 1;
+        if( last_diff->type == fdiff_type_t::A  &&
+            last_diff->valueA.mem == A.mem + u + 1 )
+        {
+          last_diff->valueA.mem = A.mem + u;
+          last_diff->valueA.len += 1;
+          add_new_diff = 0;
+        }
+      }
+      if( add_new_diff ) {
+        auto diff = AddBack( *diffs );
+        diff->type = fdiff_type_t::A;
+        diff->valueA = { A.mem + u, 1 };
+        diff->valueB = {};
+      }
+      *AddBack( cells ) = { u, v, which_path };
+    }
+    if( incoming_walkdir & walk_B ) {
+      AssertCrash( j );
+      auto u = i;
+      auto v = j - 1;
+      AssertCrash( num_walkdirs );
+      num_walkdirs -= 1;
+      auto which_path = cell.which_path;
+      if( num_walkdirs ) {
+        which_path = _CopyDiffs( results, which_path );
+      }
+      AssertCrash( which_path < results->len );
+      auto diffs = results->mem + which_path;
+      bool add_new_diff = 1;
+      if( diffs->len ) {
+        auto last_diff = diffs->mem + diffs->len - 1;
+        if( last_diff->type == fdiff_type_t::B  &&
+            last_diff->valueB.mem == B.mem + v + 1 )
+        {
+          last_diff->valueB.mem = B.mem + v;
+          last_diff->valueB.len += 1;
+          add_new_diff = 0;
+        }
+      }
+      if( add_new_diff ) {
+        auto diff = AddBack( *diffs );
+        diff->type = fdiff_type_t::B;
+        diff->valueA = {};
+        diff->valueB = { B.mem + v, 1 };
+      }
+      *AddBack( cells ) = { u, v, which_path };
+    }
+  }
+  Free( cells );
+}
 
 
 
 
 template< typename Char, typename Score, typename ScoreWalkAB, typename ScoreWalkA, typename ScoreWalkB >
 Inl void
-FMatrixLastLine(
+FMatrixLastRow(
   tslice_t<Char> A,
   tslice_t<Char> B,
   Score* F, // length 2 * ( A.len + 1 )
@@ -590,11 +774,11 @@ FMatrixLastLine(
   }
 }
 
-// Identical to FMatrixLastLine, except that all accesses to A and B are reversed.
+// Identical to FMatrixLastRow, except that all accesses to A and B are reversed.
 // With smarter iterators we could probably eliminate this.
 template< typename Char, typename Score, typename ScoreWalkAB, typename ScoreWalkA, typename ScoreWalkB >
 Inl void
-FMatrixLastLineReverse(
+FMatrixLastRowReverse(
   tslice_t<Char> A,
   tslice_t<Char> B,
   Score* F, // length 2 * ( B.len + 1 )
@@ -695,7 +879,7 @@ Hirschberg(
   }
   if( y.len == 1 ) {
 LSingleCharY:
-    FMatrixLastLine( x, y, score, cost_replace, cost_insert, cost_delete, buffer );
+    FMatrixLastRow( x, y, score, cost_replace, cost_insert, cost_delete, buffer );
     auto i = x.len;
     auto j = y.len;
     auto stride = y.len + 1;
@@ -756,8 +940,8 @@ LSingleCharY:
   auto x_mid = x.len / 2;
   tslice_t<Char> x_left = { x.mem, x_mid };
   tslice_t<Char> x_rght = { x.mem + x_mid, x.len - x_mid };
-  FMatrixLastLine( x_left, y, score, cost_replace, cost_insert, cost_delete, score_l );
-  FMatrixLastLineReverse( x_rght, y, score, cost_replace, cost_insert, cost_delete, score_r );
+  FMatrixLastRow( x_left, y, score, cost_replace, cost_insert, cost_delete, score_l );
+  FMatrixLastRowReverse( x_rght, y, score, cost_replace, cost_insert, cost_delete, score_r );
   auto score_max = score_l[0] + score_r[ y.len - 0 ];
   idx_t j_max = 0;
   For( j, 1, y.len + 1 ) {
@@ -837,7 +1021,7 @@ TestStringSequenceAlignment()
 
     auto score = AllocString<s32>( 2 * ( A.len + 1 ) );
     auto last_line = AllocString<s32>( A.len + 1 );
-    FMatrixLastLine( A, B, score.mem, CostRep, CostInsDel, CostInsDel, last_line.mem );
+    FMatrixLastRow( A, B, score.mem, CostRep, CostInsDel, CostInsDel, last_line.mem );
     For( i, 0, A.len + 1 ) {
       auto expect = expected[ i + B.len * ( A.len + 1 ) ];
       auto actual = last_line.mem[i];
@@ -904,9 +1088,55 @@ TestStringSequenceAlignment()
         }
       }
     }
-    ForEach( count_expected_B, count_expected_Bs ) {
-      AssertCrash( count_expected_B == 1 );
+    ForEach( count, count_expected_Bs ) {
+      AssertCrash( count == 1 );
     }
+
+    stack_resizeable_cont_t<stack_resizeable_cont_t<fdiff_string_t<u8>>> alldiffs;
+    Alloc( alldiffs, 8 );
+    GetAllOptimalDiffs( A, B, F.mem, &alldiffs );
+    AssertCrash( alldiffs.len == 3 );
+    idx_t count_expected_diffs[] = { 0u, 0u, 0u };
+    slice_t first_two_As = { A.mem, 2 };
+    slice_t last_two_As = { A.mem + 1, 2 };
+    slice_t first_A = { A.mem, 1 };
+    slice_t last_A = { A.mem + 2, 1 };
+    ForLen( i, alldiffs ) {
+      auto diffs = alldiffs.mem + i;
+      if( diffs->len == 1 ) {
+        auto diff = diffs->mem + 0;
+        AssertCrash( diff->type == fdiff_type_t::A );
+        if( EqualBounds( diff->valueA, first_two_As ) ) {
+          count_expected_diffs[0] += 1;
+        }
+        elif( EqualBounds( diff->valueA, last_two_As ) ) {
+          count_expected_diffs[2] += 1;
+        }
+        else {
+          UnreachableCrash();
+        }
+      }
+      else {
+        AssertCrash( diffs->len == 2 );
+        auto diff0 = diffs->mem + 0;
+        auto diff1 = diffs->mem + 1;
+        AssertCrash( diff0->type == fdiff_type_t::A );
+        AssertCrash( diff1->type == fdiff_type_t::A );
+        // Diffs are in reverse order by contract.
+        AssertCrash( EqualBounds( diff0->valueA, last_A ) );
+        AssertCrash( EqualBounds( diff1->valueA, first_A ) );
+        count_expected_diffs[1] += 1;
+      }
+    }
+    ForEach( count, count_expected_diffs ) {
+      AssertCrash( count == 1 );
+    }
+
+    ForLen( i, alldiffs ) {
+      auto diffs = alldiffs.mem + i;
+      Free( *diffs );
+    }
+    Free( alldiffs );
 
     Free( matchings );
     Kill( pagelist );
@@ -921,7 +1151,7 @@ TestStringSequenceAlignment()
     auto B = SliceFromCStr( "AGTA" );
     auto score = AllocString<s32>( 2 * ( A.len + 1 ) );
     auto last_line = AllocString<s32>( A.len + 1 );
-    FMatrixLastLine( A, B, score.mem, CostRep, CostInsDel, CostInsDel, last_line.mem );
+    FMatrixLastRow( A, B, score.mem, CostRep, CostInsDel, CostInsDel, last_line.mem );
     AssertCrash( EqualContents( SliceFromCArray( s32, expected ), SliceFromString( last_line ) ) );
     Free( last_line );
     Free( score );
@@ -935,7 +1165,7 @@ TestStringSequenceAlignment()
     auto B = SliceFromCStr( "CGCA" );
     auto score = AllocString<s32>( 2 * ( A.len + 1 ) );
     auto last_line = AllocString<s32>( A.len + 1 );
-    FMatrixLastLineReverse( A, B, score.mem, CostRep, CostInsDel, CostInsDel, last_line.mem );
+    FMatrixLastRowReverse( A, B, score.mem, CostRep, CostInsDel, CostInsDel, last_line.mem );
     AssertCrash( EqualContents( SliceFromCArray( s32, expected ), SliceFromString( last_line ) ) );
     Free( last_line );
     Free( score );
