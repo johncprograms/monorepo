@@ -117,8 +117,8 @@ HasOptimalMatching(
   )
 {
   auto stride = A.len + 1;
-  idx_t i = A.len;
-  idx_t j = B.len;
+  auto i = A.len;
+  auto j = B.len;
   while( i  ||  j ) {
     auto Fij = F + i + j * stride;
     auto incoming_walkdir = Fij->incoming_walkdir;
@@ -218,9 +218,9 @@ GetArbitraryOptimalMatching(
   )
 {
   auto stride = A.len + 1;
-  idx_t i = A.len;
-  idx_t j = B.len;
-  idx_t result_idx = A.len + B.len;
+  auto i = A.len;
+  auto j = B.len;
+  auto result_idx = A.len + B.len;
   auto bufferA = buffer;
   auto bufferB = buffer + ( A.len + B.len );
   while( i  ||  j ) {
@@ -259,7 +259,165 @@ GetArbitraryOptimalMatching(
   *resultB = { bufferB + result_idx, A.len + B.len - result_idx };
 }
 
-// TODO: GetAllOptimalMatchings
+template< typename Char >
+struct
+fmatching_t
+{
+  tslice_t<Char> resultA;
+  tslice_t<Char> resultB;
+};
+template< typename Char >
+Inl fmatching_t<Char>*
+_NewMatching(
+  pagelist_t* pagelist,
+  stack_resizeable_cont_t<fmatching_t<Char>>* results,
+  idx_t length
+  )
+{
+  auto matching = AddBack( *results );
+  auto mem = AddPagelist( *pagelist, Char, _SIZEOF_IDX_T, 2 * length );
+  auto memA = mem;
+  auto memB = mem + length;
+  //
+  // Since we're adding to the slices backwards, we can use the .mem field as our
+  // insertion iterator. We're guaranteed not to write more than A.len + B.len
+  // characters, so we can allocate for that size and then under-utilize sometimes.
+  //
+  matching->resultA = { memA + length, 0 };
+  matching->resultB = { memB + length, 0 };
+  return matching;
+}
+template< typename Char >
+Inl fmatching_t<Char>*
+_CopyMatching(
+  pagelist_t* pagelist,
+  stack_resizeable_cont_t<fmatching_t<Char>>* results,
+  idx_t length,
+  fmatching_t<Char>* src
+  )
+{
+  auto copied_matching = _NewMatching( pagelist, results, length );
+  auto lenA = src->resultA.len;
+  copied_matching->resultA.mem -= lenA;
+  copied_matching->resultA.len += lenA;
+  TMove(
+    copied_matching->resultA.mem,
+    src->resultA.mem,
+    lenA
+    );
+  auto lenB = src->resultB.len;
+  copied_matching->resultB.mem -= lenB;
+  copied_matching->resultB.len += lenB;
+  TMove(
+    copied_matching->resultB.mem,
+    src->resultB.mem,
+    lenB
+    );
+  return copied_matching;
+};
+template< typename Char, typename Score >
+Inl void
+GetAllOptimalMatchings(
+  tslice_t<Char> A,
+  tslice_t<Char> B,
+  fcell_t<Score>* F, // length ( A.len + 1 ) * ( B.len + 1 )
+  Char invalid_char,
+  pagelist_t* pagelist,
+  stack_resizeable_cont_t<fmatching_t<Char>>* results
+  )
+{
+
+  auto stride = A.len + 1;
+
+  struct
+  ij_t
+  {
+    idx_t i;
+    idx_t j;
+    fmatching_t<Char>* matching; // points into results
+  };
+  stack_resizeable_cont_t<ij_t> cells;
+  Alloc( cells, A.len + B.len );
+  {
+    auto i = A.len;
+    auto j = B.len;
+    if( i  ||  j ) {
+      auto matching = _NewMatching( pagelist, results, A.len + B.len );
+      *AddBack( cells ) = { i, j, matching };
+    }
+  }
+  while( cells.len ) {
+    auto cell = cells.mem[ cells.len - 1 ];
+    RemBack( cells );
+    auto i = cell.i;
+    auto j = cell.j;
+    if( !i  &&  !j ) {
+      // Done with this path traversal.
+      continue;
+    }
+    auto Fij = F + i + j * stride;
+    auto incoming_walkdir = Fij->incoming_walkdir;
+    AssertCrash( !( incoming_walkdir & walk_start ) );
+    auto num_walkdirs = _mm_popcnt_u32( incoming_walkdir );
+    AssertCrash( num_walkdirs <= 3u );
+    if( incoming_walkdir & walk_AB ) {
+      AssertCrash( i );
+      AssertCrash( j );
+      auto u = i - 1;
+      auto v = j - 1;
+      AssertCrash( num_walkdirs );
+      num_walkdirs -= 1;
+      auto matching = cell.matching;
+      if( num_walkdirs ) {
+        matching = _CopyMatching( pagelist, results, A.len + B.len, matching );
+      }
+      matching->resultA.mem -= 1;
+      matching->resultA.len += 1;
+      matching->resultA.mem[0] = A.mem[u];
+      matching->resultB.mem -= 1;
+      matching->resultB.len += 1;
+      matching->resultB.mem[0] = B.mem[v];
+      *AddBack( cells ) = { u, v, matching };
+    }
+    if( incoming_walkdir & walk_A ) {
+      AssertCrash( i );
+      auto u = i - 1;
+      auto v = j;
+      AssertCrash( num_walkdirs );
+      num_walkdirs -= 1;
+      auto matching = cell.matching;
+      if( num_walkdirs ) {
+        matching = _CopyMatching( pagelist, results, A.len + B.len, matching );
+      }
+      matching->resultA.mem -= 1;
+      matching->resultA.len += 1;
+      matching->resultA.mem[0] = A.mem[u];
+      matching->resultB.mem -= 1;
+      matching->resultB.len += 1;
+      matching->resultB.mem[0] = invalid_char;
+      *AddBack( cells ) = { u, v, matching };
+    }
+    if( incoming_walkdir & walk_B ) {
+      AssertCrash( j );
+      auto u = i;
+      auto v = j - 1;
+      AssertCrash( num_walkdirs );
+      num_walkdirs -= 1;
+      auto matching = cell.matching;
+      if( num_walkdirs ) {
+        matching = _CopyMatching( pagelist, results, A.len + B.len, matching );
+      }
+      matching->resultA.mem -= 1;
+      matching->resultA.len += 1;
+      matching->resultA.mem[0] = invalid_char;
+      matching->resultB.mem -= 1;
+      matching->resultB.len += 1;
+      matching->resultB.mem[0] = B.mem[v];
+      *AddBack( cells ) = { u, v, matching };
+    }
+  }
+  Free( cells );
+}
 
 Enumc( fdiff_type_t )
 {
@@ -288,8 +446,8 @@ GetArbitraryOptimalDiffs(
   )
 {
   auto stride = A.len + 1;
-  idx_t i = A.len;
-  idx_t j = B.len;
+  auto i = A.len;
+  auto j = B.len;
   while( i  ||  j ) {
     auto Fij = F + i + j * stride;
     auto incoming_walkdir = Fij->incoming_walkdir;
@@ -723,6 +881,35 @@ TestStringSequenceAlignment()
     auto num_optimums = NumberOfOptimalMatchings( A, B, F.mem );
     AssertCrash( num_optimums == 3 );
 
+    pagelist_t pagelist;
+    Init( pagelist, 32000 );
+    stack_resizeable_cont_t<fmatching_t<u8>> matchings;
+    Alloc( matchings, 10 );
+    GetAllOptimalMatchings( A, B, F.mem, Cast( u8, '-' ), &pagelist, &matchings );
+    AssertCrash( matchings.len == 3 );
+    auto expected_A = SliceFromCStr( "AAA" );
+    slice_t expected_Bs[] = {
+      SliceFromCStr( "--A" ),
+      SliceFromCStr( "-A-" ),
+      SliceFromCStr( "A--" ),
+    };
+    idx_t count_expected_Bs[] = { 0u, 0u, 0u };
+    ForLen( i, matchings ) {
+      auto matching = matchings.mem + i;
+      AssertCrash( EqualContents( expected_A, matching->resultA ) );
+      For( j, 0, _countof( expected_Bs ) ) {
+        auto expected_B = expected_Bs[j];
+        if( EqualContents( expected_B, matching->resultB ) ) {
+          count_expected_Bs[j] += 1;
+        }
+      }
+    }
+    ForEach( count_expected_B, count_expected_Bs ) {
+      AssertCrash( count_expected_B == 1 );
+    }
+
+    Free( matchings );
+    Kill( pagelist );
     Free( F );
   }
 

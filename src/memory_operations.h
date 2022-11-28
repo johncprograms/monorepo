@@ -130,6 +130,8 @@ TSet( T* src, idx_t src_len, T value )
   }
 }
 
+// WARNING: Not a move in the sense of C++ std::move.
+// It's a memory copy, in the sense of memmove. So it supports overlapping / aliasing.
 Templ Inl void
 TMove( T* dst, T* src, idx_t num_elements )
 {

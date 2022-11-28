@@ -8,13 +8,12 @@ u64 _lzcnt_u64( u64 a );
 u32 _lzcnt_u32( u32 a );
 u64 _tzcnt_u64( u64 a );
 u32 _tzcnt_u32( u32 a );
-s32 _popcnt64( s64 a );
-s32 _popcnt32( s32 a );
-
 #if defined(WIN)
   #define BitScanForward_u32( a, b )     _BitScanForward( Cast( unsigned long*, ( a ) ), b )
   #define BitScanForward_u64( a, b )   _BitScanForward64( Cast( unsigned long*, ( a ) ), b )
 #elif defined(MAC)
+  s32 _popcnt64( s64 a );
+  s32 _popcnt32( s32 a );
   u8 _BitScanForward64( u32* index, u64 mask );
   u8 _BitScanForward( u32* index, u32 mask );
 #else
@@ -31,7 +30,7 @@ s32 _popcnt32( s32 a );
     _tzcnt_u32
 
   #define _popcnt_idx_t( x ) \
-    Cast( u32, _popcnt32( x ) )
+    Cast( u32, _mm_popcnt_u32( x ) )
 
   #define BitScanForward_idx_t( a, b ) \
     BitScanForward_u32( ( a ), ( b ) )
@@ -45,7 +44,7 @@ s32 _popcnt32( s32 a );
     _tzcnt_u64
 
   #define _popcnt_idx_t( x ) \
-    Cast( u32, _popcnt64( x ) )
+    Cast( u32, _mm_popcnt_u64( x ) )
 
   #define BitScanForward_idx_t( a, b ) \
     BitScanForward_u64( ( a ), ( b ) )
