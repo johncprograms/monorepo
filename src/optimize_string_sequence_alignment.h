@@ -29,6 +29,55 @@
 // in the scoring functions. But for now I'm not sure we need it, so I'll just drop the previous character
 // from these scoring functions. This effectively means we can't encode path memory into scoring.
 //
+// F[i+1,j+1] = MAX3(
+//   F[i,j] + score_walk_AB( A[i], B[j] )
+//   F[i,j+1] + score_walk_A( A[i] )
+//   F[i+1,j] + score_walk_B( B[j] )
+// )
+//
+
+
+// TODO: implement the hirschberg space optimization variants, w/o requiring full F matrix.
+//   1. Only store two rows of the F matrix
+//   2. Divide and conquer the inputs for smaller multiplicative effects.
+//
+// How necessary is the divide+conquer? I feel like simple backtracking would be better...
+// At worst simple backtracking is O( A.len + B.len ) to recover the full path.
+// Aha! you can't do backtracking at all if we don't store the full F matrix, or at least
+// the optimal paths. And I'm not sure we can do much in the way of path-trimming in the general case.
+//
+
+// TODO: emit diffs from a hirschberg variant.
+//   this will require a second pass over the diffs to combine adjacent ones, because of the "divide"
+//   part of the divide+conquer design.
+
+// TODO: figure out how to implement affine gap scoring: score new gap, score extending gap.
+//   do we need some path memory here?
+//
+// One reference has this as the effective definition, creating multiple matrices:
+// F[i+1,j+1] = MAX3(
+//   G[i+1,j+1]
+//   H[i+1,j+1]
+//   I[i+1,j+1]
+// )
+// G[i+1,j+1] = F[i,j] + score_walk_AB( A[i], B[i] )
+// H[i+1,j+1] = MAX(
+//   H[i+1,j] + score_walk_B_extend( B[j] )
+//   F[i+1,j] + score_walk_B_extend( B[j] ) + score_walk_B_open( B[j] )
+// )
+// I[i+1,j+1] = MAX(
+//   I[i,j+1] + score_walk_A_extend( A[i] )
+//   F[i,j+1] + score_walk_A_extend( A[i] ) + score_walk_A_open( A[i] )
+// )
+// It looks like we could eliminate the G matrix; it's the only incremental data dependency on F[i,j].
+// Probably we can't merge the H and I matrices; e.g. alternating gaps in aligning A,B.
+
+// TODO: Smith-Waterman variant, which differs from the usual by:
+//   1. start with 0s in the first row+col
+//   2. disallow negative cell values
+//   3. backtracking starts at the maximum cell value(s), not the bottom right;
+//      and terminates at any 0 cell value(s), not the top left.
+
 
 // bitfield because there might be ties.
 enum walk_direction_t : u32
@@ -43,6 +92,8 @@ ForceInl walk_direction_t& operator|=( walk_direction_t& a, walk_direction_t b )
   a = Cast( walk_direction_t, Cast( u32, a ) | Cast( u32, b ) );
   return a;
 }
+// TODO: elide this with SOA; we can pack things better if we do.
+//   also the code can be more separable.
 template< typename Score >
 struct
 fcell_t
