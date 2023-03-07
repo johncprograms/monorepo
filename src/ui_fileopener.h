@@ -1359,6 +1359,8 @@ FileopenerRender(
       }
     }
   }
+
+#undef DRAW_TEXTBOXLINE
 }
 
 void

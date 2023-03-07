@@ -106,19 +106,6 @@ typedef __EditCmdDef( *pfn_editcmd_t );
 		#endif
 
 
-Inl edittxtopen_t*
-EditGetOpenedFile( edit_t& edit, u8* filename, idx_t filename_len )
-{
-  ForList( elem, edit.opened ) {
-    auto txt = &elem->value.txt;
-    bool already_open = MemEqual( ML( txt->filename ), filename, filename_len );
-    if( already_open ) {
-      return &elem->value;
-    }
-  }
-  return 0;
-}
-
 Inl void
 MoveOpenedToFrontOfMru( edit_t& edit, edittxtopen_t* open )
 {
@@ -181,7 +168,7 @@ void
 EditOpen( edit_t& edit, file_t& file, edittxtopen_t** opened, bool* opened_existing )
 {
   // detect files we already have open.
-  auto open = EditGetOpenedFile( edit, ML( file.obj ) );
+  auto open = EditGetOpenedFile( edit.so, ML( file.obj ) );
   if( open ) {
     *opened_existing = 1;
 
@@ -459,10 +446,10 @@ __FindinfilesOpenFileForChoose( EditOpenFileForChoose )
     AssertCrash( open );
     EditSetActiveTxt( *edit, open );
     CmdMode_editfile_from_findinfiles( *edit );
-    
+
     *txt = &open->txt;
 	}
-	
+
 #if !USE_FILEMAPPED_OPEN
   FileFree( file );
 #endif
@@ -471,7 +458,7 @@ __FindinfilesOpenFileForChoose( EditOpenFileForChoose )
 __FindinfilesOpenFileForReplace( EditOpenFileForReplace )
 {
 	auto edit = Cast( edit_t*, misc );
-  auto open = EditGetOpenedFile( *edit, ML( filename ) );
+  auto open = EditGetOpenedFile( edit->so, ML( filename ) );
   *opened_existing = 0;
   if( open ) {
     *opened_existing = 1;
@@ -527,46 +514,6 @@ __EditCmd( CmdEditfileFindreplToggleWordBoundary )
 
 
 
-Inl void
-Save( edit_t& edit, edittxtopen_t* open )
-{
-  AssertCrash( open );
-#if USE_FILEMAPPED_OPEN
-  We have to figure out how to save, given we have a R/R mapped file.
-  We could
-    save somewhere else, close the mapped file, rename/stomp, open mapped file.
-    copy file contents, close the mapped file, save via a regular W/R handle, open mapped file.
-  FileFree( open->file_contents
-#endif
-  file_t file = FileOpen( ML( open->txt.filename ), fileopen_t::only_existing, fileop_t::W, fileop_t::R );
-  if( file.loaded ) {
-    if( open->time_lastwrite != file.time_lastwrite ) {
-      auto tmp = AllocCstr( ML( open->txt.filename ) );
-      u64 timediff =
-        MAX( open->time_lastwrite, file.time_lastwrite ) -
-        MIN( open->time_lastwrite, file.time_lastwrite );
-      LogUI( "[EDIT SAVE] Warning: stomping on external changes made %llu seconds ago: \"%s\"", timediff, tmp );
-      MemHeapFree( tmp );
-    }
-    TxtSave( open->txt, file );
-    open->unsaved = 0;
-    open->time_lastwrite = file.time_lastwrite;
-  } else {
-    file = FileOpen( ML( open->txt.filename ), fileopen_t::only_new, fileop_t::W, fileop_t::R );
-    AssertWarn( file.loaded );
-    if( file.loaded ) {
-      TxtSave( open->txt, file );
-      open->unsaved = 0;
-      open->time_lastwrite = file.time_lastwrite;
-    } else {
-      auto tmp = AllocCstr( ML( open->txt.filename ) );
-      LogUI( "[EDIT SAVE] Failed to open file for write: \"%s\"", tmp );
-      MemHeapFree( tmp );
-    }
-  }
-  FileFree( file );
-}
-
 __EditCmd( CmdSave )
 {
   ProfFunc();
@@ -574,7 +521,7 @@ __EditCmd( CmdSave )
   if( !open ) {
     return;
   }
-  Save( edit, open );
+  Save( open );
 }
 
 __EditCmd( CmdSaveAll )
@@ -582,7 +529,7 @@ __EditCmd( CmdSaveAll )
   ProfFunc();
   ForList( elem, edit.opened ) {
     auto open = &elem->value;
-    Save( edit, open );
+    Save( open );
   }
 }
 
@@ -805,10 +752,11 @@ __EditCmd( CmdMode_editfile_from_switchopened )
 
 __SwitchopenedOpenFileForChoose( EditSOOpenFileForChoose )
 {
+	auto edit = Cast( edit_t*, misc );
 #if USE_FILEMAPPED_OPEN
 	auto file = FileOpenMappedExistingReadShareRead( ML( filename ) );
 #else
-	auto file = FileOpen( ML( *obj ), fileopen_t::only_existing, fileop_t::R, fileop_t::R );
+	auto file = FileOpen( ML( filename ), fileopen_t::only_existing, fileop_t::R, fileop_t::R );
 #endif
 	if( file.loaded ) {
 		edittxtopen_t* open = 0;
@@ -822,59 +770,6 @@ __SwitchopenedOpenFileForChoose( EditSOOpenFileForChoose )
 	FileFree( file );
 #endif
 }
-
-__EditCmd( CmdSwitchopenedCloseFile )
-{
-  ProfFunc();
-  AssertCrash( edit.mode == editmode_t::switchopened );
-  AssertCrash( edit.openedmru.len == edit.opened.len );
-  if( !edit.search_matches.len ) {
-    return;
-  }
-  auto file = EditGetOpenedSelection( edit );
-  AssertCrash( file );
-  auto open = EditGetOpenedFile( edit, file->mem, file->len );
-  AssertCrash( open );
-  Save( edit, open );
-  if( !open->unsaved ) {
-    bool mruremoved = 0;
-    ForList( elem, edit.openedmru ) {
-      if( elem->value == open ) {
-        Rem( edit.openedmru, elem );
-        mruremoved = 1;
-        break;
-      }
-    }
-    AssertCrash( mruremoved );
-    Kill( open->txt );
-    bool removed = 0;
-    ForList( elem, edit.opened ) {
-      if( &elem->value == open ) {
-        Rem( edit.opened, elem );
-        removed = 1;
-        break;
-      }
-    }
-    AssertCrash( removed );
-    For( i, 0, 2 ) {
-      if( edit.active[i] == open ) {
-        auto elem = edit.openedmru.first;
-        edit.active[i] = elem  ?  elem->value  :  0;
-      }
-    }
-    if( !edit.opened.len ) {
-      CmdMode_fileopener_from_switchopened( edit );
-    }
-    else {
-      CmdUpdateSearchMatches( edit );
-    }
-  }
-  AssertCrash( edit.openedmru.len == edit.opened.len );
-}
-
-
-
-
 
 
 // =================================================================================
@@ -957,7 +852,7 @@ __EditCmd( CmdExternalmergeKeepLocalChanges )
 
   // discard the external changes.
   FileFree( edit.file_externalmerge );
-  Save( edit, open );
+  Save( open );
   AssertCrash( !open->unsaved );
 
   // continue checking other opened files.
@@ -1762,7 +1657,7 @@ EditControlMouse(
 		} break;
 		case editmode_t::switchopened: {
 		} break;
-		
+
 		case editmode_t::fileopener: {
 			FileopenerControlMouse(
 			  edit.fileopener,
@@ -1778,10 +1673,10 @@ EditControlMouse(
 			  Cast( idx_t, &edit )
 			  );
 		} break;
-			
+
 		case editmode_t::externalmerge: {
 		} break;
-		
+
 		case editmode_t::findinfiles: {
       FindinfilesControlMouse(
         edit.findinfiles,
@@ -2021,20 +1916,6 @@ EditControlKeyboard(
           } __fallthrough;
 
           case glwkeyevent_t::repeat: {
-            // edit level commands
-            edit_cmdmap_t table[] = {
-              _editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_closefile           ), CmdSwitchopenedCloseFile         ),
-              _editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_u            ), CmdSwitchopenedCursorU           ),
-              _editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_d            ), CmdSwitchopenedCursorD           ),
-              _editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_page_u       ), CmdSwitchopenedCursorU           , edit.nlines_screen ),
-              _editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_page_d       ), CmdSwitchopenedCursorD           , edit.nlines_screen ),
-              _editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_u            ), CmdSwitchopenedScrollU           , Cast( idx_t, GetPropFromDb( f32, f32_lines_per_jump ) ) ),
-              _editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_d            ), CmdSwitchopenedScrollD           , Cast( idx_t, GetPropFromDb( f32, f32_lines_per_jump ) ) ),
-              _editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_page_u       ), CmdSwitchopenedScrollU           , edit.nlines_screen ),
-              _editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_page_d       ), CmdSwitchopenedScrollD           , edit.nlines_screen ),
-              _editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_make_cursor_present ), CmdSwitchopenedMakeCursorPresent ),
-            };
-            ExecuteCmdMap( edit, AL( table ), key, target_valid, ran_cmd );
           } break;
 
           case glwkeyevent_t::up: {
@@ -2045,21 +1926,15 @@ EditControlKeyboard(
       }
 
       if( !ran_cmd ) {
-        bool content_changed = 0;
-        TxtControlKeyboardSingleLine(
-          edit.opened_search,
+        SwitchopenedControlKeyboard(
+          edit.so,
           kb_command,
           target_valid,
-          content_changed,
           ran_cmd,
           type,
           key,
           keylocks
           );
-        // auto-update the matches, since it's pretty fast.
-        if( content_changed ) {
-          CmdUpdateSearchMatches( edit );
-        }
       }
     } break;
 

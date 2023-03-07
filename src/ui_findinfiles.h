@@ -1309,6 +1309,8 @@ FindinfilesRender(
   }
 
   FontKill( layout );
+  
+#undef DRAW_TEXTBOXLINE
 }
 
 void

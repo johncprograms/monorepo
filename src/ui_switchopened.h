@@ -37,6 +37,47 @@ edittxtopen_t
   }
 #endif
 
+Inl void
+Save( edittxtopen_t* open )
+{
+  AssertCrash( open );
+#if USE_FILEMAPPED_OPEN
+  We have to figure out how to save, given we have a R/R mapped file.
+  We could
+    save somewhere else, close the mapped file, rename/stomp, open mapped file.
+    copy file contents, close the mapped file, save via a regular W/R handle, open mapped file.
+  FileFree( open->file_contents
+#endif
+  file_t file = FileOpen( ML( open->txt.filename ), fileopen_t::only_existing, fileop_t::W, fileop_t::R );
+  if( file.loaded ) {
+    if( open->time_lastwrite != file.time_lastwrite ) {
+      auto tmp = AllocCstr( ML( open->txt.filename ) );
+      u64 timediff =
+        MAX( open->time_lastwrite, file.time_lastwrite ) -
+        MIN( open->time_lastwrite, file.time_lastwrite );
+      LogUI( "[EDIT SAVE] Warning: stomping on external changes made %llu seconds ago: \"%s\"", timediff, tmp );
+      MemHeapFree( tmp );
+    }
+    TxtSave( open->txt, file );
+    open->unsaved = 0;
+    open->time_lastwrite = file.time_lastwrite;
+  }
+  else {
+    file = FileOpen( ML( open->txt.filename ), fileopen_t::only_new, fileop_t::W, fileop_t::R );
+    AssertWarn( file.loaded );
+    if( file.loaded ) {
+      TxtSave( open->txt, file );
+      open->unsaved = 0;
+      open->time_lastwrite = file.time_lastwrite;
+    } else {
+      auto tmp = AllocCstr( ML( open->txt.filename ) );
+      LogUI( "[EDIT SAVE] Failed to open file for write: \"%s\"", tmp );
+      MemHeapFree( tmp );
+    }
+  }
+  FileFree( file );
+}
+
 struct
 switchopened_t
 {
@@ -69,6 +110,19 @@ Kill( switchopened_t& so )
   so.opened_scroll_start = 0;
   so.opened_scroll_end = 0;
   so.nlines_screen = 0;
+}
+
+Inl edittxtopen_t*
+EditGetOpenedFile( switchopened_t& so, u8* filename, idx_t filename_len )
+{
+  ForList( elem, so.opened ) {
+    auto txt = &elem->value.txt;
+    bool already_open = MemEqual( ML( txt->filename ), filename, filename_len );
+    if( already_open ) {
+      return &elem->value;
+    }
+  }
+  return 0;
 }
 
 #define __SwitchopenedCmd( name )   void ( name )( switchopened_t& so, idx_t misc = 0, idx_t misc2 = 0 )
@@ -125,7 +179,7 @@ __SwitchopenedCmd( CmdUpdateSearchMatches )
 {
   so.search_matches.len = 0;
   auto key = AllocContents( &so.opened_search.buf, eoltype_t::crlf );
-  
+
   // TODO: openedmru access how?
 	ForList( elem, so.openedmru ) {
 		auto open = elem->value;
@@ -184,16 +238,16 @@ __SwitchopenedCmd( CmdSwitchopenedCloseFile )
   if( !so.search_matches.len ) {
     return;
   }
-  auto file = SwitchopenedGetSelection( edit );
+  auto file = SwitchopenedGetSelection( so );
   AssertCrash( file );
-  auto open = EditGetOpenedFile( edit, file->mem, file->len );
+  auto open = EditGetOpenedFile( so, file->mem, file->len );
   AssertCrash( open );
-  Save( edit, open );
+  Save( open );
   if( !open->unsaved ) {
     bool mruremoved = 0;
-    ForList( elem, edit.openedmru ) {
+    ForList( elem, so.openedmru ) {
       if( elem->value == open ) {
-        Rem( edit.openedmru, elem );
+        Rem( so.openedmru, elem );
         mruremoved = 1;
         break;
       }
@@ -201,9 +255,9 @@ __SwitchopenedCmd( CmdSwitchopenedCloseFile )
     AssertCrash( mruremoved );
     Kill( open->txt );
     bool removed = 0;
-    ForList( elem, edit.opened ) {
+    ForList( elem, so.opened ) {
       if( &elem->value == open ) {
-        Rem( edit.opened, elem );
+        Rem( so.opened, elem );
         removed = 1;
         break;
       }
@@ -211,17 +265,17 @@ __SwitchopenedCmd( CmdSwitchopenedCloseFile )
     AssertCrash( removed );
     For( i, 0, 2 ) {
       if( edit.active[i] == open ) {
-        auto elem = edit.openedmru.first;
+        auto elem = so.openedmru.first;
         edit.active[i] = elem  ?  elem->value  :  0;
       }
     }
-    if( !edit.opened.len ) {
+    if( !so.opened.len ) {
       CmdMode_fileopener_from_switchopened( edit );
     } else {
       CmdUpdateSearchMatches( edit );
     }
   }
-  AssertCrash( edit.openedmru.len == edit.opened.len );
+  AssertCrash( so.openedmru.len == so.opened.len );
 }
 
 void
@@ -243,7 +297,7 @@ SwitchopenedRender(
   auto spaces_per_tab = GetPropFromDb( u8, u8_spaces_per_tab );
 
   auto line_h = FontLineH( font );
-  
+
 	static const auto header = Str( "SWITCH TO FILE ( MRU ):" );
 	static const auto header_len = CstrLength( header );
 	auto header_w = LayoutString( font, spaces_per_tab, header, header_len );
@@ -251,7 +305,7 @@ SwitchopenedRender(
 		stream,
 		font,
 		AlignCenter( bounds, header_w ),
-		GetZ( zrange, editlayer_t::txt ),
+		GetZ( zrange, solayer_t::txt ),
 		bounds,
 		rgba_text,
 		spaces_per_tab,
@@ -277,7 +331,7 @@ SwitchopenedRender(
 		stream,
 		font,
 		bounds.p0,
-		GetZ( zrange, editlayer_t::txt ),
+		GetZ( zrange, solayer_t::txt ),
 		bounds,
 		rgba_text,
 		spaces_per_tab,
@@ -290,7 +344,7 @@ SwitchopenedRender(
 		font,
 		0,
 		_rect( bounds.p0 + _vec2( search_w, 0.0f ), bounds.p1 ),
-		ZRange( zrange, editlayer_t::txt ),
+		ZRange( zrange, solayer_t::txt ),
 		0,
 		1,
 		1
@@ -308,7 +362,7 @@ SwitchopenedRender(
 			p0,
 			p1,
 			bounds,
-			GetZ( zrange, editlayer_t::bkgd )
+			GetZ( zrange, solayer_t::bkgd )
 			);
 	}
 	static const auto unsaved = Str( " unsaved " );
@@ -328,7 +382,7 @@ SwitchopenedRender(
 				stream,
 				font,
 				row_origin,
-				GetZ( zrange, editlayer_t::txt ),
+				GetZ( zrange, solayer_t::txt ),
 				bounds,
 				rgba_text,
 				spaces_per_tab,
@@ -342,7 +396,7 @@ SwitchopenedRender(
 			stream,
 			font,
 			row_origin,
-			GetZ( zrange, editlayer_t::txt ),
+			GetZ( zrange, solayer_t::txt ),
 			bounds,
 			rgba_text,
 			spaces_per_tab,
@@ -376,19 +430,22 @@ switchopened_cmdmap_t
   glwkeybind_t keybind;
   pfn_switchopenedcmd_t fn;
   idx_t misc;
+  idx_t misc2;
 };
 
 Inl switchopened_cmdmap_t
 _switchopenedcmdmap(
   glwkeybind_t keybind,
   pfn_switchopenedcmd_t fn,
-  idx_t misc = 0
+  idx_t misc = 0,
+  idx_t misc2 = 0
   )
 {
   switchopened_cmdmap_t r;
   r.keybind = keybind;
   r.fn = fn;
   r.misc = misc;
+  r.misc2 = misc2;
   return r;
 }
 
@@ -405,7 +462,7 @@ ExecuteCmdMap(
   For( i, 0, table_len ) {
     auto entry = table + i;
     if( GlwKeybind( key, entry->keybind ) ) {
-      entry->fn( edit, entry->misc );
+      entry->fn( edit, entry->misc, entry->misc2 );
       target_valid = 0;
       ran_cmd = 1;
     }
@@ -429,28 +486,25 @@ SwitchopenedControlKeyboard(
 		switch( type ) {
 			case glwkeyevent_t::dn: {
 				// edit level commands
-				edit_cmdmap_t table[] = {
-					_editcmdmap( GetPropFromDb( glwkeybind_t, keybind_mode_editfile_from_switchopened ), CmdMode_editfile_from_switchopened ),
-					_editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_choose             ), CmdSwitchopenedChoose              ),
-					_editcmdmap( GetPropFromDb( glwkeybind_t, keybind_save    ), CmdSave    ),
-					_editcmdmap( GetPropFromDb( glwkeybind_t, keybind_saveall ), CmdSaveAll ),
+				switchopened_cmdmap_t table[] = {
+					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_choose             ), CmdSwitchopenedChoose              ),
 				};
 				ExecuteCmdMap( edit, AL( table ), key, target_valid, ran_cmd );
 			} __fallthrough;
 
 			case glwkeyevent_t::repeat: {
 				// edit level commands
-				edit_cmdmap_t table[] = {
-					_editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_closefile           ), CmdSwitchopenedCloseFile         ),
-					_editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_u            ), CmdSwitchopenedCursorU           ),
-					_editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_d            ), CmdSwitchopenedCursorD           ),
-					_editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_page_u       ), CmdSwitchopenedCursorU           , so.nlines_screen ),
-					_editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_page_d       ), CmdSwitchopenedCursorD           , so.nlines_screen ),
-					_editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_u            ), CmdSwitchopenedScrollU           , Cast( idx_t, GetPropFromDb( f32, f32_lines_per_jump ) ) ),
-					_editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_d            ), CmdSwitchopenedScrollD           , Cast( idx_t, GetPropFromDb( f32, f32_lines_per_jump ) ) ),
-					_editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_page_u       ), CmdSwitchopenedScrollU           , so.nlines_screen ),
-					_editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_page_d       ), CmdSwitchopenedScrollD           , so.nlines_screen ),
-					_editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_make_cursor_present ), CmdSwitchopenedMakeCursorPresent ),
+				switchopened_cmdmap_t table[] = {
+					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_closefile           ), CmdSwitchopenedCloseFile         ),
+					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_u            ), CmdSwitchopenedCursorU           ),
+					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_d            ), CmdSwitchopenedCursorD           ),
+					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_page_u       ), CmdSwitchopenedCursorU           , so.nlines_screen ),
+					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_page_d       ), CmdSwitchopenedCursorD           , so.nlines_screen ),
+					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_u            ), CmdSwitchopenedScrollU           , Cast( idx_t, GetPropFromDb( f32, f32_lines_per_jump ) ) ),
+					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_d            ), CmdSwitchopenedScrollD           , Cast( idx_t, GetPropFromDb( f32, f32_lines_per_jump ) ) ),
+					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_page_u       ), CmdSwitchopenedScrollU           , so.nlines_screen ),
+					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_page_d       ), CmdSwitchopenedScrollD           , so.nlines_screen ),
+					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_make_cursor_present ), CmdSwitchopenedMakeCursorPresent ),
 				};
 				ExecuteCmdMap( edit, AL( table ), key, target_valid, ran_cmd );
 			} break;
