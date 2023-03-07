@@ -172,6 +172,13 @@ _StandardDirname( u8* name, idx_t len )
   return dir;
 }
 
+Inl fsobj_t
+_OSFormatFilename( u8* name, idx_t len )
+{
+  auto r = _StandardFilename( name, len );
+  StringReplaceAscii( ML( r ), '/', '\\' );
+}
+
 Inl slice_t
 FileExtension( u8* name, idx_t len )
 {
@@ -767,7 +774,7 @@ file_t
 FileOpen( u8* name, idx_t len, fileopen_t type, fileop_t access, fileop_t share )
 {
   file_t file = {};
-  
+
 #if defined(WIN)
   file.obj = _StandardFilename( name, len );
   DWORD attribs = FILE_ATTRIBUTE_NORMAL;

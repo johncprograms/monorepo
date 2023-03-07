@@ -1699,12 +1699,14 @@ EditControlMouse(
 
       if( click_on_statusbar_r ) {
         auto open = edit.active[0];
-        SendToClipboardText( *g_client, ML( open->txt.filename ) );
+        auto filename = _OSFormatFilename( ML( open->txt.filename ) );
+        SendToClipboardText( *g_client, ML( filename ) );
         LogUI( "Copied filename to clipboard." );
       }
       if( click_on_statusbar_l ) {
         auto open = edit.active[1];
-        SendToClipboardText( *g_client, ML( open->txt.filename ) );
+        auto filename = _OSFormatFilename( ML( open->txt.filename ) );
+        SendToClipboardText( *g_client, ML( filename ) );
         LogUI( "Copied filename to clipboard." );
       }
 
