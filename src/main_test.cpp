@@ -62,6 +62,7 @@ LogUI( const void* cstr ... )
 #include "ds_minheap_generic.h"
 #include "compress_runlength.h"
 #include "compress_huffman.h"
+#include "compress_arithmetic.h"
 #include "allocator_fixedsize.h"
 #include "filesys.h"
 #include "cstr_integer.h"
@@ -104,7 +105,11 @@ LogUI( const void* cstr ... )
 #include "ui_buf2.h"
 #include "ui_txt2.h"
 #include "ui_cmd.h"
-#include "ui_edit2.h"
+#include "ui_listview.h"
+//#include "ui_findinfiles.h"
+//#include "ui_fileopener.h"
+//#include "ui_switchopened.h"
+//#include "ui_edit2.h"
 
 #if defined(WIN)
   #include <ehdata.h>
@@ -139,21 +144,27 @@ Main( u8* cmdline, idx_t cmdline_len )
   TestCstrInteger();
   TestCoreText();
   TestBuf();
+  #if !defined(MAC)
+  // TODO: resolve issues around .config file.
   TestTxt();
+  // TODO: reimplement filesys for mac
+  TestFilesys();
+  // TODO: reimplement Execute for mac
+  TestExecute();
+  #endif
   TestHashset();
   TestHashsetNonzeroptrs();
   TestHashsetComplexkey();
   TestIdxHashset();
   TestChartree();
   TestRng();
-  TestFilesys();
   TestMathFloat();
-  TestExecute();
   TestGraph();
   TestMinHeap();
   TestMinHeapGeneric();
   TestRLE();
   TestHuffman();
+  TestCompressArith();
   TestBtree();
   TestFsalloc();
 

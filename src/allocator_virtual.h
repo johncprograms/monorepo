@@ -24,21 +24,22 @@
   Inl void
   MemVirtualFree( void* mem )
   {
-    // TODO: len has to come from somewhere; i guess we need to store a header in the allocation?
-    //   or change all virtual allocations to pass it here.
-    idx_t len = 0;
-    ImplementCrash();
-    int result = munmap( mem, len );
+		auto umem = Cast( idx_t*, mem );
+		auto nbytes_alloc = umem[-1];
+    int result = munmap( umem - 1, nbytes_alloc );
     AssertCrash( !result );
   }
   Inl void*
   MemVirtualAllocBytes( idx_t nbytes )
   {
-    void* memnew = mmap( 0 /*start_addr*/, nbytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1 /*file_descriptor*/, 0 /*offset_into_file*/);
+		auto nbytes_alloc = nbytes + _SIZEOF_IDX_T;
+    void* memnew = mmap( 0 /*start_addr*/, nbytes_alloc, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1 /*file_descriptor*/, 0 /*offset_into_file*/);
     if( !memnew || memnew == Cast( void*, -1 ) ) {
       return 0;
     }
-    return memnew;
+    auto umemnew = Cast( idx_t*, memnew );
+    umemnew[0] = nbytes_alloc;
+    return umemnew + 1;
   }
 #endif
 

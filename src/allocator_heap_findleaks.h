@@ -25,7 +25,11 @@
       {
         alloc_info_t info = {};
         info.nbytes = nbytes;
+			#ifdef MAC
+        info.num_frames = 0;
+			#else
         info.num_frames = RtlCaptureStackBackTrace( 0u, _countof( info.frames ), info.frames, 0 );
+			#endif
 
         bool already_there = 0;
         Add(

@@ -700,10 +700,6 @@ MainThreadKill()
 {
 #if defined(WIN)
   Free( g_mainthread.taskthread_handles );
-#elif defined(MAC)
-#else
-#error Unsupported platform
-#endif
 
   FORLEN( t, i, g_mainthread.taskthreads )
     Kill( *t );
@@ -713,6 +709,11 @@ MainThreadKill()
 #if PULLMODEL
   Free( g_mainthread.tasks );
 #else
+#endif
+
+#elif defined(MAC)
+#else
+#error Unsupported platform
 #endif
 
   ThreadKill();

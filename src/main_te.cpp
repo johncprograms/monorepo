@@ -78,6 +78,10 @@ LogUI( const void* cstr ... );
 #include "ui_buf2.h"
 #include "ui_txt2.h"
 #include "ui_cmd.h"
+#include "ui_listview.h"
+#include "ui_findinfiles.h"
+#include "ui_fileopener.h"
+#include "ui_switchopened.h"
 #include "ui_edit2.h"
 
 struct
@@ -2161,7 +2165,7 @@ Main( stack_resizeable_cont_t<slice_t>& args )
     // if we launch in directory mode, aka fileopener, refresh the fileopener now.
     // otherwise we're launching in file mode, and we don't want to trigger a huge
     // recursive directory walk.
-    CmdFileopenerRefresh( app->edit );
+    CmdFileopenerRefresh( app->edit.fileopener );
   }
   else {
     auto filename = args.mem[0];

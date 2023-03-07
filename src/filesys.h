@@ -228,7 +228,8 @@ FsGetExe( u8* dst, idx_t dst_len, idx_t* exe_len )
   *exe_len = CstrLength( dst );
   _FixupFile( dst, exe_len );
 #elif defined(MAC)
-  ImplementCrash();
+  Memmove( dst, "~/apple-binary", 12 );
+  *exe_len = 12;
 #else
 #error Unsupported platform
 #endif

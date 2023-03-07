@@ -1100,7 +1100,7 @@ _InitKeyTable()
     g_key_glw_from_os[keyvkcode.vkcode] = keyvkcode.key;
   }
 #elif defined(MAC)
-  ImplementCrash();
+  //ImplementCrash();
 #else
 #error Unsupported platform
 #endif

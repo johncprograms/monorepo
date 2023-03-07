@@ -33,3 +33,30 @@ AddMean( inc_stats_t& s, f32 mean, idx_t count )
   Add( s.mean, mean );
   s.count = new_count;
 }
+
+// TODO: incremental variance.
+
+#if 0
+      // calculate incrementally the total time ( using kahan summation )
+      auto time_elapsed_cor = time_elapsed - stats.time_total_err; // TODO: convert to kahansum64_t
+      auto time_total = stats.time_total + time_elapsed_cor;
+      stats.time_total_err = ( time_total - stats.time_total ) - time_elapsed_cor;
+      stats.time_total = time_total;
+
+      // calculate incrementally the mean.
+      // mu' = mu + ( x + mu ) / ( n + 1 )
+      auto prev_n = stats.n_invocs;
+      auto rec_n = 1.0 / ( prev_n + 1 );
+      auto prev_mu = stats.time_mean;
+      auto prev_diff = time_elapsed - prev_mu;
+      auto mu = prev_mu + rec_n * prev_diff;
+      stats.time_mean = mu;
+
+      // calculate incrementally the variance.
+      // var' = ( n * var + ( x - mu ) * ( x - mu' ) ) / ( n + 1 )
+      auto prev_sn = prev_n * stats.time_variance;
+      stats.time_variance = rec_n * ( prev_sn + prev_diff * ( time_elapsed - mu ) );
+
+      // n' = n + 1
+      stats.n_invocs += 1;
+#endif

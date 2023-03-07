@@ -21,7 +21,14 @@ static u32 g_sleep_prec_period_min;
 // TODO: define struct types around cycle_t and clock_t so we can't mix up the apis.
 //   already had one bug like that.
 
-u64 __rdtsc();
+#ifdef MAC
+	ForceInl u64 __rdtsc()
+	{
+		u64 r;
+		asm volatile( "mrs %0, cntvct_el0" : "=r" (r) );
+		return r;
+	}
+#endif
 
 Inl u64
 TimeTSC()
@@ -314,18 +321,20 @@ FormatTimeDate( u8* dst, idx_t dst_len, idx_t* written_size, struct tm* time_dat
   *written_size = written;
 }
 
-#if defined(MAC)
-  void localtime_s( struct tm* time_data, time_t* dst );
-#endif
 
 Inl struct tm
 LocalTimeDate()
 {
   time_t time_raw;
-  struct tm time_data;
   time( &time_raw );
+#if defined(MAC)
+	auto time_data = localtime( &time_raw );
+	return *time_data;
+#else
+  struct tm time_data;
   localtime_s( &time_data, &time_raw );
   return time_data;
+#endif
 }
 Inl void
 TimeDate( u8* dst, idx_t dst_len, idx_t* written_size )
