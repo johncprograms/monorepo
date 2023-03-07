@@ -6,7 +6,9 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
-#include <math.h>
+#include <cmath>
 #include <ctype.h> // for isspace, etc.
 #include <time.h>
 #include <type_traits>
+#include <bit>
+#include <stdatomic.h>

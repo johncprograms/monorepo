@@ -12,12 +12,20 @@ u32 _tzcnt_u32( u32 a );
   #define BitScanForward_u32( a, b )     _BitScanForward( Cast( unsigned long*, ( a ) ), b )
   #define BitScanForward_u64( a, b )   _BitScanForward64( Cast( unsigned long*, ( a ) ), b )
 #elif defined(MAC)
-  s32 _popcnt64( s64 a );
-  s32 _popcnt32( s32 a );
-  u8 _BitScanForward64( u32* index, u64 mask );
-  u8 _BitScanForward( u32* index, u32 mask );
+  #define BitScanForward_u32( a, b )   ( ( *( a ) = Cast( u32, std::countr_zero<u32>( b ) ) ), ( ( b ) != 0 ) )
+  #define BitScanForward_u64( a, b )   ( ( *( a ) = Cast( u32, std::countr_zero<u64>( b ) ) ), ( ( b ) != 0 ) )
+  #define _lzcnt_u32( a )   Cast( u32, std::countl_zero<u32>( a ) )
+  #define _lzcnt_u64( a )   Cast( u64, std::countl_zero<u64>( a ) )
+  #define _tzcnt_u32( a )   Cast( u32, std::countr_zero<u32>( a ) )
+  #define _tzcnt_u64( a )   Cast( u64, std::countr_zero<u64>( a ) )
 #else
 #error
+#endif
+
+
+#ifdef MAC
+  #define _mm_popcnt_u32( x ) Cast( u32, std::popcount<u32>( x ) )
+  #define _mm_popcnt_u64( x ) Cast( u32, std::popcount<u64>( x ) )
 #endif
 
 

@@ -14,23 +14,47 @@
 #elif defined(MAC)
   Inl void* AlignedAlloc( idx_t num_bytes, idx_t alignment )
   {
+    // posix_memalign( &mem, alignment, num_bytes ); isn't sufficient, since it doesn't provide a way to recover the allocation size given the address.
+    // we have to write our own version which stores away the allocation size, so we can realloc appropriately.
+    // our reallocs depend on knowing old and new lengths, since we always try to use spans.
     AssertCrash( IsPowerOf2( alignment ) );
-    AssertCrash( alignment % sizeof( idx_t ) == 0u );
-    void* mem;
-    posix_memalign( &mem, alignment, num_bytes );
-    return mem;
+		alignment = MAX( alignment, _SIZEOF_IDX_T );
+    AssertCrash( alignment % _SIZEOF_IDX_T == 0u );
+    // alignment - 1 is the maximum amount of correction we could possibly have to make.
+    // we also need space to store the allocation size, independent of that.
+    // we also need space to store the correction size, so we can recover the original malloc'ed address.
+    //     we could get fancy and use a correction delta which is guaranteed to be [0, alignment - 1]
+    //     or we could just store the original address.
+    // since i'm not feeling like optimizing a rarely used mac version, we'll do the simpler second option.
+    // layout:
+    // [ alignment-1 space | idx_t original mallloc address | idx_t num_bytes | num_bytes space for use ]
+    // we return a pointer to:                                                  ^
+    //
+    void* mem = malloc( num_bytes + alignment - 1 + 2 * _SIZEOF_IDX_T );
+    auto umem = Cast( volatile idx_t*, mem );
+    auto mem_aligned = Cast( void*, RoundUpToMultipleOfPowerOf2( Cast( idx_t, umem + 2 ), alignment ) );
+    auto umem_aligned = Cast( volatile idx_t*, mem_aligned );
+    AssertCrash( umem_aligned - 1 >= umem );
+    AssertCrash( umem_aligned - 2 >= umem );
+    umem_aligned[-1] = num_bytes;
+    umem_aligned[-2] = Cast( idx_t, mem );
+    AssertCrash( Cast( idx_t, mem_aligned ) % alignment == 0u );
+    return mem_aligned;
   }
-  Inl void AlignedFree( void* mem )
+  Inl void AlignedFree( void* mem_aligned )
   {
+		auto umem_aligned = Cast( volatile idx_t*, mem_aligned );
+		auto mem = Cast( void*, umem_aligned[-2] );
     free( mem );
   }
-  Inl void* AlignedRealloc( void* old_mem, idx_t new_num_bytes, idx_t new_alignment )
+  Inl void* AlignedRealloc( void* old_mem_aligned, idx_t new_num_bytes, idx_t new_alignment )
   {
     void* new_mem = AlignedAlloc( new_num_bytes, new_alignment );
-    ImplementCrash();
-    idx_t old_num_bytes = 0; // TODO: how do we compute this? I guess we need to store the size in the allocated block?
-    Memmove( new_mem, old_mem, old_num_bytes );
-    AlignedFree( old_mem );
+    auto old_umem_aligned = Cast( volatile idx_t*, old_mem_aligned );
+    auto old_mem = Cast( void*, old_umem_aligned[-2] );
+    auto old_num_bytes = old_umem_aligned[-1];
+    Memmove( new_mem, old_mem_aligned, old_num_bytes );
+    free( old_mem );
     return new_mem;
   }
 #else

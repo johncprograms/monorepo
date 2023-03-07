@@ -6,7 +6,7 @@
 
 // For starters, I'm simplifying the problem space down to the alphabet of bytes.
 // This means this code won't be all that practical generally, but it's a reasonable starting point,
-// as I learn the space. I'll generalize later.
+// as I learn the space.
 
 Templ Inl void
 HistogramOfBytestream(
@@ -21,8 +21,12 @@ HistogramOfBytestream(
   }
 }
 
+//
+// PMF functions
+//
+
 Templ Inl void
-PmfFromHistogram(
+F32PmfFromHistogram(
   T* histogram, // array of length 256
   f32* pmf // array of length 256
   )
@@ -37,9 +41,8 @@ PmfFromHistogram(
     pmf[i] = histogram[i] * normalization_factor;
   }
 }
-
 Inl void
-PmfOfBytestream(
+F32PmfOfBytestream(
   slice_t bytes,
   f32* pmf // array of length 256
   )
@@ -55,18 +58,106 @@ PmfOfBytestream(
     pmf[i] *= normalization_factor;
   }
 }
+Inl void
+F64PmfOfBytestream(
+  slice_t bytes,
+  f64* pmf // array of length 256
+  )
+{
+  AssertCrash( bytes.len <= MAX_INT_REPRESENTABLE_IN_f64 );
+  TZero( pmf, 256 );
+  ForLen( i, bytes ) {
+    auto byte = bytes.mem[i];
+    pmf[byte] += 1;
+  }
+  auto normalization_factor = 1.0 / bytes.len;
+  For( i, 0, 256 ) {
+    pmf[i] *= normalization_factor;
+  }
+}
 
+//
+// CMF functions
+// We're using the definition: CMF[i] = sum over j in [0,i] of PMF[i]
+// We're guaranteed to have CMF[N] = 1 by the normalization property of the PMF.
+// Note that there's an implicit 0 value at index -1 in theory; we just don't store it out of convenience.
+//
+
+Inl void
+F32CmfOfBytestream(
+	slice_t bytes,
+	f32* cmf // array of length 256
+	)
+{
+	F32PmfOfBytestream( bytes, cmf );
+	kahansum32_t sum = {};
+  For( i, 0, 256 ) {
+		Add( sum, cmf[i] );
+		cmf[i] = sum.sum;
+  }
+}
+Inl void
+F64CmfOfBytestream(
+	slice_t bytes,
+	f64* cmf // array of length 256
+	)
+{
+	F64PmfOfBytestream( bytes, cmf );
+	kahansum64_t sum = {};
+  For( i, 0, 256 ) {
+		Add( sum, cmf[i] );
+		cmf[i] = sum.sum;
+  }
+}
+Inl void
+U32CmfOfBytestream(
+	slice_t bytes,
+	u32* cmf // array of length 256
+	)
+{
+	f64 float_cmf[256];
+	F64CmfOfBytestream( bytes, float_cmf );
+	For( i, 0, 256 ) {
+		cmf[i] = Cast( u32, float_cmf[i] * MAX_u32 );
+	}
+}
+Inl void
+U32_257_CmfOfBytestream(
+	slice_t bytes,
+	u32* cmf, // array of length 257
+	u32 max_scale
+	)
+{
+	f64 float_cmf[256];
+	F64CmfOfBytestream( bytes, float_cmf );
+	cmf[0] = 0;
+	For( i, 0, 256 ) {
+		cmf[i + 1] = Cast( u32, float_cmf[i] * max_scale );
+	}
+}
+
+Enumc( huffman_nodetype_t )
+{
+	leaf,
+	internal,
+};
 struct
 huffman_node_t
 {
-  u8 symbol;
+	huffman_nodetype_t type;
   f32 weight;
-
-  // TODO: implicit binary tree, rather than explicit?
-  huffman_node_t* left;
-  huffman_node_t* rght;
+	union {
+		struct {
+			u8 symbol;
+		} leaf;
+		struct {
+			// TODO: implicit binary tree, rather than explicit?
+			idx_t left; // index into tree
+			idx_t rght; // index into tree
+		} internal;
+	};
 };
-Inl bool operator<( const huffman_node_t& a, const huffman_node_t& b )
+ForceInl bool operator<( const huffman_node_t& a, const huffman_node_t& b )
 {
   return a.weight < b.weight;
 }
@@ -88,24 +179,25 @@ GenerateHuffmanTree(
       continue;
     }
     auto node = AddBack( buffer );
-    node->symbol = Cast( u8, i );
+    node->type = huffman_nodetype_t::leaf;
     node->weight = pmf[i];
-    node->left = 0;
-    node->rght = 0;
+    node->leaf.symbol = Cast( u8, i );
   }
 
   InitMinHeapInPlace( ML( buffer ) );
 
   while( buffer.len > 1 ) {
+		auto idx_lowest = tree->len;
     auto lowest = AddBack( *tree );
+    auto idx_next_lowest = tree->len;
     auto next_lowest = AddBack( *tree );
     MinHeapExtract( &buffer, lowest );
     MinHeapExtract( &buffer, next_lowest );
     huffman_node_t internal;
-    internal.symbol = 0;
+    internal.type = huffman_nodetype_t::internal;
     internal.weight = lowest->weight + next_lowest->weight;
-    internal.left = lowest;
-    internal.rght = next_lowest;
+    internal.internal.left = idx_lowest;
+    internal.internal.rght = idx_next_lowest;
     MinHeapInsert( &buffer, &internal );
   }
 
@@ -115,224 +207,152 @@ GenerateHuffmanTree(
   Free( buffer );
 }
 
+//
+// This is the coded representation of a single alphabet symbol.
+// Which symbol is implicit in the table ordering of these codevalues, since we're assuming 256 bytes.
+//
+// Important question: how many bits do we need per codevalue?
+// there are <= 256 leaf nodes in the tree.
+// so there are <= 255 internal nodes.
+// since the tree can be arbitrarily unbalanced ( this is how the algorithm can be optimal ),
+// we can have path lengths <= 256 nodes, or 255 edges.
+// so in theory, we need 255 bits maximum per codevalue.
+//
+// however, it feels strange to "compress" a single char into something larger.
+// in theory that's still the optimal thing to do, since it will only happen for infrequent symbols.
+//
+// mathematical question: what does the pmf have to look like for this to happen?
+//
 struct
 huffman_codevalue_t
 {
-  // symbol is implicit in table ordering, since we're assuming 256 bytes.
-  // TODO: is u8 enough bits to store these?
-  //   the tree should have <= 2^8=256 levels since it's unbalanced binary.
-  //   since the root->leaf path lengths equate to 'nbits', we should only need <= 8 bits per value.
-  //   so in the worst-case, we're just re-labeling all the bytes arbitrarily.
-  //   but, otherwise, we're likely using fewer bits, which is the whole point.
   u8 nbits;
-  u8 value;
+  bitarray_nonresizeable_stack_t<255> value;
 };
 Inl void
-_GenerateHuffmanTable(
-  huffman_node_t* root,
-  huffman_codevalue_t* table, // array of length 256
-  idx_t nbits,
-  idx_t value
-  )
-{
-  AssertCrash( root );
-  auto left = root->left;
-  auto rght = root->rght;
-  if( left ) {
-    _GenerateHuffmanTable( left, table, nbits + 1, value << 1 );
-  }
-  if( rght ) {
-    _GenerateHuffmanTable( rght, table, nbits + 1, ( value << 1 ) | 1 );
-  }
-  if( !( Cast( idx_t, left ) | Cast( idx_t, rght ) ) ) {
-    AssertCrash( nbits < 256 );
-    AssertCrash( value < 256 );
-    auto codevalue = table + root->symbol;
-    codevalue->nbits = Cast( u8, nbits );
-    codevalue->value = Cast( u8, value );
-  }
-}
-Inl void
 GenerateHuffmanTable(
+	tslice_t<huffman_node_t> tree,
   huffman_node_t* root,
   huffman_codevalue_t* table // array of length 256
   )
 {
-  _GenerateHuffmanTable( root, table, 0, 0 );
+	struct
+	elem_t
+	{
+		huffman_node_t* node;
+		huffman_codevalue_t codevalue;
+	};
+	stack_resizeable_cont_t<elem_t> queue;
+	Alloc( queue, 512 );
+	{
+		auto elem = AddBack( queue );
+		elem->node = root;
+		elem->codevalue.nbits = 0;
+		Zero( elem->codevalue.value );
+	}
+	while( queue.len ) {
+		auto elem = queue.mem[ queue.len - 1 ];
+		RemBack( queue );
+		auto node = elem.node;
+		auto codevalue = elem.codevalue;
+		AssertCrash( node );
+		switch( node->type ) {
+			case huffman_nodetype_t::leaf: {
+				table[ node->leaf.symbol ] = codevalue;
+			} break;
+			case huffman_nodetype_t::internal: {
+				AssertCrash( node->internal.left < tree.len );
+				AssertCrash( node->internal.rght < tree.len );
+				auto left = tree.mem + node->internal.left;
+				auto rght = tree.mem + node->internal.rght;
+				// The left node gets a 0 bit set, the right node gets a 1 bit set.
+				AssertCrash( codevalue.nbits < 255 );
+				auto cv_left = codevalue;
+				cv_left.nbits += 1;
+				auto cv_rght = codevalue;
+				cv_rght.nbits += 1;
+				SetBit1( cv_rght.value, codevalue.nbits );
+				auto elem_left = AddBack( queue );
+				auto elem_rght = AddBack( queue );
+				elem_left->node = left;
+				elem_left->codevalue = cv_left;
+				elem_rght->node = rght;
+				elem_rght->codevalue = cv_rght;
+			} break;
+		}
+	}
+	Free( queue );
 }
-
-Inl void
-WriteBit(
-  u8* output,
-  idx_t output_capacity,
-  idx_t& output_last_byte,
-  idx_t& output_last_bitlen,
-  bool bit
-  )
-{
-  AssertCrash( output_last_byte < output_capacity );
-  AssertCrash( output_last_bitlen < 8 );
-  output[output_last_byte] |= ( bit << ( 8 - output_last_bitlen ) );
-  output_last_bitlen += 1;
-  if(output_last_bitlen == 8 ) {
-    output_last_bitlen = 0;
-    output_last_byte += 1;
-  }
-}
-Inl bool
-ReadBit(
-  u8* input,
-  idx_t& input_last_byte,
-  idx_t& input_last_bitlen
-  )
-{
-  AssertCrash( input_last_bitlen < 8 );
-  auto bit = ( input[input_last_byte] >> ( 8u - input_last_bitlen ) ) & 0b1u;
-  input_last_bitlen += 1;
-  if( input_last_bitlen == 8 ) {
-    input_last_bitlen = 0;
-    input_last_byte += 1;
-  }
-  return bit;
-}
-Inl void
-WriteBits(
-  u8* output,
-  idx_t output_capacity,
-  idx_t& output_last_byte,
-  idx_t& output_last_bitlen,
-  idx_t bits_write,
-  idx_t nbits_write
-  )
-{
-  AssertCrash( nbits_write <= 8u );
-  AssertCrash( output_last_byte < output_capacity );
-  AssertCrash( output_last_bitlen < 8 );
-  auto first_byte = output[output_last_byte];
-  if( output_last_bitlen + nbits_write <= 8u ) {
-    auto shift = 8u - output_last_bitlen - nbits_write;
-    output[output_last_byte] = first_byte | Cast( u8, bits_write << shift );
-    output_last_bitlen += nbits_write;
-    if( output_last_bitlen == 8u ) {
-      output_last_bitlen = 0;
-      output_last_byte += 1;
-    }
-  }
-  else {
-    AssertCrash( output_last_byte + 1 < output_capacity );
-    auto second_byte = output[output_last_byte + 1];
-    auto rshift = output_last_bitlen + nbits_write - 8u;
-    output[output_last_byte] = first_byte | Cast( u8, bits_write >> rshift );
-    output_last_byte += 1;
-    auto lshift = 16u - output_last_bitlen - nbits_write;
-    output[output_last_byte] = second_byte | Cast( u8, bits_write << lshift );
-    output_last_bitlen = output_last_bitlen + nbits_write - 8u;
-    AssertCrash( output_last_bitlen < 8u );
-  }
-
-  // |-------|-------|-------|-------|...
-  // 01234567012345670123456701234567 ...
-  // Let's take the example of:
-  // len: 2          ^
-  // last_bitlen: 3     ^
-  // nbits_write: 7
-  // value_write: 1111111
-  // so we should end up with:
-  // len: 3                  ^
-  // last_bitlen: 2            ^
-  //
-}
-
-
 
 Inl void
 HuffmanEncode(
   huffman_codevalue_t* table, // array of length 256
   slice_t input,
-  u8* output,
-  idx_t output_capacity,
-  idx_t& output_last_byte,
-  idx_t& output_last_bitlen
+  u64* output,
+  idx_t output_bitcapacity,
+  idx_t& output_bitlen
   )
 {
-  // TODO: elide this if the caller's already done this.
-  TZero( output, output_capacity );
-
-  //
-  // memory layout for output on a bit level looks like:
-  // |-------|-------|-------|...
-  // 012345670123456701234567 ...
-  //
-  // note that 'len' indexes at the byte boundaries,
-  // whereas 'last_bitlen' indexes bits inside a single byte. specifically, the last one.
-  //
-  output_last_byte = 0;
-  output_last_bitlen = 0;
+	// TODO: dynamic failure for output_capacity too small. that's probably somewhat common.
+	// PERF: we can use byte sized writes for nbits_write >= 8
+	auto bitlen = 0;
   ForLen( i, input ) {
     auto input_byte = input.mem[i];
     auto codevalue = table + input_byte;
     auto nbits_write = codevalue->nbits;
     auto value_write = codevalue->value;
-    //
-    // now we shift value_write some number of bits to the left, to align with last_bitlen.
-    // then we can OR in the value_write.
-    // note we should always zero the output first, so we can OR trivially.
-    // ORing means we don't have to do masked writes or anything tricky like that.
-    // well actually direct copying is faster, so maybe we just OR for the first and last partial bytes.
-    // well since nbits_write is <= 8, we only ever have 2 partial bytes, so copying is out, practically.
-    //
-    // TODO: dynamic failure for output_capacity too small. that's probably somewhat common.
-    WriteBits( output, output_capacity, output_last_byte, output_last_bitlen, value_write, nbits_write );
+    For( b, 0, nbits_write ) {
+			auto bit = GetBit( value_write, b );
+			SetBit( output, output_bitcapacity, bitlen + b, bit );
+    }
+    bitlen += nbits_write;
   }
+  output_bitlen = bitlen;
 }
 
 Inl void
 HuffmanDecode(
+	tslice_t<huffman_node_t> tree,
   huffman_node_t* root,
-  u8* input,
-  idx_t input_last_byte,
-  idx_t input_last_bitlen,
+  u64* input,
+  idx_t input_bitlen,
   u8* output,
   idx_t output_capacity,
   idx_t& output_len
   )
 {
+	// TODO: depointer accesses to output_len for this scope.
   auto node = root;
-  idx_t last_byte = 0;
-  idx_t last_bitlen = 0;
-  Forever {
-    if( last_byte == input_last_byte && last_bitlen == input_last_bitlen ) {
-      break;
-    }
-    auto left = node->left;
-    auto rght = node->rght;
-    AssertCrash( Cast( idx_t, left ) | Cast( idx_t, rght ) );
-    auto bit = ReadBit( input, last_byte, last_bitlen );
-    if( bit ) {
-      if( rght ) {
-        node = rght;
-      }
-      else {
+  idx_t idx_bit = 0;
+  // For inf-loop safety here, we're relying on the structure of the huffman tree
+	Forever {
+		switch( node->type ) {
+			case huffman_nodetype_t::leaf: {
         AssertCrash( output_len < output_capacity );
-        output[output_len] = node->symbol;
+        output[output_len] = node->leaf.symbol;
         output_len += 1;
         node = root;
-      }
-    }
-    else {
-      if( left ) {
-        node = left;
-      }
-      else {
-        AssertCrash( output_len < output_capacity );
-        output[output_len] = node->symbol;
-        output_len += 1;
-        node = root;
-      }
-    }
+        if( idx_bit == input_bitlen ) {
+					return;
+        }
+			} break;
+			case huffman_nodetype_t::internal: {
+				AssertCrash( node->internal.left < tree.len ); // PERF elide this.
+				AssertCrash( node->internal.rght < tree.len );
+				auto left = tree.mem + node->internal.left;
+				auto rght = tree.mem + node->internal.rght;
+				auto bit = GetBit( input, input_bitlen, idx_bit );
+				if( bit ) {
+					node = rght;
+				}
+				else {
+					node = left;
+				}
+				idx_bit += 1;
+			} break;
+		}
   }
 }
-
 
 
 #if defined(TEST)
@@ -340,27 +360,63 @@ HuffmanDecode(
 void
 TestHuffman()
 {
-  if(0) { // TODO: fix crash.
-    auto bytestream = SliceFromCStr( "abbcccddddeeeee" );
-    f32 pmf[256];
-    PmfOfBytestream( bytestream, pmf );
-    stack_resizeable_cont_t<huffman_node_t> tree;
-    Alloc( tree, 512 );
-    huffman_node_t* root = 0;
-    GenerateHuffmanTree( pmf, &tree, &root );
-    huffman_codevalue_t table[256] = {};
-    GenerateHuffmanTable( root, table );
-    u8 encoded[1000] = {};
-    idx_t encoded_last_byte = 0;
-    idx_t encoded_last_bitlen = 0;
-    HuffmanEncode( table, bytestream, AL( encoded ), encoded_last_byte, encoded_last_bitlen );
-    u8 decoded[1000] = {};
-    idx_t decoded_len = 0;
-    HuffmanDecode( root, encoded, encoded_last_byte, encoded_last_bitlen, AL( decoded ), decoded_len );
-    slice_t decoded_slice = { decoded, decoded_len };
-    AssertCrash( EqualContents( bytestream, decoded_slice ) );
-    Free( tree );
-  }
+	{
+		auto bytestream = SliceFromCStr( "abbcccddddeeeee" );
+		f32 pmf[256];
+		F32PmfOfBytestream( bytestream, pmf );
+		stack_resizeable_cont_t<huffman_node_t> tree;
+		Alloc( tree, 512 );
+		huffman_node_t* root = 0;
+		GenerateHuffmanTree( pmf, &tree, &root );
+		huffman_codevalue_t table[256] = {};
+		GenerateHuffmanTable( SliceFromArray( tree ), root, table );
+		u64 encoded[1000] = {};
+		idx_t encoded_bitlen = 0;
+		HuffmanEncode( table, bytestream, encoded, 8u * _countof( encoded ), encoded_bitlen );
+		u8 decoded[1000] = {};
+		idx_t decoded_len = 0;
+		HuffmanDecode( SliceFromArray( tree ), root, encoded, encoded_bitlen, AL( decoded ), decoded_len );
+		slice_t decoded_slice = { decoded, decoded_len };
+		AssertCrash( EqualContents( bytestream, decoded_slice ) );
+		Free( tree );
+	}
+	
+	{
+		rng_xorshift32_t rng;
+		Init( rng, 1234u );
+		constant idx_t n = 1000u;
+		For( i, 0, n ) {
+			constant idx_t min_len = 10u;
+			constant idx_t max_len = 1000u;
+			idx_t len = Rand32( rng ) % max_len;
+			len = MAX( min_len, len );
+			auto bytestream = AllocString( len );
+			For( j, 0, len ) {
+				bytestream.mem[j] = Rand32( rng ) % 256u;
+			}
+			
+			f32 pmf[256];
+			F32PmfOfBytestream( SliceFromString( bytestream ), pmf );
+			stack_resizeable_cont_t<huffman_node_t> tree;
+			Alloc( tree, max_len );
+			huffman_node_t* root = 0;
+			GenerateHuffmanTree( pmf, &tree, &root );
+			huffman_codevalue_t table[256] = {};
+			GenerateHuffmanTable( SliceFromArray( tree ), root, table );
+			u64 encoded[max_len] = {};
+			idx_t encoded_bitlen = 0;
+			HuffmanEncode( table, SliceFromString( bytestream ), encoded, 8u * _countof( encoded ), encoded_bitlen );
+			u8 decoded[max_len] = {};
+			idx_t decoded_len = 0;
+			HuffmanDecode( SliceFromArray( tree ), root, encoded, encoded_bitlen, AL( decoded ), decoded_len );
+			slice_t decoded_slice = { decoded, decoded_len };
+			AssertCrash( EqualContents( SliceFromString( bytestream ), decoded_slice ) );
+			auto compress_ratio = Cast( f32, encoded_bitlen ) / ( 8.0f * decoded_len );
+			AssertCrash( compress_ratio <= 1.0f );
+			Free( tree );
+			Free( bytestream );
+		}
+	}
 }
 
 #endif // defined(TEST)

@@ -1,16 +1,1 @@
-*.log
-*.sdf
-*.opensdf
-*.suo
-*.user
-*.ilk
-*.asm
-*.exe
-*.pdb
-*.map
-*.sln
-*.obj
-*.manifest
-*.res
-*.rc
-.vs/
+.DS_Store

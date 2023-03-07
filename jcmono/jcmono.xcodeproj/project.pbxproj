@@ -7,22 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		590B351628FD265F00B169C2 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 590B351528FD265F00B169C2 /* main.cpp */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
 		590B351F28FD274F00B169C2 /* main_test.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 590B351E28FD274F00B169C2 /* main_test.cpp */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
-		597EB38A2900EF69009C08D2 /* main_rt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 597EB37B2900EF69009C08D2 /* main_rt.cpp */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
-		597EB38B2900EF69009C08D2 /* main_jc2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 597EB37C2900EF69009C08D2 /* main_jc2.cpp */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
-		597EB38C2900EF69009C08D2 /* main_th.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 597EB37D2900EF69009C08D2 /* main_th.cpp */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
-		597EB38D2900EF69009C08D2 /* main_su.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 597EB37E2900EF69009C08D2 /* main_su.cpp */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
-		597EB38E2900EF69009C08D2 /* main_listfiles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 597EB37F2900EF69009C08D2 /* main_listfiles.cpp */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
-		597EB38F2900EF69009C08D2 /* main_te.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 597EB3802900EF69009C08D2 /* main_te.cpp */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
-		597EB3902900EF69009C08D2 /* main_trailspace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 597EB3812900EF69009C08D2 /* main_trailspace.cpp */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
-		597EB3912900EF69009C08D2 /* main_grid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 597EB3822900EF69009C08D2 /* main_grid.cpp */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
-		597EB3922900EF69009C08D2 /* main_build.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 597EB3832900EF69009C08D2 /* main_build.cpp */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
-		597EB3932900EF69009C08D2 /* main_nocrt.c in Sources */ = {isa = PBXBuildFile; fileRef = 597EB3842900EF69009C08D2 /* main_nocrt.c */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
-		597EB3942900EF69009C08D2 /* main_graph.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 597EB3852900EF69009C08D2 /* main_graph.cpp */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
-		597EB3952900EF69009C08D2 /* main_getprecisetime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 597EB3862900EF69009C08D2 /* main_getprecisetime.cpp */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
-		597EB3962900EF69009C08D2 /* main_filex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 597EB3872900EF69009C08D2 /* main_filex.cpp */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
-		597EB3972900EF69009C08D2 /* main_getdatetime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 597EB3882900EF69009C08D2 /* main_getdatetime.cpp */; settings = {COMPILER_FLAGS = "-fms-extensions -DMAC=1"; }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -171,21 +156,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				590B351F28FD274F00B169C2 /* main_test.cpp in Sources */,
-				597EB38A2900EF69009C08D2 /* main_rt.cpp in Sources */,
-				597EB38B2900EF69009C08D2 /* main_jc2.cpp in Sources */,
-				597EB38C2900EF69009C08D2 /* main_th.cpp in Sources */,
-				597EB38D2900EF69009C08D2 /* main_su.cpp in Sources */,
-				597EB38E2900EF69009C08D2 /* main_listfiles.cpp in Sources */,
-				597EB38F2900EF69009C08D2 /* main_te.cpp in Sources */,
-				597EB3902900EF69009C08D2 /* main_trailspace.cpp in Sources */,
-				597EB3912900EF69009C08D2 /* main_grid.cpp in Sources */,
-				597EB3922900EF69009C08D2 /* main_build.cpp in Sources */,
-				597EB3932900EF69009C08D2 /* main_nocrt.c in Sources */,
-				597EB3942900EF69009C08D2 /* main_graph.cpp in Sources */,
-				597EB3952900EF69009C08D2 /* main_getprecisetime.cpp in Sources */,
-				597EB3962900EF69009C08D2 /* main_filex.cpp in Sources */,
-				597EB3972900EF69009C08D2 /* main_getdatetime.cpp in Sources */,
-				590B351628FD265F00B169C2 /* main.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

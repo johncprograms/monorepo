@@ -595,10 +595,15 @@ _Init( propdb_t& db )
   db.filename = FsGetExe();
   if( db.filename.len ) {
     auto last_dot = StringScanL( ML( db.filename ), '.' );
-    AssertCrash( last_dot );
-    db.filename.len = ( last_dot - db.filename.mem );
-    db.filename.len += 1; // include dot.
-    Memmove( AddBack( db.filename, 6 ), "config", 6 );
+    if( last_dot ) {
+			AssertCrash( last_dot );
+			db.filename.len = ( last_dot - db.filename.mem );
+			db.filename.len += 1; // include dot.
+		}
+		else {
+			*AddBack( db.filename ) = '.';
+		}
+		Memmove( AddBack( db.filename, 6 ), "config", 6 );
   }
 
   // TODO: timestep_fixed ?

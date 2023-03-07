@@ -153,20 +153,20 @@ Inl f32 fastpow32( f32 x, f32 e )
 
 #if defined(MAC) // TODO: do this better.
 
-  f32 Floor32( f32 x );
-  f64 Floor64( f64 x );
+  #define Floor32( x )   std::floorf( x )
+  #define Floor64( x )   std::floor( x )
 
-  f32 Ceil32( f32 x );
-  f64 Ceil64( f64 x );
+  #define Ceil32( x )   std::ceilf( x )
+  #define Ceil64( x )   std::ceil( x )
 
-  f32 Truncate32( f32 x );
-  f64 Truncate64( f64 x );
+	#define Truncate32( x )   Cast( f32, Truncate_s32_from_f32( x ) )
+	#define Truncate64( x )   Cast( f64, Truncate_s64_from_f64( x ) )
 
-  f32 Round32( f32 x );
-  f64 Round64( f64 x );
+	#define Round32( x )   std::roundf( x )
+	#define Round64( x )   std::round( x )
 
-  f32 Sqrt32( f32 x );
-  f64 Sqrt64( f64 x );
+	#define Sqrt32( x )   std::sqrtf( x )
+	#define Sqrt64( x )   std::sqrt( x )
 
 #else
 
