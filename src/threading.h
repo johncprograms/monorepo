@@ -199,6 +199,8 @@ Execute(
     auto err = GetLastError();
     auto str = SliceFromCStr( "failed to create a process with the given command!\r\n" );
     ExecuteOutput( &str, 1, misc0, misc1 );
+    auto str2 = SliceFromCStr( com.mem );
+    ExecuteOutput( &str2, 1, misc0, misc1 );
     CloseHandle( child_stdout_r );
     CloseHandle( child_stdout_w );
     CloseHandle( child_stdin_r );

@@ -1,3 +1,4 @@
 .DS_Store
-build.exe
-build.pdb
+*.exe
+*.pdb
+exe/*
