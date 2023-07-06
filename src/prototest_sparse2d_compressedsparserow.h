@@ -11,7 +11,7 @@
 //
 // this makes for maximum-speed row-wise iteration of the whole grid, since the data is packed as tightly
 // as possible.
-// 
+//
 Templ struct
 sparse2d_csr_t
 {
@@ -48,6 +48,8 @@ ElementValue( sparse2d_csr_t<T>* a, idx_t x, idx_t y, T* dst, bool* found )
   *dst = nonzero_data[ row_start + sorted_insert_idx ];
 }
 
+
+
 // packed upper triangular, row-wise
 //   0 1 2 3   4
 //     4 5 6   3
@@ -75,11 +77,11 @@ ElementValue( sparse2d_csr_t<T>* a, idx_t x, idx_t y, T* dst, bool* found )
 // aka
 // packed lower triangular, col-wise
 //   0 4 7 9
-//   1 5 8 
-//   2 6 
+//   1 5 8
+//   2 6
 //   3
 // i(x,y) = (2n-x)(x+1)/2 + y
-// 
+//
 
 Templ ForceInl idx_t
 PackedUpperTriRowWise_IndexFromXY(
@@ -97,7 +99,7 @@ PackedUpperTriRowWise_IndexFromXY(
 //   1 2       2
 //   3 4 5     3
 //   6 7 8 9   4
-// 
+//
 // i: 0 | 1 2 | 3 4 5 | 6 7 8 9
 // y: 0 | 1 1 | 2 2 2 | 3 3 3 3
 // x: 0 | 0 1 | 0 1 2 | 0 1 2 3
@@ -124,7 +126,7 @@ PackedUpperTriRowWise_IndexFromXY(
 //       5 8
 //         9
 // i(x,y) = x(x+1)/2 + y
-// 
+//
 
 Templ ForceInl idx_t
 PackedLowerTriRowWise_IndexFromXY(
@@ -135,7 +137,7 @@ PackedLowerTriRowWise_IndexFromXY(
   auto i = y * ( y + 1 ) / 2 + x;
   return i;
 }
-  
+
 // symmetric matrix
 // this is a matrix s.t. m[i][j] = m[j][i]
 // so we only need to store the upper or lower tri (including diagonal).
@@ -144,11 +146,11 @@ PackedLowerTriRowWise_IndexFromXY(
 //   v = max(i,j)
 // that way u,v are always sorted s.t. u <= v.
 // note it'll also work for i==j.
-// 
+//
 // these two options use fewer integer ops than the alternatives:
 //   packed lower triangular, row-wise
 //   packed upper triangular, col-wise
-// 
+//
 
 Templ ForceInl idx_t
 SymmetricRowWise_IndexFromXY(
@@ -178,14 +180,14 @@ SymmetricColWise_IndexFromXY(
 
 // banded matrix
 // example with B=1, the band radius (# elements either side of diagonal, per-row)
-//   0 1 
+//   0 1
 //   2 3 4
 //     5 6 7
-//       8 9 
+//       8 9
 // i: 0 1 | 2 3 4 | 5 6 7 | 8 9
 // x: 0 1 | 0 1 2 | 1 2 3 | 2 3
 // y: 0 0 | 1 1 1 | 2 2 2 | 3 3
-// # elements per-row = 1 + 2B 
+// # elements per-row = 1 + 2B
 //                    = 3
 // y(i) = 0, when i<=B,
 //        1 + (i-(B+1))/(1+2B), otherwise.
@@ -206,7 +208,7 @@ SymmetricColWise_IndexFromXY(
 // now the opposite diagonal trace layout, to try and eliminate the n term. CASE2
 //   0
 //   4 1
-//   7 5 2  
+//   7 5 2
 //   9 8 6 3
 // i(x=0,y) = (2n-y)(y+1)/2
 // i(x,y) = x + i(x=0,y-x)
@@ -222,7 +224,7 @@ SymmetricColWise_IndexFromXY(
 //        = 1 + 1 + i(x+2,y+2)
 //        = (n-1-y) + ((x+n-1)-y)((x+n-1-y)+1)/2
 //        = (n-y-1) + (n-y-1+x)(n-y+x)/2
-// 
+//
 // that's also not it. another. CASE4
 //   3
 //   6 2
@@ -246,7 +248,7 @@ SymmetricColWise_IndexFromXY(
 //        = y + i(x+y,y=0)
 //        = y + (x+y)(x+y+1)/2
 // mirroring y gives the CASE3.
-// 
+//
 // mirroring x gives CASE6
 //   6 3 1 0
 //     7 4 2
@@ -255,7 +257,7 @@ SymmetricColWise_IndexFromXY(
 // i(x,y) = y + (n-1-x+y)(n-x+y)/2
 //
 // yeah so i think we're required to use n when computing left-leaning traces.
-// that's pretty interesting that it's not required for right-leaning traces... 
+// that's pretty interesting that it's not required for right-leaning traces...
 
 
 // Hankel matrix
@@ -281,3 +283,27 @@ SymmetricColWise_IndexFromXY(
 //   5 4 3 2
 //   6 5 4 3
 // i(x,y) = (n-1-x)+y
+
+
+// What about packed lower triangular, row-wise, without the primary diagonal?
+//   -
+//   0 -
+//   1 2 -
+//   3 4 5 -
+//
+// Well this is identical to the version with the primary diagonal, just shifted down one row.
+// The version with the primary diagonal has:
+//   i_withdiag(x,y) = y(y+1)/2 + x
+// So we just need to decrement y by one.
+//   i(x,y) = i_withdiag(x,y-1) = (y-1)y/2 + x
+//
+Templ ForceInl idx_t
+PackedLowerTriRowWiseNoPrimaryDiagonal_IndexFromXY(
+  idx_t x,
+  idx_t y
+  )
+{
+  AssertCrash( x < y ); // implicitly checks that y > 0.
+  auto i = ( y - 1 ) * y / 2 + x;
+  return i;
+}

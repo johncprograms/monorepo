@@ -30,7 +30,7 @@
   <Type Name="token_t">
     <DisplayString>{{ {type} {mem,[len]s8} }}</DisplayString>
   </Type>
-  <Type Name="array_t&lt;*&gt;">
+  <Type Name="stack_resizeable_cont_t&lt;*&gt;">
     <DisplayString>{{ {len} / {capacity} }}</DisplayString>
     <Expand>
       <ArrayItems>
@@ -39,7 +39,7 @@
       </ArrayItems>
     </Expand>
   </Type>
-  <Type Name="array32_t&lt;*&gt;">
+  <Type Name="stack_nonresizeable_t&lt;*&gt;">
     <DisplayString>{{ {len} / {capacity} }}</DisplayString>
     <Expand>
       <ArrayItems>

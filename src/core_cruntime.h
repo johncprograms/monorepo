@@ -11,4 +11,5 @@
 #include <time.h>
 #include <type_traits>
 #include <bit>
+#include <algorithm>
 //#include <stdatomic.h>
