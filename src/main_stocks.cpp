@@ -469,11 +469,11 @@ Main( stack_resizeable_cont_t<slice_t>& args )
     rgba.mem[xi + dim.x * yi] = 0xFFFFFFFFu;
   }
   ReverseFor( y, 0, dim.y ) {
-  For( x, 0, dim.x ) {
-    auto px = rgba.mem[x + dim.x * y];
-    printf(px > 0 ? "+" : " ");
-  }
-  printf("\n");
+    For( x, 0, dim.x ) {
+      auto px = rgba.mem[x + dim.x * y];
+      printf(px > 0 ? "+" : " ");
+    }
+    printf("\n");
   }
 
   Free( alloc_cells );
