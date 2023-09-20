@@ -187,6 +187,8 @@ Inl f32 fastpow32( f32 x, f32 e )
 
 #endif
 
+Templ ForceInl T Sqrt(T x) { return std::sqrt(x); }
+
 #define Frac32( x )   ( x - Truncate32( x ) )
 #define Frac64( x )   ( x - Truncate64( x ) )
 

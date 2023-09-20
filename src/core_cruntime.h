@@ -12,4 +12,5 @@
 #include <type_traits>
 #include <bit>
 #include <algorithm>
+#include <atomic>
 //#include <stdatomic.h>

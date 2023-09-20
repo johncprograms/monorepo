@@ -177,6 +177,7 @@ _OSFormatFilename( u8* name, idx_t len )
 {
   auto r = _StandardFilename( name, len );
   StringReplaceAscii( ML( r ), '/', '\\' );
+  return r;
 }
 
 Inl slice_t
@@ -634,6 +635,7 @@ DirMove( u8* dst, idx_t dst_len, u8* src, idx_t src_len )
 struct
 file_t
 {
+#if defined(WIN)
   fsobj_t obj;
   void* loaded; // stores file handle.
   u64 size;
@@ -641,6 +643,13 @@ file_t
   u64 time_lastaccess;
   u64 time_lastwrite;
   bool readonly;
+#elif defined(MAC)
+  fsobj_t obj;
+  FILE* loaded;
+  u64 size;
+#else
+#error Unsupported platform
+#endif
 };
 
 
@@ -686,6 +695,19 @@ _PopulateMetadata( file_t& file )
   file.time_lastwrite  = _u64_from_FILETIME( fileinfo.ftLastWriteTime  );
   file.readonly = fileinfo.dwFileAttributes & FILE_ATTRIBUTE_READONLY;
 #elif defined(MAC)
+  auto curpos = ftell( file.loaded );
+
+  auto seek_result = fseek( file.loaded, 0, SEEK_CUR );
+  AssertCrash( !seek_result );
+  auto start = ftell( file.loaded );
+  seek_result = fseek( file.loaded, 0, SEEK_END );
+  AssertCrash( !seek_result );
+  auto end = ftell( file.loaded );
+
+  seek_result = fseek( file.loaded, curpos, SEEK_SET );
+  AssertCrash( !seek_result );
+
+  file.size = end - start;
 #else
 #error Unsupported platform
 #endif
@@ -703,6 +725,8 @@ _SetFilePtr( file_t& file, u64 file_offset )
     );
   AssertWarn( res );
 #elif defined(MAC)
+  auto r = fseek( file.loaded, file_offset, SEEK_SET );
+  AssertCrash( !r );
 #else
 #error Unsupported platform
 #endif
@@ -780,7 +804,6 @@ FileOpen( u8* name, idx_t len, fileopen_t type, fileop_t access, fileop_t share 
   DWORD attribs = FILE_ATTRIBUTE_NORMAL;
 
   switch( type ) {
-
     case fileopen_t::only_new: {
       if( !_EnsureDstDirectory( file.obj ) ) {
         return file;
@@ -820,6 +843,58 @@ FileOpen( u8* name, idx_t len, fileopen_t type, fileop_t access, fileop_t share 
   file.loaded = Cast( void*, h );
   _PopulateMetadata( file );
 #elif defined(MAC)
+  file.obj = _StandardFilename( name, len );
+
+  auto mode = "";
+  switch( type ) {
+    case fileopen_t::only_new: {
+      switch( access ) {
+        case fileop_t::none: {
+          return file; // makes no sense.
+        } break;
+        case fileop_t::R: {
+          return file; // makes no sense.
+        } break;
+        case fileop_t::W: {
+          mode = "wx";
+        } break;
+        case fileop_t::RW: {
+          mode = "w+x";
+        } break;
+      }
+      if( !_EnsureDstDirectory( file.obj ) ) {
+        return file;
+      }
+    } break;
+
+    case fileopen_t::only_existing: {
+      switch( access ) {
+        case fileop_t::none: {
+          return file; // makes no sense.
+        } break;
+        case fileop_t::R: {
+          mode = "r";
+        } break;
+        case fileop_t::W: {
+          mode = "a";
+        } break;
+        case fileop_t::RW: {
+          mode = "a+";
+        } break;
+      }
+    } break;
+
+    case fileopen_t::always: {
+      if( !_EnsureDstDirectory( file.obj ) ) {
+        return file;
+      }
+      AssertCrash( false ); // TODO: implement.
+    } break;
+  }
+  file.loaded = fopen( Cast( const char*, file.obj.mem ), mode );
+  if( file.loaded ) {
+    _PopulateMetadata( file );
+  }
 #else
 #error Unsupported platform
 #endif
@@ -868,6 +943,20 @@ FileRead( file_t& file, u64 file_offset, u8* dst, u64 dst_len, u32 chunk_size )
   // update file info.
   _PopulateMetadata( file );
 #elif defined(MAC)
+  _SetFilePtr( file, file_offset );
+  u64 ntoread = MIN( file.size - file_offset, dst_len );
+  u32 nchunks = Cast( u32, ntoread / chunk_size );
+  u32 nrem    = Cast( u32, ntoread % chunk_size );
+  Fori( u32, i, 0, nchunks ) {
+    size_t nread = fread( dst, 1, chunk_size, file.loaded );
+    AssertCrash( nread == chunk_size );
+    dst += nread;
+  }
+  if( nrem ) {
+    size_t nread = fread( dst, 1, nrem, file.loaded );
+    AssertCrash( nread == nrem );
+    dst += nread;
+  }
 #else
 #error Unsupported platform
 #endif

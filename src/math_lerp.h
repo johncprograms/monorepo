@@ -3,6 +3,17 @@
 Inl f32 lerp( f32 x0, f32 x1, f32 t ) { return t * x1 + ( 1.0f - t ) * x0; }
 Inl f64 lerp( f64 x0, f64 x1, f64 t ) { return t * x1 + ( 1.0  - t ) * x0; }
 
+Templ Inl T
+lerp_T_from_T(
+  T y0,
+  T y1,
+  T x,
+  T x0,
+  T x1
+  )
+{
+  return y0 + ( ( y1 - y0 ) / ( x1 - x0 ) ) * ( x - x0 );
+}
 
 Inl f64
 Lerp_from_f64(

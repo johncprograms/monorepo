@@ -14,6 +14,12 @@ kahansum64_t
   f64 err;
 };
 
+Templ struct kahansum_t
+{
+  T sum;
+  T err;
+};
+
 Inl void
 Add( kahansum32_t& kahan, f32 val )
 {
@@ -28,6 +34,15 @@ Add( kahansum64_t& kahan, f64 val )
 {
   f64 val_corrected = val - kahan.err;
   f64 new_sum = kahan.sum + val_corrected;
+  kahan.err = ( new_sum - kahan.sum ) - val_corrected;
+  kahan.sum = new_sum;
+}
+
+Templ Inl void
+Add( kahansum_t<T>& kahan, T val )
+{
+  T val_corrected = val - kahan.err;
+  T new_sum = kahan.sum + val_corrected;
   kahan.err = ( new_sum - kahan.sum ) - val_corrected;
   kahan.sum = new_sum;
 }
