@@ -54,32 +54,6 @@
 #include "text_parsing.h"
 #include "ds_stack_resizeable_cont_addbacks.h"
 
-// For a lag plot, we want to plot f(x[i]) vs. f(x[i - lag])
-// i.e. we're lining up two instances of f, at various lag offsets.
-// Note we can only plot the overlap of the two instances.
-// The overlap length is f.len - lag
-// Hence this type stores the starts of the two instances, plus the overlap length.
-Templ struct
-lag_t
-{
-  T* f_i;
-  T* f_i_minus_lag;
-  idx_t len;
-};
-Templ lag_t<T>
-Lag(
-  tslice_t<T> f,
-  idx_t lag_offset = 1
-  )
-{
-  AssertCrash( f.len >= lag_offset );
-  lag_t<T> lag = {};
-  lag.f_i = f.mem + lag_offset;
-  lag.f_i_minus_lag = f.mem;
-  lag.len = f.len - lag_offset;
-  return lag;
-}
-
 // Zeros and writes the histogram to 'counts'.
 // The given counts.len is the number of buckets to use; they're uniformly sized.
 // data_min/data_max define the bounds of the data. This assumes they're pre-computed,
@@ -89,13 +63,13 @@ Histogram(
   tslice_t<T> data,
   T data_min,
   T data_max,
-  tslice_t<idx_t> counts
+  tslice_t<T> counts
   )
 {
   TZero( ML( counts ) );
   ForLen( i, data ) {
     auto x = data.mem[i];
-    auto bucket_fractional = lerp_T_from_T<T>( 0, counts.len, x, data_min, data_max );
+    auto bucket_fractional = lerp_T_from_T<T>( 0, Cast( T, counts.len ), x, data_min, data_max );
     auto bucket = Cast( idx_t, bucket_fractional );
     bucket = MIN( bucket, counts.len - 1 );
     AssertCrash( bucket <= counts.len );
@@ -172,6 +146,40 @@ Variance2(
   }
   return scale * variance.sum;
 }
+
+// For a lag plot, we want to plot f(x[i]) vs. f(x[i - lag])
+// i.e. we're lining up two instances of f, at various lag offsets.
+// Note we can only plot the overlap of the two instances.
+// The overlap length is f.len - lag
+// Hence this type stores the starts of the two instances, plus the overlap length.
+Templ struct
+lag_t
+{
+  T* y;
+  T* x;
+  idx_t len;
+  T min_y;
+  T min_x;
+  T max_y;
+  T max_x;
+};
+// PERF: N^2 if we call repeatedly to compute all possible lag_offset values.
+Templ lag_t<T>
+Lag(
+  tslice_t<T> f,
+  idx_t lag_offset = 1
+  )
+{
+  AssertCrash( f.len >= lag_offset );
+  lag_t<T> lag = {};
+  lag.y = f.mem + lag_offset;
+  lag.x = f.mem;
+  lag.len = f.len - lag_offset;
+  MinMax( { lag.y, lag.len }, &lag.min_y, &lag.max_y );
+  MinMax( { lag.x, lag.len }, &lag.min_x, &lag.max_x );
+  return lag;
+}
+
 Templ Inl void
 AutoCorrelation(
   tslice_t<T> data,
@@ -301,6 +309,59 @@ FOUR1(
   }
 }
 
+// This plots a given run-sequence: { y_i } at equally-spaced x_i locations, not given.
+Templ void
+PlotRunSequence( vec2<u32> dim, tslice_t<T> data, T data_min, T data_max, tslice_t<vec2<f64>> points )
+{
+  AssertCrash( data.len == points.len );
+  ForLen( i, data ) {
+    auto data_i = data.mem[i];
+    // Lerp [min, max] as the y range.
+    // Note (dim.y - 1) is the factor, since the maximum y maps to the last pixel.
+    auto y_i = ( data_i - data_min ) / ( data_max - data_min ) * ( dim.y - 1 );
+    // t range is: [0, 1].
+    // Note x_i range is: [0, dim.x-1], i.e. max x_i maps to the last pixel.
+    auto t = i / Cast( f64, data.len - 1 );
+    auto x_i = t * ( dim.x - 1 );
+    points.mem[i] = _vec2( x_i, y_i );
+  }
+}
+// This really just does lerp to dim, aka normalizing a viewport over the given { x_i, y_i } points.
+Templ void
+PlotLag(
+  vec2<u32> dim,
+  lag_t<T> lag,
+  tslice_t<vec2<f64>> points
+  )
+{
+  AssertCrash( points.len == lag.len );
+  ForLen( i, lag ) {
+    // Lerp [min, max] as the y range.
+    // Note (dim.y - 1) is the factor, since the maximum y maps to the last pixel.
+    auto y_i = ( lag.y[i] - lag.min_y ) / ( lag.max_y - lag.min_y ) * ( dim.y - 1 );
+    auto x_i = ( lag.x[i] - lag.min_x ) / ( lag.max_x - lag.min_x ) * ( dim.x - 1 );
+    points.mem[i] = _vec2( x_i, y_i );
+  }
+}
+Templ void
+PixelSnap(
+  vec2<u32> dim,
+  tslice_t<vec2<T>> points,
+  tslice_t<vec2<u32>> pixels
+  )
+{
+  AssertCrash( points.len == pixels.len );
+  ForLen( i, points ) {
+    auto point = points.mem[i];
+    // FUTURE: bilinear sub-pixel additions, rather than pixel-snapping rounding.
+    auto xi = Round_u32_from_f64( point.x );
+    auto yi = Round_u32_from_f64( point.y );
+    AssertCrash( xi < dim.x );
+    AssertCrash( yi < dim.y );
+    pixels.mem[i] = _vec2( xi, yi );
+  }
+}
+
 int
 Main( stack_resizeable_cont_t<slice_t>& args )
 {
@@ -388,7 +449,7 @@ Main( stack_resizeable_cont_t<slice_t>& args )
   auto col_close = ColumnByName( SliceFromCStr( "close/last" ) );
   auto col_high = ColumnByName( SliceFromCStr( "high" ) );
 
-  auto DColDollarF64 = [&](tslice_t<slice_t>* col) 
+  auto DColDollarF64 = [&](tslice_t<slice_t>* col)
   {
     auto dcol = AllocString<f64>( nrows );
     For( y, 0, nrows ) {
@@ -402,7 +463,7 @@ Main( stack_resizeable_cont_t<slice_t>& args )
     }
     return dcol;
   };
-  
+
   auto dcol_close = DColDollarF64( col_close );
   auto dcol_high = DColDollarF64( col_high );
 
@@ -414,14 +475,14 @@ Main( stack_resizeable_cont_t<slice_t>& args )
   f64 min_high;
   f64 max_high;
   MinMax( SliceFromString( dcol_high ), &min_high, &max_high );
-  auto counts_close = AllocString<idx_t>( nrows );
+  auto counts_close = AllocString<f64>( nrows );
   Histogram( SliceFromString( dcol_close ), min_close, max_close, SliceFromString( counts_close ) );
-  auto counts_high = AllocString<idx_t>( nrows );
+  auto counts_high = AllocString<f64>( nrows );
   Histogram( SliceFromString( dcol_high ), min_high, max_high, SliceFromString( counts_high ) );
   ForLen( i, counts_close ) {
     //printf( "%llu\n", counts_close.mem[i] );
   }
-  
+
   auto variance_close = Variance( SliceFromString( dcol_close ), mean_close );
   auto varianc2_close = Variance2( SliceFromString( dcol_close ), mean_close );
   auto variance_high = Variance( SliceFromString( dcol_high ), mean_high );
@@ -434,7 +495,7 @@ Main( stack_resizeable_cont_t<slice_t>& args )
   auto lag_close = Lag( SliceFromString( dcol_close ) );
   auto lag_high = Lag( SliceFromString( dcol_high ) );
   ForLen( i, lag_close ) {
-    //printf( "%F,%F\n", lag_close.f_i[i], lag_close.f_i_minus_lag[i] );
+    //printf( "%F,%F\n", lag_close.y[i], lag_close.x[i] );
   }
 
   // TODO: layout the graphs
@@ -445,28 +506,28 @@ Main( stack_resizeable_cont_t<slice_t>& args )
   f64 max_autocorr_close;
   MinMax( SliceFromString( autocorr_close ), &min_autocorr_close, &max_autocorr_close );
 
-  // This plots a given run-sequence: { y_i } at equally-spaced x_i locations, not given.
-  auto data_plot = SliceFromString( autocorr_close );
-  auto max_data_plot = max_autocorr_close;
-  auto min_data_plot = min_autocorr_close;
+  f64 min_counts_close;
+  f64 max_counts_close;
+  MinMax( SliceFromString( counts_close ), &min_counts_close, &max_counts_close );
+
   auto dim = _vec2<u32>( 80, 40 );
+//  auto points = AllocString<vec2<u32>>( autocorr_close.len );
+//  PlotRunSequence( dim, SliceFromString( autocorr_close ), min_autocorr_close, max_autocorr_close, SliceFromString( points ) );
+
+//  auto points = AllocString<vec2<f64>>( counts_close.len );
+//  PlotRunSequence( dim, SliceFromString( counts_close ), min_counts_close, max_counts_close, SliceFromString( points ) );
+
+  auto points = AllocString<vec2<f64>>( lag_close.len );
+  PlotLag( dim, lag_close, SliceFromString( points ) );
+
+  auto pixels = AllocString<vec2<u32>>( points.len );
+  PixelSnap( dim, SliceFromString( points ), SliceFromString( pixels ) );
+
   auto rgba = AllocString<u32>( dim.x * dim.y );
   TZero( ML( rgba ) );
-  ForLen( i, data_plot ) {
-    auto data_i = data_plot.mem[i];
-    // Lerp [min, max] as the y range.
-    // Note (dim.y - 1) is the factor, since the maximum y maps to the last pixel.
-    auto y_i = ( data_i - min_data_plot ) / ( max_data_plot - min_data_plot ) * ( dim.y - 1 );
-    // t range is: [0, 1].
-    // Note x_i range is: [0, dim.x-1], i.e. max x_i maps to the last pixel.
-    auto t = i / Cast( f64, data_plot.len - 1 );
-    auto x_i = t * ( dim.x - 1 );
-    // FUTURE: bilinear sub-pixel additions, rather than pixel-snapping rounding.
-    auto xi = Round_u32_from_f64( x_i );
-    auto yi = Round_u32_from_f64( y_i );
-    AssertCrash( xi < dim.x );
-    AssertCrash( yi < dim.y );
-    rgba.mem[xi + dim.x * yi] = 0xFFFFFFFFu;
+  ForLen( i, pixels ) {
+    auto pixel = pixels.mem[i];
+    rgba.mem[pixel.x + dim.x * pixel.y] = 0xFFFFFFFFu;
   }
   ReverseFor( y, 0, dim.y ) {
     For( x, 0, dim.x ) {
