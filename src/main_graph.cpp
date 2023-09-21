@@ -62,6 +62,7 @@
 #include "ui_propdb.h"
 #include "ui_font.h"
 #include "ui_render.h"
+#include "statistics.h"
 
 
 struct
