@@ -655,7 +655,7 @@ Main( stack_resizeable_cont_t<slice_t>& args )
   auto filecontents_r = FileAlloc( file_l );
   FileFree( file_r );
   FileFree( file_l );
-  SetFiles( app->diff, SliceFromString( filecontents_l ), SliceFromString( filecontents_r ) );
+  SetFiles( app->diff, filecontents_l, filecontents_r );
 
   auto fontsize_normal = GetPropFromDb( f32, f32_fontsize_normal );
   auto filename_font_normal = GetPropFromDb( slice_t, string_filename_font_normal );

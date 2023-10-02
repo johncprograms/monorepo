@@ -478,15 +478,15 @@ Lerp_from_vec4f32(
 
 
 
-Inl vec4<f64>
+Templ Inl vec4<T>
 Lerp_from_s32(
-  vec4<f64>& y0,
-  vec4<f64>& y1,
+  vec4<T>& y0,
+  vec4<T>& y1,
   s32 x,
   s32 x0,
   s32 x1 )
 {
-  return _vec4(
+  return _vec4<T>(
     Lerp_from_s32( y0.x, y1.x, x, x0, x1 ),
     Lerp_from_s32( y0.y, y1.y, x, x0, x1 ),
     Lerp_from_s32( y0.z, y1.z, x, x0, x1 ),
@@ -494,19 +494,19 @@ Lerp_from_s32(
   );
 }
 
-Inl vec4<f32>
-Lerp_from_s32(
-  vec4<f32>& y0,
-  vec4<f32>& y1,
-  s32 x,
-  s32 x0,
-  s32 x1 )
+Templ Inl vec4<T>
+Lerp_from_idx(
+  vec4<T>& y0,
+  vec4<T>& y1,
+  idx_t x,
+  idx_t x0,
+  idx_t x1 )
 {
-  return _vec4(
-    Lerp_from_s32( y0.x, y1.x, x, x0, x1 ),
-    Lerp_from_s32( y0.y, y1.y, x, x0, x1 ),
-    Lerp_from_s32( y0.z, y1.z, x, x0, x1 ),
-    Lerp_from_s32( y0.w, y1.w, x, x0, x1 )
+  return _vec4<T>(
+    Lerp_from_idx( y0.x, y1.x, x, x0, x1 ),
+    Lerp_from_idx( y0.y, y1.y, x, x0, x1 ),
+    Lerp_from_idx( y0.z, y1.z, x, x0, x1 ),
+    Lerp_from_idx( y0.w, y1.w, x, x0, x1 )
   );
 }
 

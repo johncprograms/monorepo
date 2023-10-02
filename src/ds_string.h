@@ -13,6 +13,11 @@ tstring_t
   idx_t len; // # of bytes mem can possibly hold.
   Allocator alloc;
   Allocation allocn;
+  
+  ForceInl operator tslice_t<T>()
+  {
+    return SliceFromString( *this );
+  }
 };
 
 //template< typename Allocator = allocator_heap_or_virtual_t >

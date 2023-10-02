@@ -59,6 +59,28 @@ Lerp_from_s32(
   return y0 + ( ( y1 - y0 ) / ( x1 - x0 ) ) * ( x - x0 );
 }
 
+Inl f32
+Lerp_from_idx(
+  f32 y0,
+  f32 y1,
+  idx_t x,
+  idx_t x0,
+  idx_t x1 )
+{
+  return y0 + ( ( y1 - y0 ) / ( x1 - x0 ) ) * ( x - x0 );
+}
+
+Inl f64
+Lerp_from_idx(
+  f64 y0,
+  f64 y1,
+  idx_t x,
+  idx_t x0,
+  idx_t x1 )
+{
+  return y0 + ( ( y1 - y0 ) / ( x1 - x0 ) ) * ( x - x0 );
+}
+
 Inl s32
 Lerp_from_s32(
   s32 y0,

@@ -9,7 +9,9 @@ Histogram(
   tslice_t<T> data,
   T data_min,
   T data_max,
-  tslice_t<T> counts
+  tslice_t<T> counts,
+  tslice_t<idx_t> bucket_from_data_idx, // maps data to buckets.
+  tslice_t<T> counts_when_inserted // per-datum, the count of its bucket when the datum is inserted.
   )
 {
   TZero( ML( counts ) );
@@ -19,7 +21,9 @@ Histogram(
     auto bucket = Cast( idx_t, bucket_fractional );
     bucket = MIN( bucket, counts.len - 1 );
     AssertCrash( bucket <= counts.len );
+    counts_when_inserted.mem[i] = counts.mem[bucket];
     counts.mem[bucket] += 1;
+    bucket_from_data_idx.mem[i] = bucket;
   }
 }
 Templ Inl void
@@ -228,7 +232,7 @@ FOUR1(
     continue;
   }
   auto MMAX = 2;
-  while( n >  MMAX ) {
+  while( n > MMAX ) {
     auto istep = 2 * MMAX;
     auto theta = 6.28318530717959 / ( isign * MMAX );
     auto sin_half_theta = Sin( theta / 2 );
@@ -257,35 +261,74 @@ FOUR1(
 
 // This plots a given run-sequence: { y_i } at equally-spaced x_i locations, not given.
 Templ void
-PlotRunSequence( vec2<u32> dim, tslice_t<T> data, T data_min, T data_max, tslice_t<vec2<f64>> points )
+PlotRunSequence(
+  vec2<f32> dim,
+  tslice_t<T> data,
+  T data_min,
+  T data_max,
+  tslice_t<vec2<f32>> points
+  )
 {
   AssertCrash( data.len == points.len );
   ForLen( i, data ) {
     auto data_i = data.mem[i];
     // Lerp [min, max] as the y range.
     // Note (dim.y - 1) is the factor, since the maximum y maps to the last pixel.
-    auto y_i = ( data_i - data_min ) / ( data_max - data_min ) * ( dim.y - 1 );
+    auto y_i = Cast( f32, ( data_i - data_min ) / ( data_max - data_min ) ) * ( dim.y - 1 );
     // t range is: [0, 1].
     // Note x_i range is: [0, dim.x-1], i.e. max x_i maps to the last pixel.
-    auto t = i / Cast( f64, data.len - 1 );
+    auto t = i / Cast( f32, data.len - 1 );
     auto x_i = t * ( dim.x - 1 );
     points.mem[i] = _vec2( x_i, y_i );
+  }
+}
+// This plots a given histogram, with each datapoint represented as a small rect.
+// TODO: area-normalized histogram option. This works better for overlaying more-precise pdfs.
+Templ void
+PlotHistogram(
+  vec2<f32> dim,
+  tslice_t<T> counts,
+  T counts_max,
+  tslice_t<idx_t> bucket_from_data_idx,
+  tslice_t<T> counts_when_inserted,
+  tslice_t<rectf32_t> rects
+  )
+{
+  AssertCrash( counts_when_inserted.len == bucket_from_data_idx.len );
+  auto subdivision_w = Truncate32( dim.x / counts.len );
+  auto col_w = subdivision_w - 1;
+  if( col_w < 1.0f ) return; // TODO: not signalling failure upwards.
+  ForLen( i, bucket_from_data_idx ) {
+    auto bucket_i = bucket_from_data_idx.mem[i];
+    auto count_when_inserted = counts_when_inserted.mem[i];
+    AssertCrash( bucket_i < counts.len );
+    auto count = counts.mem[bucket_i];
+
+    // Lerp [0, counts_max] as the y range.
+    // Note (dim.y - 1) is the factor, since the maximum y maps to the last pixel.
+    auto y_i  = Cast( f32, ( ( count_when_inserted + 0 ) / counts_max ) ) * ( dim.y - 1 );
+    auto y_ip = Cast( f32, ( ( count_when_inserted + 1 ) / counts_max ) ) * ( dim.y - 1 );
+    auto x_i = bucket_i * subdivision_w;
+
+    auto rect = rects.mem + i;
+    rect->p0 = _vec2( x_i, dim.y - 1 - y_ip );
+    rect->p1 = _vec2( x_i + col_w, dim.y - 1 - y_i );
   }
 }
 // This really just does lerp to dim, aka normalizing a viewport over the given { x_i, y_i } points.
 Templ void
 PlotLag(
-  vec2<u32> dim,
+  vec2<f32> dim,
   lag_t<T> lag,
-  tslice_t<vec2<f64>> points
+  tslice_t<vec2<f32>> points
   )
 {
   AssertCrash( points.len == lag.len );
   ForLen( i, lag ) {
     // Lerp [min, max] as the y range.
     // Note (dim.y - 1) is the factor, since the maximum y maps to the last pixel.
-    auto y_i = ( lag.y[i] - lag.min_y ) / ( lag.max_y - lag.min_y ) * ( dim.y - 1 );
-    auto x_i = ( lag.x[i] - lag.min_x ) / ( lag.max_x - lag.min_x ) * ( dim.x - 1 );
+    auto y_i = Cast( f32, ( lag.y[i] - lag.min_y ) / ( lag.max_y - lag.min_y ) ) * ( dim.y - 1 );
+    auto x_i = Cast( f32, ( lag.x[i] - lag.min_x ) / ( lag.max_x - lag.min_x ) ) * ( dim.x - 1 );
     points.mem[i] = _vec2( x_i, y_i );
   }
 }
