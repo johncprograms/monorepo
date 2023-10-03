@@ -752,3 +752,38 @@ PerceivedBrightness( vec4<f32> rgba )
   static const auto relative_lumin_weights = _vec4( 0.2126f, 0.7152f, 0.0722f, 0.0f );
   return Dot( rgba, relative_lumin_weights );
 }
+
+// Given 'rect', shrinks it to create a border of width 'border_radius'.
+// Corners get absorbed into border_u and border_d, the top and bottom.
+// ----------------
+// |--------------|
+// |  |        |  |
+// |  | shrunk |  |
+// |  |        |  |
+// |--------------|
+// ----------------
+Inl void
+ShrinkRect(
+  rectf32_t in,
+  f32 border_radius,
+  rectf32_t* shrunk,
+  rectf32_t* borders // length 4, order { u, d, l, r }
+  )
+{
+  shrunk->p0 = in.p0 + _vec2( border_radius );
+  shrunk->p1 = in.p1 - _vec2( border_radius );
+
+  if( borders ) {
+    borders[0].p0 = in.p0;
+    borders[0].p1 = _vec2( in.p1.x, in.p0.y + border_radius );
+  
+    borders[1].p0 = _vec2( in.p0.x, in.p1.y - border_radius );
+    borders[1].p1 = in.p1;
+  
+    borders[2].p0 = _vec2( in.p0.x, in.p0.y + border_radius );
+    borders[2].p1 = _vec2( in.p0.x + border_radius, in.p1.y - border_radius );
+  
+    borders[3].p0 = _vec2( in.p1.x - border_radius, in.p0.y + border_radius );
+    borders[3].p1 = _vec2( in.p1.x, in.p1.y - border_radius );
+  }
+}

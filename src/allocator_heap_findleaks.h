@@ -108,7 +108,7 @@
   Inl void
   FindLeaks_MemHeapFree( void* mem )
   {
-    AssertCrash( mem );
+    if( !mem ) return;
     Lock( &g_active_allocs_lock );
     if( g_track_active_allocs ) {
       g_track_active_allocs = 0; // temporarily turn off alloc tracking for the tracking hashset expansion code.

@@ -217,7 +217,7 @@ FOUR1(
   AssertCrash( IsPowerOf2( NN ) );
   AssertCrash( isign == -1  ||  isign == 1 );
   auto n = 2 * NN;
-  auto j = 1;
+  idx_t j = 1;
   for( idx_t i = 1; i < n+1; i += 2 ) {
     if( j > i ) {
       SWAP( T, data[i], data[j] );
@@ -239,15 +239,15 @@ FOUR1(
     auto sin_theta = Sin( theta );
     auto wpr = -2 * sin_half_theta * sin_half_theta;
     auto wpi = sin_theta;
-    auto wr = 1;
-    auto wi = 0;
+    T wr = 1;
+    T wi = 0;
     for( idx_t m = 1; m < MMAX; m += 2 ) {
       for( idx_t i = m; i < n; i += istep ) {
         j = i + MMAX;
         auto tempr = wr * data[j] - wi * data[j+1];
-        auto tempi = wr * data[j+1] + wi*data[j];
+        auto tempi = wr * data[j+1] + wi * data[j];
         data[j] = data[i] - tempr;
-        data[j+1] - data[i+1] - tempi;
+        data[j+1] = data[i+1] - tempi;
         data[i] = data[i] + tempr;
         data[i+1] = data[i+1] + tempi;
       }
@@ -282,6 +282,29 @@ PlotRunSequence(
     points.mem[i] = _vec2( x_i, y_i );
   }
 }
+// This plots the given { x_i, y_i } points.
+Templ void
+PlotXY(
+  vec2<f32> dim,
+  tslice_t<T> data_y,
+  T data_y_min,
+  T data_y_max,
+  tslice_t<T> data_x,
+  T data_x_min,
+  T data_x_max,
+  tslice_t<vec2<f32>> points
+  )
+{
+  AssertCrash( data_x.len == data_y.len );
+  AssertCrash( points.len == data_y.len );
+  ForLen( i, data_y ) {
+    // Lerp [min, max] as the y range.
+    // Note (dim.y - 1) is the factor, since the maximum y maps to the last pixel.
+    auto y_i = Cast( f32, ( data_y.mem[i] - data_y_min ) / ( data_y_max - data_y_min ) ) * ( dim.y - 1 );
+    auto x_i = Cast( f32, ( data_x.mem[i] - data_x_min ) / ( data_x_max - data_x_min ) ) * ( dim.x - 1 );
+    points.mem[i] = _vec2( x_i, y_i );
+  }
+}
 // This plots a given histogram, with each datapoint represented as a small rect.
 // TODO: area-normalized histogram option. This works better for overlaying more-precise pdfs.
 Templ void
@@ -313,23 +336,6 @@ PlotHistogram(
     auto rect = rects.mem + i;
     rect->p0 = _vec2( x_i, dim.y - 1 - y_ip );
     rect->p1 = _vec2( x_i + col_w, dim.y - 1 - y_i );
-  }
-}
-// This really just does lerp to dim, aka normalizing a viewport over the given { x_i, y_i } points.
-Templ void
-PlotLag(
-  vec2<f32> dim,
-  lag_t<T> lag,
-  tslice_t<vec2<f32>> points
-  )
-{
-  AssertCrash( points.len == lag.len );
-  ForLen( i, lag ) {
-    // Lerp [min, max] as the y range.
-    // Note (dim.y - 1) is the factor, since the maximum y maps to the last pixel.
-    auto y_i = Cast( f32, ( lag.y[i] - lag.min_y ) / ( lag.max_y - lag.min_y ) ) * ( dim.y - 1 );
-    auto x_i = Cast( f32, ( lag.x[i] - lag.min_x ) / ( lag.max_x - lag.min_x ) ) * ( dim.x - 1 );
-    points.mem[i] = _vec2( x_i, y_i );
   }
 }
 Templ void
