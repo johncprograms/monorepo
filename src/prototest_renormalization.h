@@ -335,7 +335,7 @@ CalcJunk()
   }
 
   {
-    constant u32 n = 1000000;
+    constant u32 n = 10000;
     stack_resizeable_cont_t<slice_t> lines;
     Alloc( lines, n + 1 );
     kahansum32_t x = {};

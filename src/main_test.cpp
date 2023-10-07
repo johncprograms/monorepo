@@ -117,7 +117,8 @@ LogUI( const void* cstr ... )
 #endif
 
 #include "prototest_renormalization.h"
-#include "prototest_sparse2d_compressedsparserow.h"
+#include "sparse2d_compressedsparserow.h"
+#include "statistics.h"
 
 int
 Main( u8* cmdline, idx_t cmdline_len )
@@ -142,6 +143,7 @@ Main( u8* cmdline, idx_t cmdline_len )
   TestCstr();
   TestCstrFloat();
   TestCstrInteger();
+  TestStatistics();
   TestCoreText();
   TestBuf();
   #if !defined(MAC)

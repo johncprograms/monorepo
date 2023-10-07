@@ -55,6 +55,7 @@
 #include "mainthread.h"
 #include "text_parsing.h"
 #include "ds_stack_resizeable_cont_addbacks.h"
+#include "sparse2d_compressedsparserow.h"
 
 #define OPENGL_INSTEAD_OF_SOFTWARE       0
 #define GLW_RAWINPUT_KEYBOARD            0

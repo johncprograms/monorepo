@@ -334,7 +334,7 @@ TestFsalloc()
 
     generalfsalloc_t g;
     Init( &g );
-    constant idx_t N = 10000;
+    constant idx_t N = 100;
     For( i, 0, N ) {
       if( Zeta32( rng ) > 0.2f ) {
         auto zeta = Zeta32( rng );

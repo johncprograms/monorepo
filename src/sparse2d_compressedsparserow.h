@@ -83,7 +83,7 @@ ElementValue( sparse2d_csr_t<T>* a, idx_t x, idx_t y, T* dst, bool* found )
 // i(x,y) = (2n-x)(x+1)/2 + y
 //
 
-Templ ForceInl idx_t
+ForceInl idx_t
 PackedUpperTriRowWise_IndexFromXY(
   idx_t x,
   idx_t y,
@@ -128,7 +128,7 @@ PackedUpperTriRowWise_IndexFromXY(
 // i(x,y) = x(x+1)/2 + y
 //
 
-Templ ForceInl idx_t
+ForceInl idx_t
 PackedLowerTriRowWise_IndexFromXY(
   idx_t x,
   idx_t y
@@ -152,7 +152,7 @@ PackedLowerTriRowWise_IndexFromXY(
 //   packed upper triangular, col-wise
 //
 
-Templ ForceInl idx_t
+ForceInl idx_t
 SymmetricRowWise_IndexFromXY(
   idx_t x,
   idx_t y
@@ -165,7 +165,7 @@ SymmetricRowWise_IndexFromXY(
   return i;
 }
 
-Templ ForceInl idx_t
+ForceInl idx_t
 SymmetricColWise_IndexFromXY(
   idx_t x,
   idx_t y
@@ -297,7 +297,7 @@ SymmetricColWise_IndexFromXY(
 // So we just need to decrement y by one.
 //   i(x,y) = i_withdiag(x,y-1) = (y-1)y/2 + x
 //
-Templ ForceInl idx_t
+ForceInl idx_t
 PackedLowerTriRowWiseNoPrimaryDiagonal_IndexFromXY(
   idx_t x,
   idx_t y

@@ -202,26 +202,305 @@ Covariance(
   }
   return covariance.sum;
 }
+Templ Inl T
+DistanceCovariance2(
+  tslice_t<T> x,
+  tslice_t<T> y,
+  tslice_t<T> buffer // length n(n-1) + 6n
+  )
+{
+  AssertCrash( x.len == y.len );
+  auto n = x.len;
+  auto a_len = ( n * ( n - 1 ) ) / 2 + n;
+  auto b_len = a_len;
+  AssertCrash( buffer.len >= n * ( n - 1 ) + 6 * n );
+
+  tslice_t<T> a = { buffer.mem + 0, a_len };
+  buffer.mem += a_len;
+  buffer.len -= a_len;
+  tslice_t<T> b = { buffer.mem + 0, b_len };
+  buffer.mem += b_len;
+  buffer.len -= b_len;
+  tslice_t<T> a_row_means = { buffer.mem + 0, n };
+  buffer.mem += n;
+  buffer.len -= n;
+  tslice_t<T> b_row_means = { buffer.mem + 0, n };
+  buffer.mem += n;
+  buffer.len -= n;
+  tslice_t<T> a_col_means = { buffer.mem + 0, n };
+  buffer.mem += n;
+  buffer.len -= n;
+  tslice_t<T> b_col_means = { buffer.mem + 0, n };
+  buffer.mem += n;
+  buffer.len -= n;
+
+  kahansum_t<T> a_total_sum = {};
+  kahansum_t<T> b_total_sum = {};
+  auto rec_n2 = 1 / ( Cast( T, n ) * n );
+  For( i, 0, n ) {
+    For( j, i + 1, n ) {
+      auto idx = SymmetricColWise_IndexFromXY( i, j );
+      auto a_value = ABS( x.mem[i] - x.mem[j] );
+      auto b_value = ABS( y.mem[i] - y.mem[j] );
+      Add( a_total_sum, a_value * rec_n2 );
+      Add( b_total_sum, b_value * rec_n2 );
+      a.mem[idx] = a_value;
+      b.mem[idx] = b_value;
+    }
+  }
+  For( j, 0, n ) {
+    kahansum_t<T> a_sum = {};
+    kahansum_t<T> b_sum = {};
+    For( i, 0, n ) {
+      auto idx = SymmetricColWise_IndexFromXY( i, j );
+      Add( a_sum, a.mem[idx] );
+      Add( b_sum, b.mem[idx] );
+    }
+    a_row_means.mem[j] = a_sum.sum;
+    b_row_means.mem[j] = b_sum.sum;
+  }
+  For( i, 0, n ) {
+    kahansum_t<T> a_sum = {};
+    kahansum_t<T> b_sum = {};
+    For( j, 0, n ) {
+      auto idx = SymmetricColWise_IndexFromXY( i, j );
+      Add( a_sum, a.mem[idx] );
+      Add( b_sum, b.mem[idx] );
+    }
+    a_col_means.mem[i] = a_sum.sum;
+    b_col_means.mem[i] = b_sum.sum;
+  }
+  For( i, 0, n ) {
+    For( j, 0, n ) {
+      auto idx = SymmetricColWise_IndexFromXY( i, j );
+      a.mem[idx] += a_total_sum.sum - a_row_means.mem[j] - a_col_means.mem[i];
+      b.mem[idx] += b_total_sum.sum - b_row_means.mem[j] - b_col_means.mem[i];
+    }
+  }
+  kahansum_t<T> dist_cov2 = {};
+  For( i, 0, n ) {
+    For( j, 0, n ) {
+      auto idx = SymmetricColWise_IndexFromXY( i, j );
+      auto term = a.mem[idx] * b.mem[idx] * rec_n2;
+      Add( dist_cov2, term );
+    }
+  }
+  return dist_cov2.sum;
+}
+// DistVar(x) = DistCov(x,x)
+// DistCorr^2(x,y) = DistCov^2(x,y) / ( DistVar(x) * DistVar(y) )
+Templ Inl void
+DistanceCorrelation(
+  tslice_t<T> x,
+  tslice_t<T> y,
+  tslice_t<T> buffer, // length n(n-1) + 6n
+  T* x_distvar,
+  T* y_distvar,
+  T* distcov2,
+  T* distcorr
+  )
+{
+  AssertCrash( x.len == y.len );
+  auto n = x.len;
+  auto a_len = ( n * ( n - 1 ) ) / 2 + n;
+  auto b_len = a_len;
+  AssertCrash( buffer.len >= n * ( n - 1 ) + 6 * n );
+
+  tslice_t<T> a = { buffer.mem + 0, a_len };
+  buffer.mem += a_len;
+  buffer.len -= a_len;
+  tslice_t<T> b = { buffer.mem + 0, b_len };
+  buffer.mem += b_len;
+  buffer.len -= b_len;
+  tslice_t<T> a_row_means = { buffer.mem + 0, n };
+  buffer.mem += n;
+  buffer.len -= n;
+  tslice_t<T> b_row_means = { buffer.mem + 0, n };
+  buffer.mem += n;
+  buffer.len -= n;
+  tslice_t<T> a_col_means = { buffer.mem + 0, n };
+  buffer.mem += n;
+  buffer.len -= n;
+  tslice_t<T> b_col_means = { buffer.mem + 0, n };
+  buffer.mem += n;
+  buffer.len -= n;
+
+  kahansum_t<T> a_total_sum = {};
+  kahansum_t<T> b_total_sum = {};
+  auto rec_n2 = 1 / ( Cast( T, n ) * n );
+  For( i, 0, n ) {
+    For( j, i + 1, n ) {
+      auto idx = SymmetricColWise_IndexFromXY( i, j );
+      auto a_value = ABS( x.mem[i] - x.mem[j] );
+      auto b_value = ABS( y.mem[i] - y.mem[j] );
+      Add( a_total_sum, a_value * rec_n2 );
+      Add( b_total_sum, b_value * rec_n2 );
+      a.mem[idx] = a_value;
+      b.mem[idx] = b_value;
+    }
+  }
+  For( j, 0, n ) {
+    kahansum_t<T> a_sum = {};
+    kahansum_t<T> b_sum = {};
+    For( i, 0, n ) {
+      auto idx = SymmetricColWise_IndexFromXY( i, j );
+      Add( a_sum, a.mem[idx] );
+      Add( b_sum, b.mem[idx] );
+    }
+    a_row_means.mem[j] = a_sum.sum;
+    b_row_means.mem[j] = b_sum.sum;
+  }
+  For( i, 0, n ) {
+    kahansum_t<T> a_sum = {};
+    kahansum_t<T> b_sum = {};
+    For( j, 0, n ) {
+      auto idx = SymmetricColWise_IndexFromXY( i, j );
+      Add( a_sum, a.mem[idx] );
+      Add( b_sum, b.mem[idx] );
+    }
+    a_col_means.mem[i] = a_sum.sum;
+    b_col_means.mem[i] = b_sum.sum;
+  }
+  kahansum_t<T> distcov2_a_b = {};
+  kahansum_t<T> distvar2_a = {};
+  kahansum_t<T> distvar2_b = {};
+  For( i, 0, n ) {
+    For( j, 0, n ) {
+      auto idx = SymmetricColWise_IndexFromXY( i, j );
+      auto A = a.mem[idx] + a_total_sum.sum - a_row_means.mem[j] - a_col_means.mem[i];
+      auto B = b.mem[idx] + b_total_sum.sum - b_row_means.mem[j] - b_col_means.mem[i];
+      Add( distcov2_a_b, A * B * rec_n2 );
+      Add( distvar2_a, A * A * rec_n2 );
+      Add( distvar2_b, B * B * rec_n2 );
+    }
+  }
+  auto distvar_a = Sqrt( distvar2_a.sum );
+  auto distvar_b = Sqrt( distvar2_b.sum );
+  *x_distvar = distvar_a;
+  *y_distvar = distvar_b;
+  *distcov2 = distcov2_a_b.sum;
+  *distcorr = Sqrt( distcov2 / ( distvar_a * distvar_b ) );
+}
+
+// Discrete Fourier transform (DFT):
+//   F[n] = sum( k=0..N-1, f[k] * exp( i * -2pi * n * k / N ) )
+// Note that exp( i * a * x ) = cos( a * x ) + i sin( a * x ), Euler's formula.
+// So in this instance, where x=k,
+//   F[n] = sum( k=0..N-1, f[k] * ( cos( -2pi * n * k / N ) + i sin( -2pi * n * k / N ) ) )
+//   F[n] = sum( k=0..N-1, ( Re(f[k]) + i Im(f[k]) ) * ( cos( -2pi * n * k / N ) + i sin( -2pi * n * k / N ) ) )
+// Complex multiplication:
+//   (a+bi)(c+di) = (ac-bd)+(ad+bc)i
+// We have:
+//   a = Re(f[k])
+//   b = Im(f[k])
+//   c = cos( -2pi * n * k / N )
+//   d = sin( -2pi * n * k / N )
+// F[n] = sum( k=0..N-1, ( Re(f[k]) cos - Im(f[k]) sin ) + i ( Re(f[k]) sin + Im(f[k]) cos ) )
+// Separating real/imaginary,
+//   Re(F[n]) = sum( k=0..N-1, Re(f[k]) cos - Im(f[k]) sin )
+//   Im(F[n]) = sum( k=0..N-1, Re(f[k]) sin + Im(f[k]) cos )
+//
+//
+// The inverse is defined as:
+//   f[k] = 1/N * sum( n=0..N-1, F[n] * exp( i * 2pi * n * k / N ) )
+// Very similar to F's defn, just with an extra 1/N factor, and the exponent is negated.
+// Expanding with Euler's formula:
+//   f[k] = 1/N * sum( n=0..N-1, ( Re(F[n]) + i Im(F[n]) ) * ( cos( i * 2pi * n * k / N ) + i sin( i * 2pi * n * k / N ) ) )
+// Separating real/imaginary,
+//   Re(f[k]) = 1/N * sum( n=0..N-1, Re(F[n]) * cos - Im(F[n]) * sin )
+//   Im(f[k]) = 1/N * sum( n=0..N-1, Re(F[n]) * sin + Im(F[n]) * cos )
+//
+
+// Fills F, given f.
+Templ Inl void
+DiscreteFourierTransform(
+  tslice_t<T> Re_f,
+  tslice_t<T> Im_f,
+  tslice_t<T> Re_F,
+  tslice_t<T> Im_F
+  )
+{
+  auto N = Re_f.len;
+  AssertCrash( Im_f.len == N );
+  AssertCrash( Re_F.len == N );
+  AssertCrash( Im_F.len == N );
+  auto twopi_over_N = Cast( T, f64_2PI ) / N;
+  For( n, 0, N ) {
+    auto negative_n_twopi_over_N = -Cast( T, n ) * twopi_over_N;
+    kahansum_t<T> Re_F_n = {};
+    kahansum_t<T> Im_F_n = {};
+    For( k, 0, N ) {
+      auto t = negative_n_twopi_over_N * k;
+      auto cos = Cos( t );
+      auto sin = Sin( t );
+      auto Re_f_k = Re_f.mem[k];
+      auto Im_f_k = Im_f.mem[k];
+      auto Re_term = Re_f_k * cos - Im_f_k * sin;
+      auto Im_term = Re_f_k * sin + Im_f_k * cos;
+      Add( Re_F_n, Re_term );
+      Add( Im_F_n, Im_term );
+    }
+    Re_F.mem[n] = Re_F_n.sum;
+    Im_F.mem[n] = Im_F_n.sum;
+  }
+}
+// Fills f, given F.
+Templ Inl void
+InverseDiscreteFourierTransform(
+  tslice_t<T> Re_f,
+  tslice_t<T> Im_f,
+  tslice_t<T> Re_F,
+  tslice_t<T> Im_F
+  )
+{
+  // Re(f[k]) = 1/N * sum( n=0..N-1, Re(F[n]) * cos - Im(F[n]) * sin )
+  // Im(f[k]) = 1/N * sum( n=0..N-1, Re(F[n]) * sin + Im(F[n]) * cos )
+  auto N = Re_f.len;
+  AssertCrash( Im_f.len == N );
+  AssertCrash( Re_F.len == N );
+  AssertCrash( Im_F.len == N );
+  auto twopi_over_N = Cast( T, f64_2PI ) / N;
+  auto rec_N = 1 / Cast( T, N );
+  For( k, 0, N ) {
+    auto k_twopi_over_N = k * twopi_over_N;
+    kahansum_t<T> Re_f_k = {};
+    kahansum_t<T> Im_f_k = {};
+    For( n, 0, N ) {
+      auto t = k_twopi_over_N * n;
+      auto cos = Cos( t );
+      auto sin = Sin( t );
+      auto Re_F_n = Re_F.mem[n];
+      auto Im_F_n = Im_F.mem[n];
+      auto Re_term = ( Re_F_n * cos - Im_F_n * sin ) * rec_N;
+      auto Im_term = ( Re_F_n * sin + Im_F_n * cos ) * rec_N;
+      Add( Re_f_k, Re_term );
+      Add( Im_f_k, Im_term );
+    }
+    Re_f.mem[k] = Re_f_k.sum;
+    Im_f.mem[k] = Im_f_k.sum;
+  }
+}
 
 // In-place Fourier transforms of 'data', which stores complex numbers.
-// Assumes NN is a power of 2. Use a 0-padded buffer to round up to that.
+// Assumes 'data.len' is a power of 2. Use a 0-padded buffer to round up to that.
 // When isign==1, the result is the discrete fourier transform.
 // When isign==-1, the result is NN times the inverse discrete fourier transform.
 Templ Inl void
 FOUR1(
-  T* data, // length 2*NN
-  idx_t NN,
+  tslice_t<T> data,
   T isign
   )
 {
-  AssertCrash( IsPowerOf2( NN ) );
+  AssertCrash( !( data.len & 1 ) ); // must be even.
+  AssertCrash( IsPowerOf2( data.len / 2 ) );
   AssertCrash( isign == -1  ||  isign == 1 );
-  auto n = 2 * NN;
+  auto n = data.len;
+  auto mem = data.mem;
   idx_t j = 1;
-  for( idx_t i = 1; i < n+1; i += 2 ) {
+  for( idx_t i = 0; i < n; i += 2 ) {
     if( j > i ) {
-      SWAP( T, data[i], data[j] );
-      SWAP( T, data[i+1], data[j+1] );
+      SWAP( T, mem[i], mem[j] );
+      SWAP( T, mem[i+1], mem[j+1] );
     }
     auto m = n / 2;
     while( m >= 2  &&  j > m ) {
@@ -241,15 +520,15 @@ FOUR1(
     auto wpi = sin_theta;
     T wr = 1;
     T wi = 0;
-    for( idx_t m = 1; m < MMAX; m += 2 ) {
+    for( idx_t m = 0; m < MMAX; m += 2 ) {
       for( idx_t i = m; i < n; i += istep ) {
         j = i + MMAX;
-        auto tempr = wr * data[j] - wi * data[j+1];
-        auto tempi = wr * data[j+1] + wi * data[j];
-        data[j] = data[i] - tempr;
-        data[j+1] = data[i+1] - tempi;
-        data[i] = data[i] + tempr;
-        data[i+1] = data[i+1] + tempi;
+        auto tempr = wr * mem[j] - wi * mem[j+1];
+        auto tempi = wr * mem[j+1] + wi * mem[j];
+        mem[j] = mem[i] - tempr;
+        mem[j+1] = mem[i+1] - tempi;
+        mem[i] = mem[i] + tempr;
+        mem[i+1] = mem[i+1] + tempi;
       }
       auto wtemp = wr;
       wr = wr * wpr - wi * wpi + wr;
@@ -356,3 +635,73 @@ PixelSnap(
     pixels.mem[i] = _vec2( xi, yi );
   }
 }
+
+
+#if defined(TEST)
+
+Inl bool
+RoughlyEqual(
+  f64* a,
+  idx_t a_len,
+  f64* b,
+  idx_t b_len,
+  f64 epsilon
+  )
+{
+  AssertCrash( a_len == b_len );
+  For( i, 0, a_len ) {
+    if( ABS( a[i] - b[i] ) >= epsilon ) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+Inl void
+TestStatistics()
+{
+  auto epsilon = 1e-6;
+
+  {
+    f64 Re_f[4] = { 1, 2, 0, -1 };
+    f64 Im_f[4] = { 0, -1, -1, 2 };
+    f64 Re_F[4];
+    f64 Im_F[4];
+    DiscreteFourierTransform(
+      SliceFromCArray( f64, Re_f ),
+      SliceFromCArray( f64, Im_f ),
+      SliceFromCArray( f64, Re_F ),
+      SliceFromCArray( f64, Im_F )
+      );
+    f64 Re_expected[] = { 2, -2, 0, 4 };
+    f64 Im_expected[] = { 0, -2, -2, 4 };
+    AssertCrash( RoughlyEqual( AL( Re_F ), AL( Re_expected ), epsilon ) );
+    AssertCrash( RoughlyEqual( AL( Im_F ), AL( Im_expected ), epsilon ) );
+  }
+
+  {
+    f64 f[8] = { 1, 0, 2, -1, 0, -1, -1, 2 };
+    FOUR1<f64>( SliceFromCArray( f64, f ), 1 );
+    f64 expected[8] = { 2, 0, -2, -2, 0, -2, 4, 4 };
+    AssertCrash( RoughlyEqual( AL( f ), AL( expected ), epsilon ) );
+  }
+
+  {
+    f64 Re_f[4];
+    f64 Im_f[4];
+    f64 Re_F[4] = { 2, -2, 0, 4 };
+    f64 Im_F[4] = { 0, -2, -2, 4 };
+    InverseDiscreteFourierTransform(
+      SliceFromCArray( f64, Re_f ),
+      SliceFromCArray( f64, Im_f ),
+      SliceFromCArray( f64, Re_F ),
+      SliceFromCArray( f64, Im_F )
+      );
+    f64 Re_expected[4] = { 1, 2, 0, -1 };
+    f64 Im_expected[4] = { 0, -1, -1, 2 };
+    AssertCrash( RoughlyEqual( AL( Re_f ), AL( Re_expected ), epsilon ) );
+    AssertCrash( RoughlyEqual( AL( Im_f ), AL( Im_expected ), epsilon ) );
+  }
+}
+
+#endif // defined(TEST)
