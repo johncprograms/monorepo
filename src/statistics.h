@@ -400,20 +400,9 @@ DistanceCorrelation(
 //   Re(F[n]) = sum( k=0..N-1, Re(f[k]) cos - Im(f[k]) sin )
 //   Im(F[n]) = sum( k=0..N-1, Re(f[k]) sin + Im(f[k]) cos )
 //
-//
-// The inverse is defined as:
-//   f[k] = 1/N * sum( n=0..N-1, F[n] * exp( i * 2pi * n * k / N ) )
-// Very similar to F's defn, just with an extra 1/N factor, and the exponent is negated.
-// Expanding with Euler's formula:
-//   f[k] = 1/N * sum( n=0..N-1, ( Re(F[n]) + i Im(F[n]) ) * ( cos( i * 2pi * n * k / N ) + i sin( i * 2pi * n * k / N ) ) )
-// Separating real/imaginary,
-//   Re(f[k]) = 1/N * sum( n=0..N-1, Re(F[n]) * cos - Im(F[n]) * sin )
-//   Im(f[k]) = 1/N * sum( n=0..N-1, Re(F[n]) * sin + Im(F[n]) * cos )
-//
-
 // Fills F, given f.
 Templ Inl void
-DiscreteFourierTransform(
+DiscreteFourierTransformReference(
   tslice_t<T> Re_f,
   tslice_t<T> Im_f,
   tslice_t<T> Re_F,
@@ -444,9 +433,18 @@ DiscreteFourierTransform(
     Im_F.mem[n] = Im_F_n.sum;
   }
 }
+// The inverse DFT is defined as:
+//   f[k] = 1/N * sum( n=0..N-1, F[n] * exp( i * 2pi * n * k / N ) )
+// Very similar to F's defn, just with an extra 1/N factor, and the exponent is negated.
+// Expanding with Euler's formula:
+//   f[k] = 1/N * sum( n=0..N-1, ( Re(F[n]) + i Im(F[n]) ) * ( cos( i * 2pi * n * k / N ) + i sin( i * 2pi * n * k / N ) ) )
+// Separating real/imaginary,
+//   Re(f[k]) = 1/N * sum( n=0..N-1, Re(F[n]) * cos - Im(F[n]) * sin )
+//   Im(f[k]) = 1/N * sum( n=0..N-1, Re(F[n]) * sin + Im(F[n]) * cos )
+//
 // Fills f, given F.
 Templ Inl void
-InverseDiscreteFourierTransform(
+InverseDiscreteFourierTransformReference(
   tslice_t<T> Re_f,
   tslice_t<T> Im_f,
   tslice_t<T> Re_F,
@@ -481,60 +479,212 @@ InverseDiscreteFourierTransform(
   }
 }
 
-// In-place Fourier transforms of 'data', which stores complex numbers.
-// Assumes 'data.len' is a power of 2. Use a 0-padded buffer to round up to that.
-// When isign==1, the result is the discrete fourier transform.
-// When isign==-1, the result is NN times the inverse discrete fourier transform.
 Templ Inl void
-FOUR1(
-  tslice_t<T> data,
-  T isign
+DiscreteFourierTransformRecursive(
+  tslice_t<T> Re_f,
+  tslice_t<T> Im_f,
+  tslice_t<T> Re_F,
+  tslice_t<T> Im_F
   )
 {
-  AssertCrash( !( data.len & 1 ) ); // must be even.
-  AssertCrash( IsPowerOf2( data.len / 2 ) );
-  AssertCrash( isign == -1  ||  isign == 1 );
-  auto n = data.len;
-  auto mem = data.mem;
-  idx_t j = 1;
-  for( idx_t i = 0; i < n; i += 2 ) {
-    if( j > i ) {
-      SWAP( T, mem[i], mem[j] );
-      SWAP( T, mem[i+1], mem[j+1] );
-    }
-    auto m = n / 2;
-    while( m >= 2  &&  j > m ) {
-      j = j - m;
-      m = m / 2;
-    }
-    j = j + m;
-    continue;
+  auto N = Re_f.len;
+  if( N == 1 ) {
+    Re_F.mem[0] = Re_f.mem[0];
+    Im_F.mem[0] = Im_f.mem[0];
+    return;
   }
-  auto MMAX = 2;
-  while( n > MMAX ) {
-    auto istep = 2 * MMAX;
-    auto theta = 6.28318530717959 / ( isign * MMAX );
-    auto sin_half_theta = Sin( theta / 2 );
-    auto sin_theta = Sin( theta );
-    auto wpr = -2 * sin_half_theta * sin_half_theta;
-    auto wpi = sin_theta;
-    T wr = 1;
-    T wi = 0;
-    for( idx_t m = 0; m < MMAX; m += 2 ) {
-      for( idx_t i = m; i < n; i += istep ) {
-        j = i + MMAX;
-        auto tempr = wr * mem[j] - wi * mem[j+1];
-        auto tempi = wr * mem[j+1] + wi * mem[j];
-        mem[j] = mem[i] - tempr;
-        mem[j+1] = mem[i+1] - tempi;
-        mem[i] = mem[i] + tempr;
-        mem[i+1] = mem[i+1] + tempi;
+  auto buffer = AllocString<T>( 4*N );
+  auto tmp = buffer.mem;
+  auto Re_evn = tslice_t<T>{ tmp, N/2 };  tmp += N/2;
+  auto Im_evn = tslice_t<T>{ tmp, N/2 };  tmp += N/2;
+  auto Re_odd = tslice_t<T>{ tmp, N/2 };  tmp += N/2;
+  auto Im_odd = tslice_t<T>{ tmp, N/2 };  tmp += N/2;
+  auto Re_Evn = tslice_t<T>{ tmp, N/2 };  tmp += N/2;
+  auto Im_Evn = tslice_t<T>{ tmp, N/2 };  tmp += N/2;
+  auto Re_Odd = tslice_t<T>{ tmp, N/2 };  tmp += N/2;
+  auto Im_Odd = tslice_t<T>{ tmp, N/2 };  tmp += N/2;
+  For( i, 0, N/2 ) {
+    Re_evn.mem[i] = Re_f.mem[2*i+0];
+    Im_evn.mem[i] = Im_f.mem[2*i+0];
+    Re_odd.mem[i] = Re_f.mem[2*i+1];
+    Im_odd.mem[i] = Im_f.mem[2*i+1];
+  }
+  DiscreteFourierTransformRecursive(
+    Re_evn,
+    Im_evn,
+    Re_Evn,
+    Im_Evn
+    );
+  DiscreteFourierTransformRecursive(
+    Re_odd,
+    Im_odd,
+    Re_Odd,
+    Im_Odd
+    );
+  auto negative_twopi_over_N = Cast( T, -f64_2PI ) / N;
+  auto rec_N = 1 / Cast( T, N );
+  For( k, 0, N/2 ) {
+    // (a+bi)(c+di) = (ac-bd)+(ad+bc)i
+    // (Ar+Aii)(Br+Bii) = (Ar Br - Ai Bi)+(Ar Bi + Ai Br)i
+    auto t = negative_twopi_over_N * k;
+    auto Re_W = Cos( t );
+    auto Im_W = Sin( t );
+    auto Re_A = Re_Evn.mem[k];
+    auto Im_A = Im_Evn.mem[k];
+    auto Re_B = Re_Odd.mem[k];
+    auto Im_B = Im_Odd.mem[k];
+    auto Re_W_B = Re_W * Re_B - Im_W * Im_B;
+    auto Im_W_B = Re_W * Im_B + Im_W * Re_B;
+    Re_F.mem[k]       = Re_A + Re_W_B;
+    Im_F.mem[k]       = Im_A + Im_W_B;
+    Re_F.mem[k + N/2] = Re_A - Re_W_B;
+    Im_F.mem[k + N/2] = Im_A - Im_W_B;
+  }
+  Free( buffer );
+}
+
+ForceInl u32
+ReverseBits(u32 x)
+{
+  constant u32 mask1 = 0b01010101010101010101010101010101;
+  x = ( ( x & mask1 ) << 1 ) | ( ( x >> 1 ) & mask1 );
+  constant u32 mask2 = 0b00110011001100110011001100110011;
+  x = ( ( x & mask2 ) << 2 ) | ( ( x >> 2 ) & mask2 );
+  constant u32 mask4 = 0b00001111000011110000111100001111;
+  x = ( ( x & mask4 ) << 4 ) | ( ( x >> 4 ) & mask4 );
+  constant u32 mask8 = 0b00000000111111110000000011111111;
+  x = ( ( x & mask8 ) << 8 ) | ( ( x >> 8 ) & mask8 );
+  //                   0b00000000000000001111111111111111;
+  x = ( x << 16 ) | ( x >> 16 );
+  return x;
+}
+Templ Inl void
+DiscreteFourierTransform(
+  tslice_t<T> Re_f,
+  tslice_t<T> Im_f,
+  tslice_t<T> Re_F,
+  tslice_t<T> Im_F
+  )
+{
+  auto n = Re_f.len;
+  AssertCrash( n == Im_f.len );
+  AssertCrash( n == Re_F.len );
+  AssertCrash( n == Im_F.len );
+  AssertCrash( IsPowerOf2( n ) );
+
+  // log_base_2(n), the number of bits needed to represent { 0, 1, ..., n-1 }.
+  auto num_bits_n = 8u * _SIZEOF_IDX_T - _lzcnt_idx_t( n ) - 1;
+  AssertCrash( n <= MAX_u32 );
+  For( i, 0, n ) {
+    auto rev_i = ReverseBits( Cast( u32, i ) ) >> ( 32 - num_bits_n );
+    Re_F.mem[rev_i] = Re_f.mem[i];
+    Im_F.mem[rev_i] = Im_f.mem[i];
+  }
+
+  idx_t step = 2;
+  For( pass, 0, num_bits_n ) {
+    auto negative_twopi_over_step = Cast( T, -f64_2PI ) / step;
+    for( idx_t offset = 0;  offset < n;  offset += step ) {
+      auto half_step = step/2;
+      For( k, 0, half_step ) {
+        auto offset_k = offset + k;
+        auto offset_k_half_step = offset_k + half_step;
+        auto t = negative_twopi_over_step * k;
+        auto Re_w = Cos( t );
+        auto Im_w = Sin( t );
+        auto Re_u = Re_F.mem[offset_k];
+        auto Im_u = Im_F.mem[offset_k];
+        auto Re_v = Re_F.mem[offset_k_half_step];
+        auto Im_v = Im_F.mem[offset_k_half_step];
+        auto Re_w_v = Re_w * Re_v - Im_w * Im_v;
+        auto Im_w_v = Re_w * Im_v + Im_w * Re_v;
+        Re_F.mem[offset_k]           = Re_u + Re_w_v;
+        Im_F.mem[offset_k]           = Im_u + Im_w_v;
+        Re_F.mem[offset_k_half_step] = Re_u - Re_w_v;
+        Im_F.mem[offset_k_half_step] = Im_u - Im_w_v;
       }
-      auto wtemp = wr;
-      wr = wr * wpr - wi * wpi + wr;
-      wi = wi * wpr + wtemp * wpi + wi;
     }
-    MMAX = istep;
+    step *= 2;
+  }
+}
+Templ Inl void
+InverseDiscreteFourierTransform(
+  tslice_t<T> Re_f,
+  tslice_t<T> Im_f,
+  tslice_t<T> Re_F,
+  tslice_t<T> Im_F
+  )
+{
+  auto n = Re_f.len;
+  AssertCrash( n == Im_f.len );
+  AssertCrash( n == Re_F.len );
+  AssertCrash( n == Im_F.len );
+  AssertCrash( IsPowerOf2( n ) );
+
+  // log_base_2(n), the number of bits needed to represent { 0, 1, ..., n-1 }.
+  auto num_bits_n = 8u * _SIZEOF_IDX_T - _lzcnt_idx_t( n ) - 1;
+  AssertCrash( n <= MAX_u32 );
+  For( i, 0, n ) {
+    auto rev_i = ReverseBits( Cast( u32, i ) ) >> ( 32 - num_bits_n );
+    Re_f.mem[rev_i] = Re_F.mem[i];
+    Im_f.mem[rev_i] = Im_F.mem[i];
+  }
+
+  idx_t step = 2;
+  For( pass, 0, num_bits_n ) {
+    auto twopi_over_step = Cast( T, f64_2PI ) / step;
+    for( idx_t offset = 0;  offset < n;  offset += step ) {
+      auto half_step = step/2;
+      For( k, 0, half_step ) {
+        auto offset_k = offset + k;
+        auto offset_k_half_step = offset_k + half_step;
+        auto t = twopi_over_step * k;
+        auto Re_w = Cos( t );
+        auto Im_w = Sin( t );
+        auto Re_u = Re_f.mem[offset_k];
+        auto Im_u = Im_f.mem[offset_k];
+        auto Re_v = Re_f.mem[offset_k_half_step];
+        auto Im_v = Im_f.mem[offset_k_half_step];
+        auto Re_w_v = Re_w * Re_v - Im_w * Im_v;
+        auto Im_w_v = Re_w * Im_v + Im_w * Re_v;
+        Re_f.mem[offset_k]           = Re_u + Re_w_v;
+        Im_f.mem[offset_k]           = Im_u + Im_w_v;
+        Re_f.mem[offset_k_half_step] = Re_u - Re_w_v;
+        Im_f.mem[offset_k_half_step] = Im_u - Im_w_v;
+      }
+    }
+    step *= 2;
+  }
+
+  auto rec_N = 1 / Cast( T, n );
+  For( i, 0, n ) {
+    Re_f.mem[i] *= rec_N;
+    Im_f.mem[i] *= rec_N;
+  }
+}
+
+Templ Inl void
+PowerSpectrum(
+  tslice_t<T> data,
+  tslice_t<T> power,
+  tslice_t<T> buffer // length 2 * data.len
+  )
+{
+  auto n = data.len;
+  AssertCrash( n == power.len );
+  tslice_t<T> Im_data = { buffer.mem, n };
+  TZero( ML( Im_data ) );
+  tslice_t<T> Im_power = { buffer.mem + n, n };
+  DiscreteFourierTransform(
+    data,
+    Im_data,
+    power,
+    Im_power
+    );
+  For( i, 0, n ) {
+    auto a = power.mem[i];
+    auto b = Im_power.mem[i];
+    power.mem[i] = Sqrt( a * a + b * b );
   }
 }
 
@@ -667,6 +817,40 @@ TestStatistics()
     f64 Im_f[4] = { 0, -1, -1, 2 };
     f64 Re_F[4];
     f64 Im_F[4];
+    DiscreteFourierTransformReference(
+      SliceFromCArray( f64, Re_f ),
+      SliceFromCArray( f64, Im_f ),
+      SliceFromCArray( f64, Re_F ),
+      SliceFromCArray( f64, Im_F )
+      );
+    f64 Re_expected[] = { 2, -2, 0, 4 };
+    f64 Im_expected[] = { 0, -2, -2, 4 };
+    AssertCrash( RoughlyEqual( AL( Re_F ), AL( Re_expected ), epsilon ) );
+    AssertCrash( RoughlyEqual( AL( Im_F ), AL( Im_expected ), epsilon ) );
+  }
+
+  {
+    f64 Re_f[4] = { 1, 2, 0, -1 };
+    f64 Im_f[4] = { 0, -1, -1, 2 };
+    f64 Re_F[4];
+    f64 Im_F[4];
+    DiscreteFourierTransformRecursive(
+      SliceFromCArray( f64, Re_f ),
+      SliceFromCArray( f64, Im_f ),
+      SliceFromCArray( f64, Re_F ),
+      SliceFromCArray( f64, Im_F )
+      );
+    f64 Re_expected[] = { 2, -2, 0, 4 };
+    f64 Im_expected[] = { 0, -2, -2, 4 };
+    AssertCrash( RoughlyEqual( AL( Re_F ), AL( Re_expected ), epsilon ) );
+    AssertCrash( RoughlyEqual( AL( Im_F ), AL( Im_expected ), epsilon ) );
+  }
+
+  {
+    f64 Re_f[4] = { 1, 2, 0, -1 };
+    f64 Im_f[4] = { 0, -1, -1, 2 };
+    f64 Re_F[4];
+    f64 Im_F[4];
     DiscreteFourierTransform(
       SliceFromCArray( f64, Re_f ),
       SliceFromCArray( f64, Im_f ),
@@ -680,10 +864,113 @@ TestStatistics()
   }
 
   {
-    f64 f[8] = { 1, 0, 2, -1, 0, -1, -1, 2 };
-    FOUR1<f64>( SliceFromCArray( f64, f ), 1 );
-    f64 expected[8] = { 2, 0, -2, -2, 0, -2, 4, 4 };
-    AssertCrash( RoughlyEqual( AL( f ), AL( expected ), epsilon ) );
+    f64 Re_f[2] = { 1.3, 0.7 };
+    f64 Im_f[2] = { 1.2, -0.7 };
+    f64 Re_F[2];
+    f64 Im_F[2];
+    DiscreteFourierTransformReference(
+      SliceFromCArray( f64, Re_f ),
+      SliceFromCArray( f64, Im_f ),
+      SliceFromCArray( f64, Re_F ),
+      SliceFromCArray( f64, Im_F )
+      );
+    // Prediction is:
+    //   F[n,2] = f[0] + f[1] exp( n A / 2 )
+    //   F[0] = f[0] + f[1] exp(0)
+    //        = 1.3+1.2i + 0.7-0.7i
+    //        = 2+0.5i
+    //   F[1] = f[0] + f[1] exp(-2pi i / 2)
+    //        = 1.3+1.2i + 0.7-0.7i (cos(-pi)+isin(-pi))
+    //        = 1.3+1.2i + 0.7-0.7i (-1)
+    //        = 1.3+1.2i + -0.7+0.7i
+    //        = 0.6+1.9i
+    f64 Re_expected[] = { 2, 0.6 };
+    f64 Im_expected[] = { 0.5, 1.9 };
+    AssertCrash( RoughlyEqual( AL( Re_F ), AL( Re_expected ), epsilon ) );
+    AssertCrash( RoughlyEqual( AL( Im_F ), AL( Im_expected ), epsilon ) );
+  }
+
+  if (0)
+  {
+    //              0   1  2   3  4   5  6   7
+    f64 Re_f[8] = { 1,  2, 3,  4, 5,  6, 7,  8 };
+    f64 Im_f[8] = { 1, -2, 3, -4, 5, -6, 7, -8 };
+    f64 Re_F[8];
+    f64 Im_F[8];
+    DiscreteFourierTransformReference(
+      SliceFromCArray( f64, Re_f ),
+      SliceFromCArray( f64, Im_f ),
+      SliceFromCArray( f64, Re_F ),
+      SliceFromCArray( f64, Im_F )
+      );
+    // Prediction is:
+    //   F[n,8] = ( f[0] + f[4] exp( n A / 2 ) )
+    //          + ( f[2] + f[6] exp( n A / 2 ) ) exp( n A / 4 )
+    //          + ( ( f[1] + f[5] exp( n A / 2 ) )
+    //          +   ( f[3] + f[7] exp( n A / 2 ) ) exp( n A / 4 )
+    //            ) exp( n A / 8 )
+    //   F[0] = f[0] + f[4] + f[2] + f[6] + f[1] + f[5] + f[3] + f[7]
+    //   F[1] = ( f[0] + f[4] exp( A / 2 ) )
+    //        + ( f[2] + f[6] exp( A / 2 ) ) exp( A / 4 )
+    //        + ( ( f[1] + f[5] exp( A / 2 ) )
+    //        +   ( f[3] + f[7] exp( A / 2 ) ) exp( A / 4 )
+    //          ) exp( A / 8 )
+    //
+    //        = ( 1+1i + 5+5i exp(-pi i) )
+    //        + ( 3+3i + 7+7i exp(-pi i) ) exp(-pi/2 i)
+    //        + ( ( 2-2i + 6-6i exp(-pi i) )
+    //        +   ( 4-4i + 8-8i exp(-pi i) ) exp(-pi/2 i)
+    //          ) exp(-pi/4 i)
+    //
+    //        = ( 1+1i + -5-5i )
+    //        + ( 3+3i + -7-7i ) ( cos(-pi/2) + isin(-pi/2) )
+    //        + ( ( 2-2i + -6+6i )
+    //        +   ( 4-4i + -8+8i ) ( cos(-pi/2) + isin(-pi/2) )
+    //          ) ( cos(-pi/4) + isin(-pi/4) )
+    //
+    //        = ( 1+1i + -5-5i )
+    //        + ( 3+3i + -7-7i ) (-i)
+    //        + ( ( 2-2i + -6+6i )
+    //        +   ( 4-4i + -8+8i ) (-i)
+    //          ) ( 2^-0.5 + 2^-0.5i )
+    //
+    //        = ( 1+1i + -5-5i )
+    //        + ( 3-3i + -7+7i )
+    //        + ( ( 2-2i + -6+6i )
+    //        +   ( -4-4i + 8+8i )
+    //          ) ( 2^-0.5 + 2^-0.5i )
+    //
+    //        = ( 4-2i + -12+2i )
+    //        + ( -2-6i + 2+14i )( 2^-0.5 + 2^-0.5i )
+    //
+    //        = ( 4-2i + -12+2i )
+    //        + ( -2-6i + 2+14i )( 2^-0.5 + 2^-0.5i )
+    //
+    //        = -8 + 8i( 2^-0.5 + 2^-0.5i )
+    //        = -8(1-2^-0.5) + 8*2^-0.5 i
+    //        = -2.34315... + 5.65685... i
+    //
+    f64 Re_expected[] = { 2, 0.6 };
+    f64 Im_expected[] = { 0.5, 1.9 };
+    AssertCrash( RoughlyEqual( AL( Re_F ), AL( Re_expected ), epsilon ) );
+    AssertCrash( RoughlyEqual( AL( Im_F ), AL( Im_expected ), epsilon ) );
+  }
+
+  {
+    f64 Re_f[4];
+    f64 Im_f[4];
+    f64 Re_F[4] = { 2, -2, 0, 4 };
+    f64 Im_F[4] = { 0, -2, -2, 4 };
+    InverseDiscreteFourierTransformReference(
+      SliceFromCArray( f64, Re_f ),
+      SliceFromCArray( f64, Im_f ),
+      SliceFromCArray( f64, Re_F ),
+      SliceFromCArray( f64, Im_F )
+      );
+    f64 Re_expected[4] = { 1, 2, 0, -1 };
+    f64 Im_expected[4] = { 0, -1, -1, 2 };
+    AssertCrash( RoughlyEqual( AL( Re_f ), AL( Re_expected ), epsilon ) );
+    AssertCrash( RoughlyEqual( AL( Im_f ), AL( Im_expected ), epsilon ) );
   }
 
   {

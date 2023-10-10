@@ -177,6 +177,96 @@ Main( u8* cmdline, idx_t cmdline_len )
 #endif
 
 
+// Fast DFT:
+//   F[n] = sum( k=0..N-1, f[k] * exp( i * -2pi * n * k / N ) )
+// Define
+//   A = -2pi i
+// Then,
+//   F[n] = sum( k=0..N-1, f[k] * exp( n k * A / N ) )
+// Break into even/odd parts
+//        = sum( k even in 0..N-1, f[k] * exp( n k A / N ) )
+//        + sum( k odd  in 0..N-1, f[k] * exp( n k A / N ) )
+// Redefine k
+//        = sum( k=0..N/2-1, f[2k] * exp( 2 n k A / N ) )
+//        + sum( k=0..N/2-1, f[2k+1] * exp( n (2k+1) A / N ) )
+// Algebra, move 2/N -> 1/(N/2)
+//        = sum( k=0..N/2-1, f[2k] * exp( n k A / ( N/2 ) ) )
+//        + sum( k=0..N/2-1, f[2k+1] * exp( ( 2 n k + n ) A / N ) )
+// Algebra
+//        = sum( k=0..N/2-1, f[2k] * exp( n k A / ( N/2 ) ) )
+//        + sum( k=0..N/2-1, f[2k+1] * exp( 2 n k A / N + n A / N ) )
+// Algebra
+//        = sum( k=0..N/2-1, f[2k] * exp( n k A / ( N/2 ) ) )
+//        + sum( k=0..N/2-1, f[2k+1] * exp( n k A / ( N/2 ) + n A / N ) )
+// Pull constant out of the second sum.
+//        = sum( k=0..N/2-1, f[2k] * exp( n k A / ( N/2 ) ) )
+//        + sum( k=0..N/2-1, f[2k+1] * exp( n k A / ( N/2 ) ) ) * exp( n A / N )
+// Define:
+//   F_even[n] = sum( k=0..N/2-1, f[2k] * exp( n k A / ( N/2 ) ) )
+//   F_odd[n]  = sum( k=0..N/2-1, f[2k+1] * exp( n k A / ( N/2 ) ) )
+// Note these are identical to F[n], just taking the odd/even input subsets, and N' = N/2.
+//   F[n,N] = F[n] defined above.
+//   F_even[n,N] = F[n,N/2] on the even subset
+//   F_odd[n,N]  = F[n,N/2] on the odd  subset
+// Then,
+//   F[n] = F_even[n] + F_odd[n] exp( n A / N )
+//   F[n,N] = F[n,N/2](even) + F[n,N/2](odd) exp( n A / N )
+// That's our recurrence relation.
+//
+// Note that F[n,1] = f[n], when N=1. That's our base case.
+// Take N=2:
+//   F[n,2] = F[n,1](even) + F[n,1](odd) exp( n A / 2 )
+//          = f[0] + f[1] exp( n A / 2 )
+// Computing this for n=0..1, we're done:
+//   F[0,2] = f[0] + f[1]
+//   F[1,2] = f[0] - f[1]
+// What about N=4?
+//   F[n,4] = F[n,2](even) + F[n,2](odd) exp( n A / 4 )
+//          = ( f[0] + f[2] exp( n A / 2 ) )
+//          + ( f[1] + f[3] exp( n A / 2 ) ) exp( n A / 4 )
+// Again, computing this for n=0...3:
+//   F[0,4] = F[0,2](even) + F[0,2](odd)
+//   F[1,4] = F[1,2](even) - F[1,2](odd) i
+//   F[2,4] = F[2,2](even) - F[2,2](odd)
+//   F[3,4] = F[3,2](even) + F[3,2](odd) i
+//
+//   F[0,4] = F[0,2]{0,2} + F[0,2]{1,3}
+//   F[1,4] = F[1,2]{0,2} - F[1,2]{1,3} i
+//   F[2,4] = F[2,2]{0,2} - F[2,2]{1,3}
+//   F[3,4] = F[3,2]{0,2} + F[3,2]{1,3} i
+//
+//   F[0,4] = (f[0] + f[2]) + (f[1] + f[3])
+//   F[1,4] = (f[0] - f[2]) - (f[1] - f[3]) i
+//   F[2,4] = (F[2,2]){0,2} - (F[2,2]){1,3}
+//   F[3,4] = (F[3,2]){0,2} + (F[3,2]){1,3} i
+//
+// And N=8?
+//   F[n,8] = F[n,4](even) + F[n,4](odd) exp( n A / 8 )
+//          = ( f[0] + f[4] exp( n A / 2 ) )
+//          + ( f[2] + f[6] exp( n A / 2 ) ) exp( n A / 4 )
+//          + ( ( f[1] + f[5] exp( n A / 2 ) )
+//          +   ( f[3] + f[7] exp( n A / 2 ) ) exp( n A / 4 )
+//            ) exp( n A / 8 )
+// So how do we decompose this into divide and conquer?
+// It looks like we're still requiring each n to involve all f[n] values.
+// For F[n,8], if we order the array as:
+//   { 0, 2, 4, 6, 1, 3, 5, 7 }
+// Then we can divide; but what about the n exponent?
+//
+// Given:
+//   F_even[n] = sum( k=0..N/2-1, f[2k] * exp( n k A / ( N/2 ) ) )
+//   F_odd[n]  = sum( k=0..N/2-1, f[2k+1] * exp( n k A / ( N/2 ) ) )
+// Note we can share the exp terms.
+//   complex<T> E[N/2];
+//   For( n, 0, N/2 ) {
+//     E[n] = exp( n A / (N/2) );
+//   }
+//   F_even[n] = sum( k=0..N/2-1, f[2k] * E[n]^k )
+//   F_odd[n]  = sum( k=0..N/2-1, f[2k+1] * E[n]^k )
+
+
+
+
   // Do this before destroying any datastructures, so other threads stop trying to access things.
   SignalQuitAndWaitForTaskThreads();
 

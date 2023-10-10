@@ -159,7 +159,11 @@ IsPowerOf2( idx_t x )
   ( ( _flags ) & ( 1 << ( _bit ) ) )
 
 #define SetBitIndex( _flags, _bit ) \
-  ( _flags ) |= ( _bit )
+  ( _flags ) |= ( 1 << ( _bit ) )
+
+#define ClearAndSetBitIndex( _flags, _bit ) \
+  ( _flags ) &= ~( 1 << ( _bit ) ) \
+  ( _flags ) |= ( 1 << ( _bit ) ) \
 
 
 //

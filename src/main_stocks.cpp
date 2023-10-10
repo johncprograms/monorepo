@@ -387,7 +387,7 @@ __OnRender( AppOnRender )
     // RESEARCH: consider metric: spread = high - low
     //   This could have interesting relationships, e.g. trading volume.
 
-    auto& table = app->tables.mem[0];
+    auto& table = app->tables.mem[1];
 
     auto col_date = ColumnByName( table, SliceFromCStr( "date" ) );
     auto col_close = ColumnByName( table, SliceFromCStr( "close/last" ) );
@@ -424,7 +424,7 @@ __OnRender( AppOnRender )
     ForLen( i, dcol_close ) {
       dcol_fourier.mem[2*i+0] = dcol_close.mem[i];
     }
-    FOUR1<f64>( dcol_fourier.mem, dcol_fourier.len / 2, -1 );
+//    FOUR1<f64>( dcol_fourier, -1 );
     dcol_fourier.len = 2u * dcol_close.len;
 
     // SCRATCH FORMULAIC COLUMN:
@@ -437,11 +437,12 @@ __OnRender( AppOnRender )
 //      dcol_spread_over_volume.mem[i] = dcol_spread.mem[i] * ( dcol_volume.mem[i] * 1e-9f );
 //      dcol_spread_over_volume.mem[i] = dcol_volume.mem[i] / ( 1.0f + dcol_spread.mem[i] );
 //      dcol_spread_over_volume.mem[i] = Ln64( dcol_volume.mem[i] / ( 1.0f + dcol_spread.mem[i] ) );
-//      dcol_spread_over_volume.mem[i] = Ln64( dcol_spread.mem[i] / dcol_volume.mem[i] );
+      dcol_spread_over_volume.mem[i] = Ln64( dcol_spread.mem[i] / dcol_volume.mem[i] );
 //      dcol_spread_over_volume.mem[i] = Ln64( dcol_spread.mem[i] / dcol_high.mem[i] );
 //      dcol_spread_over_volume.mem[i] = Ln64( dcol_high.mem[i] );
 //      dcol_spread_over_volume.mem[i] = Ln64( dcol_high.mem[i] / dcol_volume.mem[i] );
-      dcol_spread_over_volume.mem[i] = Ln64( dcol_high.mem[i] * ( dcol_volume.mem[i] * 1e-9f ) );
+//      dcol_spread_over_volume.mem[i] = Ln64( dcol_high.mem[i] * ( dcol_volume.mem[i] * 1e-9f ) );
+//      dcol_spread_over_volume.mem[i] = Cos64( Cast( f64, i ) * 1e-1 );
     }
 
     auto mean_close = Mean<f64>( dcol_close );
@@ -574,6 +575,27 @@ __OnRender( AppOnRender )
     auto histogram_rects = AllocString<rectf32_t>( histogram_data.len );
     PlotHistogram<f64>( dim_00, histogram_counts, histogram_counts_max, bucket_from_close_idx, counts_when_inserted, histogram_rects );
 
+    // POWER SPECTRUM SETUP:
+    auto power_data = dcol_spread_over_volume;
+    // ======
+    auto power_pow2 = RoundUpToNextPowerOf2( power_data.len );
+    auto power_data_pow2 = AllocString<f64>( power_pow2 );
+    TZero( ML( power_data_pow2 ) );
+    TMove( power_data_pow2.mem, ML( power_data ) );
+    auto power = AllocString<f64>( power_pow2 );
+    auto power_buffer = AllocString<f64>( 2 * power_pow2 );
+    PowerSpectrum<f64>( power_data_pow2, power, power_buffer );
+    power.len /= 2;
+    ForLen( i, power ) {
+      power.mem[i] = Ln64( power.mem[i] );
+    }
+    f64 power_min;
+    f64 power_max;
+    MinMax<f64>( power, &power_min, &power_max );
+    auto points_power = AllocString<vec2<f32>>( power.len );
+    // We use [0, power_max] as the range, so we always plot against 0 power.
+    PlotRunSequence<f64>( dim_00, power, 0 /*power_min*/, power_max, points_power );
+
 
     // 2-COLUMN ANALYSIS:
 
@@ -626,14 +648,13 @@ __OnRender( AppOnRender )
       f32 radius = 0.0f
       )
     {
-      auto pointcolor_base = _vec4( 1.0f );
       auto pointcolor_start = _vec4( 1.0f, 0.2f, 0.2f, 0.7f );
       auto pointcolor_end = _vec4( 0.2f, 1.0f, 0.2f, 0.7f );
       ForLen( i, points ) {
         auto pointcolor = gradient ?
           Lerp_from_idx( pointcolor_start, pointcolor_end, i, 0, points.len - 1 )
           :
-          _vec4( 1.0f );
+          _vec4( 1.0f, 1.0f, 1.0f, 0.7f );
         auto point = points.mem[i];
         auto xi = point.x;
         auto yi = point.y;
@@ -657,7 +678,6 @@ __OnRender( AppOnRender )
       tslice_t<vec2<f32>> points
       )
     {
-      auto pointcolor_base = _vec4( 1.0f );
       auto pointcolor_start = _vec4( 1.0f, 0.2f, 0.2f, 0.7f );
       auto pointcolor_end = _vec4( 0.2f, 1.0f, 0.2f, 0.7f );
       auto subdivision_w = Truncate32( dim.x / points.len );
@@ -687,7 +707,6 @@ __OnRender( AppOnRender )
       tslice_t<rectf32_t> rects
       )
     {
-      auto pointcolor_base = _vec4( 1.0f );
       auto pointcolor_start = _vec4( 1.0f, 0.2f, 0.2f, 1.0f );
       auto pointcolor_end = _vec4( 0.2f, 1.0f, 0.2f, 1.0f );
       ForLen( i, rects ) {
@@ -711,7 +730,8 @@ __OnRender( AppOnRender )
       rect_00.p0,
       dim_00,
       points_sequence,
-      0 /*gradient*/ );
+      0 /*gradient*/,
+      1.0f /*radius*/ );
 
     DrawPoints(
       app,
@@ -745,7 +765,8 @@ __OnRender( AppOnRender )
         GetZ( zrange, applayer_t::txt )
         );
 
-      auto points = points_autocorr;
+//      auto points = points_autocorr;
+      auto points = points_power;
       // TODO: stay with autocorr here, and move lagcorr + corr to 2-column analysis.
 //      auto points = points_lagcorr;
 //      auto points = points_corr;
@@ -756,9 +777,14 @@ __OnRender( AppOnRender )
         rect_11.p0,
         dim_00,
         points,
-        0 /*gradient*/ );
+        0 /*gradient*/,
+        1.0f /*radius*/ );
     }
 
+    Free( power );
+    Free( power_data_pow2 );
+    Free( power_buffer );
+    Free( points_power );
     Free( corr );
     Free( points_corr );
     Free( dcol_fourier );
