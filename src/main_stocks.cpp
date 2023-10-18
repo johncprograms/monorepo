@@ -97,8 +97,20 @@
 
 #endif
 
-// TODO: create a table_t to contain the parsed numeric data?
-//   We'd still have to keep alive the string data for non-numeric things, so maybe it's not worth it.
+struct
+csv_column_t
+{
+  tslice_t<slice_t> string;
+  tslice_t<f64> numeric; // any cell that fails to parse as numeric will be a 0 entry in here.
+
+  // WARNING: we assume the following are sort-independent properties.
+  //   i.e. we don't recompute these when applying a sortindex on string+numeric slices.
+  bool is_numeric;
+  bool is_datetime;
+  bool is_mixed_string_numeric; // true when the column contains mixed string and numeric data.
+  bool is_all_usd; // true when the column contains all $-prefixed values.
+};
+
 struct
 csv_t
 {
@@ -107,22 +119,183 @@ csv_t
   idx_t ncolumns;
   u32 nrows;
   tstring_t<slice_t> alloc_cells; // the csv cells in column-major order in one block allocation (excluding headers)
+  tstring_t<f64> alloc_cells_numeric;
   tstring_t<slice_t> headers; // headers per-column.
-  tstring_t<tslice_t<slice_t>> columns; // 2-D indexed column-major csv cells.
-
-  // TODO: rename the above to columns_string, and make a new string of columns containing parsed numeric data.
-  //   numeric conversion won't always succeed, so we need a way to identify and signal that.
-  //   probably a column_t type with a numeric/string bool or something.
+  tstring_t<csv_column_t> columns; // 2-D indexed column-major csv cells.
 };
 
 Inl void
 Kill( csv_t* table )
 {
   Free( table->alloc_cells );
+  Free( table->alloc_cells_numeric );
   Free( table->columns );
   Free( table->headers );
   Free( table->csv );
   Free( table->table_name );
+}
+
+Inl void
+ParseNumeric(
+  slice_t value,
+  f64* numeric,
+  bool* is_numeric
+  )
+{
+  *numeric = 0;
+  *is_numeric = 0;
+
+  bool found_num = 0;
+  idx_t offset_num_start = 0;
+  bool num_negative = 0;
+  auto curr = value.mem;
+  auto len = value.len;
+  if( curr[0] == '-' ) {
+    idx_t offset = 1;
+    while( offset < len  &&  AsciiIsSpaceTab( curr[offset] ) ) {
+      offset += 1;
+    }
+    if( offset < len ) {
+      if( AsciiIsNumber( curr[offset] ) ) {
+        found_num = 1;
+        num_negative = 1;
+        offset_num_start = offset;
+      }
+    }
+  }
+  elif( AsciiIsNumber( curr[0] ) ) {
+    found_num = 1;
+    num_negative = 0;
+    offset_num_start = 0;
+  }
+  if( found_num ) {
+    // we've determined AsciiIsNumber( curr[offset_num_start] )
+    idx_t offset = 1;
+    bool seen_dot = 0;
+    bool seen_e = 0;
+    // TODO: negative exponents
+    // bool seen_e_negativesign = 0;
+    while( offset < len ) {
+      auto c = curr[offset];
+      if( AsciiIsNumber( c ) ) {
+        offset += 1;
+        continue;
+      }
+      elif( c == '.' ) {
+        if( seen_dot ) {
+          // "numbers can only have one decimal point!"
+          return;
+        }
+        if( seen_e ) {
+          // "number exponent can't contain a decimal point!"
+          return;
+        }
+        seen_dot = 1;
+        offset += 1;
+        continue;
+      }
+      elif( c == 'e'  ||  c == 'E' ) {
+        if( seen_e ) {
+          // "numbers can only have one exponent!"
+          return;
+        }
+        seen_e = 1;
+        offset += 1;
+        continue;
+      }
+      else {
+        // "unexpected character within a number!"
+        return;
+      }
+      break;
+    }
+    *is_numeric = 1;
+    *numeric = CsTo_f64( ML( value ) ); // TODO: use our own instead.
+  }
+}
+ForceInl void
+ParseMMDDYYYY(
+  stack_resizeable_cont_t<slice_t>* buffer,
+  slice_t value,
+  f64* numeric,
+  bool* is_datetime
+  )
+{
+  *numeric = 0;
+  *is_datetime = 0;
+
+  buffer->len = 0;
+  Reserve( *buffer, 4 );
+  SplitByForwSlashes( buffer, ML( value ) );
+  if( buffer->len != 3 ) {
+    return;
+  }
+
+  auto mm_string = TrimSpacetabsPrefixAndSuffix( buffer->mem[0] );
+  auto mm = CsToIntegerU<u32>( ML( mm_string ), 0 );
+  auto dd_string = TrimSpacetabsPrefixAndSuffix( buffer->mem[1] );
+  auto dd = CsToIntegerU<u32>( ML( dd_string ), 0 );
+  auto yyyy_string = TrimSpacetabsPrefixAndSuffix( buffer->mem[2] );
+  auto yyyy = CsToIntegerU<u32>( ML( yyyy_string ), 0 );
+
+  struct tm time_data = { 0 };
+  // time_data.tm_sec = 0
+  // time_data.tm_min = 0
+  // time_data.tm_hour = 0
+  time_data.tm_mday = dd; // 1-based
+  time_data.tm_mon = mm - 1; // 0-based
+  time_data.tm_year = yyyy - 1900; // based on 1900
+  // time_data.tm_wday = 0
+  // time_data.tm_yday = 0
+  time_data.tm_isdst = -1;
+  auto result = mktime( &time_data );
+  if( result == -1 ) {
+    return;
+  }
+
+  // Cast the time_t result to f64, which should be big enough to hold it.
+  *numeric = Cast( f64, result );
+  *is_datetime = 1;
+}
+ForceInl void
+ParseNumericOrDatetimeOrUsd(
+  stack_resizeable_cont_t<slice_t>* buffer,
+  slice_t value,
+  f64* numeric,
+  bool* is_numeric,
+  bool* is_datetime,
+  bool* is_usd
+  )
+{
+  *numeric = 0;
+  *is_numeric = 0;
+  *is_datetime = 0;
+  *is_usd = 0;
+
+  value = TrimSpacetabsPrefixAndSuffix( value );
+  if( !value.len ) return;
+
+  // USD parsing
+  if( value.mem[0] == '$' ) {
+    *is_usd = 1;
+    value.mem += 1;
+    value.len -= 1;
+    value = TrimSpacetabsPrefixAndSuffix( value );
+    if( !value.len ) return;
+    ParseNumeric( value, numeric, is_numeric );
+    if( *is_numeric ) return;
+  }
+
+  // datetime parsing
+  ParseMMDDYYYY( buffer, value, numeric, is_datetime );
+  if( *is_datetime ) {
+    *is_numeric = 1; // dates are numerically encoded.
+    return;
+  }
+
+  // Final numeric parsing for standalone numerics.
+  ParseNumeric( value, numeric, is_numeric );
+  if( *is_numeric ) return;
 }
 
 int
@@ -168,6 +341,7 @@ LoadCsv( slice_t path, csv_t* table )
   AssertCrash( ncolumns );
   // store the csv cells in column-major order in one block allocation.
   auto alloc_cells = AllocString<slice_t>( nrows * ncolumns );
+  auto alloc_cells_numeric = AllocString<f64>( nrows * ncolumns );
   // we'll leave the headers and column-index as separate allocations for now, for convenience.
   auto headers = AllocString<slice_t>( ncolumns );
   stack_resizeable_cont_t<slice_t> entries;
@@ -177,10 +351,12 @@ LoadCsv( slice_t path, csv_t* table )
   For( x, 0, ncolumns ) {
     headers.mem[x] = entries.mem[x];
   }
-  auto columns = AllocString<tslice_t<slice_t>>( ncolumns );
+  auto columns = AllocString<csv_column_t>( ncolumns );
   For( x, 0, ncolumns ) {
     // column-major striping of alloc_cells.
-    columns.mem[x] = { alloc_cells.mem + x * nrows, nrows };
+    auto column = columns.mem + x;
+    column->string = { alloc_cells.mem + x * nrows, nrows };
+    column->numeric = { alloc_cells_numeric.mem + x * nrows, nrows };
   }
   Fori( u32, y, 1, lines.len ) {
     auto line = lines.mem[y];
@@ -200,18 +376,122 @@ LoadCsv( slice_t path, csv_t* table )
     AssertCrash( nentries == entries.len );
     For( x, 0, nentries ) {
       auto column = columns.mem + x;
-      column->mem[y - 1] = entries.mem[x];
+      auto string = column->string;
+      string.mem[y - 1] = entries.mem[x];
     }
   }
 
-  Free( entries );
   Free( lines );
+
+  For( x, 0, ncolumns ) {
+    auto column = columns.mem + x;
+    auto column_string = column->string;
+    auto column_numeric = column->numeric;
+    bool handled_first = 0;
+    bool all_numeric = 1;
+    bool all_datetime = 1;
+    bool all_usd = 1;
+    bool all_mixed_string_numeric = 0;
+    For( y, 0, nrows ) {
+      auto string = column_string.mem[y];
+      auto numeric = column_numeric.mem + y;
+      bool value_is_numeric;
+      bool value_is_datetime;
+      bool value_is_usd;
+      ParseNumericOrDatetimeOrUsd(
+        &entries,
+        string,
+        numeric,
+        &value_is_numeric,
+        &value_is_datetime,
+        &value_is_usd
+        );
+      if( !handled_first ) {
+        handled_first = 1;
+        all_numeric = value_is_numeric;
+        all_datetime = value_is_datetime;
+        all_usd = value_is_usd;
+      }
+      else {
+        if( all_numeric != value_is_numeric ) {
+          all_mixed_string_numeric = 1;
+        }
+        all_numeric &= value_is_numeric;
+        all_datetime &= value_is_datetime;
+        all_usd &= value_is_usd;
+      }
+    }
+    // TODO: consistent naming for these aggregate flags.
+    column->is_numeric = all_numeric;
+    column->is_datetime = all_datetime;
+    column->is_mixed_string_numeric = all_mixed_string_numeric;
+    column->is_all_usd = all_usd;
+  }
+
+  Free( entries );
+
+  // If there's one datetime column, presumably that's the one to sort by, at least initially.
+  {
+    idx_t count_datetime_columns = 0;
+    tslice_t<f64>* column_datetime_numeric = 0;
+    For( x, 0, ncolumns ) {
+      auto column = columns.mem + x;
+      if( column->is_datetime ) {
+        count_datetime_columns += 1;
+        column_datetime_numeric = &column->numeric;
+      }
+    }
+    if( count_datetime_columns == 1 ) {
+      // TODO: persistent sortindex for the table, and not just a temporary?
+      auto sortindex = AllocString<idx_t>( nrows );
+      ForLen( i, sortindex ) {
+        sortindex.mem[i] = i;
+      }
+      auto column_datetime_numeric_mem = column_datetime_numeric->mem;
+      auto Compare = [column_datetime_numeric_mem](idx_t a, idx_t b)
+      {
+        return column_datetime_numeric_mem[a] < column_datetime_numeric_mem[b];
+      };
+      std::sort( sortindex.mem, sortindex.mem + sortindex.len, Compare );
+
+      // TODO: test applying the sortindex with an in-place algorithm.
+      //   To do that, we also need to pre-compute the inverse permutation sortindex,
+      //   and then do the cycle-walking algorithm.
+      auto buffer_string = AllocString<slice_t>( nrows );
+      auto buffer_numeric = AllocString<f64>( nrows );
+      For( x, 0, ncolumns ) {
+        auto column = columns.mem + x;
+        ForLen( i, sortindex ) {
+          buffer_string.mem[i] = column->string.mem[sortindex.mem[i]];
+          buffer_numeric.mem[i] = column->numeric.mem[sortindex.mem[i]];
+        }
+        TMove( column->string.mem, ML( buffer_string ) );
+        TMove( column->numeric.mem, ML( buffer_numeric ) );
+      }
+      Free( buffer_numeric );
+      Free( buffer_string );
+      Free( sortindex );
+    }
+  }
+
+  // TODO: per-column option to take a log?
+  //   i'm thinking a log checkbox in the headerrect ui.
+  //   more generally, it'd be nice to have a way of defining new columns as math ops on existing ones.
+  For( x, 0, ncolumns ) {
+    auto column = columns.mem + x;
+    if( column->is_datetime  ||  !column->is_numeric ) continue;
+    auto column_numeric_mem = column->numeric.mem;
+    For( y, 0, nrows ) {
+      column_numeric_mem[y] = Ln64( column_numeric_mem[y] );
+    }
+  }
 
   table->table_name = table_name;
   table->csv = csv;
   table->ncolumns = ncolumns;
   table->nrows = nrows;
   table->alloc_cells = alloc_cells;
+  table->alloc_cells_numeric = alloc_cells_numeric;
   table->headers = headers;
   table->columns = columns;
 
@@ -225,7 +505,7 @@ ColumnByName( csv_t& table, slice_t name )
   For( x, 0, table.ncolumns ) {
     auto header = table.headers.mem[x];
     if( StringEquals( ML( name ), ML( header ), 0 ) ) {
-      return table.columns.mem + x;
+      return &table.columns.mem[x].string;
     }
   }
   return 0;
@@ -379,6 +659,93 @@ Enumc( applayer_t )
 };
 
 
+Inl void
+DrawPoints(
+  app_t* app,
+  vec2<f32> zrange,
+  rectf32_t bounds,
+  vec2<f32> p0,
+  vec2<f32> dim,
+  tslice_t<vec2<f32>> points,
+  bool gradient = 1,
+  f32 radius = 0.0f
+  )
+{
+  auto pointcolor_start = _vec4( 1.0f, 0.2f, 0.2f, 0.7f );
+  auto pointcolor_end = _vec4( 0.2f, 1.0f, 0.2f, 0.7f );
+  ForLen( i, points ) {
+    auto pointcolor = gradient ?
+      Lerp_from_idx( pointcolor_start, pointcolor_end, i, 0, points.len - 1 )
+      :
+      _vec4( 1.0f, 1.0f, 1.0f, 0.7f );
+    auto point = points.mem[i];
+    auto xi = point.x;
+    auto yi = point.y;
+    RenderQuad(
+      app->stream,
+      pointcolor,
+      p0 + _vec2<f32>( xi, dim.y - ( yi + 1 ) ) - _vec2( radius ),
+      p0 + _vec2<f32>( xi + 1, dim.y - yi ) + _vec2( radius ),
+      bounds,
+      GetZ( zrange, applayer_t::txt )
+      );
+  }
+}
+Inl void
+DrawColumns(
+  app_t* app,
+  vec2<f32> zrange,
+  rectf32_t bounds,
+  vec2<f32> p0,
+  vec2<f32> dim,
+  tslice_t<vec2<f32>> points
+  )
+{
+  auto pointcolor_start = _vec4( 1.0f, 0.2f, 0.2f, 0.7f );
+  auto pointcolor_end = _vec4( 0.2f, 1.0f, 0.2f, 0.7f );
+  auto subdivision_w = Truncate32( dim.x / points.len );
+  auto col_w = subdivision_w - 1;
+  if( col_w < 1.0f ) return;
+  ForLen( i, points ) {
+    auto pointcolor = Lerp_from_idx( pointcolor_start, pointcolor_end, i, 0, points.len - 1 );
+    auto point = points.mem[i];
+    auto xi = i * subdivision_w;
+    auto yi = point.y;
+    RenderQuad(
+      app->stream,
+      pointcolor,
+      p0 + _vec2<f32>( xi, dim.y - 1 - yi ),
+      p0 + _vec2<f32>( xi + col_w, dim.y - 1 ),
+      bounds,
+      GetZ( zrange, applayer_t::txt )
+      );
+  }
+}
+Inl void
+DrawRects(
+  app_t* app,
+  vec2<f32> zrange,
+  rectf32_t bounds,
+  vec2<f32> p0,
+  tslice_t<rectf32_t> rects
+  )
+{
+  auto pointcolor_start = _vec4( 1.0f, 0.2f, 0.2f, 1.0f );
+  auto pointcolor_end = _vec4( 0.2f, 1.0f, 0.2f, 1.0f );
+  ForLen( i, rects ) {
+    auto pointcolor = Lerp_from_idx( pointcolor_start, pointcolor_end, i, 0, rects.len - 1 );
+    auto rect = rects.mem[i];
+    RenderQuad(
+      app->stream,
+      pointcolor,
+      p0 + rect.p0,
+      p0 + rect.p1,
+      bounds,
+      GetZ( zrange, applayer_t::txt )
+      );
+  }
+}
+
 __OnRender( AppOnRender )
 {
   ProfFunc();
@@ -497,13 +864,17 @@ __OnRender( AppOnRender )
       auto table = app->active_table;
 
       AssertCrash( app->active_column < table->columns.len );
-      auto col_active = table->columns.mem + app->active_column;
+      auto col_active = table->columns.mem[app->active_column];
+      auto data_active = col_active.numeric;
 
+      f64 min_active;
+      f64 max_active;
+      MinMax<f64>( data_active, &min_active, &max_active );
+      auto mean_active = Mean<f64>( data_active );
+      auto variance_active = Variance<f64>( data_active, mean_active );
+
+#if 0
       // TODO: use col_active as the basis for plots.
-
-      // TODO: automatic dollar detection + conversion to float
-      // TODO: automatic date detection + conversion to float
-
       auto col_date = ColumnByName( *table, SliceFromCStr( "date" ) );
       auto col_close = ColumnByName( *table, SliceFromCStr( "close/last" ) );
       auto col_high = ColumnByName( *table, SliceFromCStr( "high" ) );
@@ -579,6 +950,7 @@ __OnRender( AppOnRender )
       auto variance_spread = Variance<f64>( dcol_spread, mean_spread );
       auto variance_volume = Variance<f64>( dcol_volume, mean_volume );
       auto variance_spread_over_volume = Variance<f64>( dcol_spread_over_volume, mean_spread_over_volume );
+#endif
 
       #define DRAWQUAD( _color, _p0, _p1 ) \
         RenderQuad( \
@@ -595,7 +967,7 @@ __OnRender( AppOnRender )
       auto border_radius = MAX( 3.0f, Truncate32( pct_gap * MIN( dim.x, dim.y ) ) );
 
       // TODO: auto-layout the graphs
-      auto dim_00 = _vec2( Truncate32( dim.x / 3.0f ), Truncate32( dim.y / 3.0f ) );
+      auto dim_00 = _vec2( Truncate32( dim.x / 3.0f ), Truncate32( dim.y / 2.0f ) );
 
       auto p0_00 = bounds.p0;
       auto p0_10 = bounds.p0 + _vec2( dim_00.x, 0.0f );
@@ -603,9 +975,9 @@ __OnRender( AppOnRender )
       auto p0_01 = bounds.p0 + _vec2( 0.0f, dim_00.y );
       auto p0_11 = bounds.p0 + dim_00;
       auto p0_21 = bounds.p0 + _vec2( 2.0f * dim_00.x, dim_00.y );
-      auto p0_02 = bounds.p0 + _vec2( 0.0f, 2 * dim_00.y );
-      auto p0_12 = bounds.p0 + _vec2( dim_00.x, 2 * dim_00.y );
-      auto p0_22 = bounds.p0 + _vec2( 2.0f * dim_00.x, 2 * dim_00.y );
+      // auto p0_02 = bounds.p0 + _vec2( 0.0f, 2 * dim_00.y );
+      // auto p0_12 = bounds.p0 + _vec2( dim_00.x, 2 * dim_00.y );
+      // auto p0_22 = bounds.p0 + _vec2( 2.0f * dim_00.x, 2 * dim_00.y );
 
       auto rect_00 = _rect( p0_00, p0_00 + dim_00 );
       auto rect_10 = _rect( p0_10, p0_10 + dim_00 );
@@ -613,13 +985,13 @@ __OnRender( AppOnRender )
       auto rect_01 = _rect( p0_01, p0_01 + dim_00 );
       auto rect_11 = _rect( p0_11, p0_11 + dim_00 );
       auto rect_21 = _rect( p0_21, p0_21 + dim_00 );
-      auto rect_02 = _rect( p0_02, p0_02 + dim_00 );
-      auto rect_12 = _rect( p0_12, p0_12 + dim_00 );
-      auto rect_22 = _rect( p0_22, p0_22 + dim_00 );
+      // auto rect_02 = _rect( p0_02, p0_02 + dim_00 );
+      // auto rect_12 = _rect( p0_12, p0_12 + dim_00 );
+      // auto rect_22 = _rect( p0_22, p0_22 + dim_00 );
       rectf32_t* rects[] = {
         &rect_00, &rect_10, &rect_20,
         &rect_01, &rect_11, &rect_21,
-        &rect_02, &rect_12, &rect_22
+        // &rect_02, &rect_12, &rect_22
         };
       For( r, 0, _countof( rects ) ) {
         auto rect = *rects[r];
@@ -637,26 +1009,42 @@ __OnRender( AppOnRender )
       }
       dim_00 = rect_00.p1 - rect_00.p0;
 
-      // TODO: parse dates and PlotXY, not run-sequence.
+
       // SEQUENCE SETUP:
-      auto sequence_data = dcol_spread_over_volume;
-      auto sequence_data_min = min_spread_over_volume;
-      auto sequence_data_max = max_spread_over_volume;
+      auto sequence_data = data_active;
+      auto sequence_data_min = min_active;
+      auto sequence_data_max = max_active;
       // ======
       auto points_sequence = AllocString<vec2<f32>>( sequence_data.len );
-      PlotRunSequence<f64>( dim_00, sequence_data, sequence_data_min, sequence_data_max, points_sequence );
+      PlotRunSequence<f64>( dim_00, sequence_data, 
+//        sequence_data_min, 
+        0,
+        sequence_data_max, points_sequence );
+      // TODO: if we have a domain X, then plot that instead of run-sequence.
+      //   probably a per-table 'active_domain' column index.
+      //   and ui to pick that from the column list. a button per headerrect? or right-click menu option.
+//      PlotXY<f64>(
+//        dim_00,
+//        corr_a,
+//        corr_a_min,
+//        corr_a_max,
+//        corr_b,
+//        corr_b_min,
+//        corr_b_max,
+//        points_corr
+//        );
 
       // LAG SETUP:
-      auto lag_data = dcol_spread_over_volume;
+      auto lag_data = data_active;
       // ======
       auto lag = Lag<f64>( lag_data );
       auto points_lag = AllocString<vec2<f32>>( lag.len );
       PlotXY<f64>( dim_00, { lag.y, lag.len }, lag.min_y, lag.max_y, { lag.x, lag.len }, lag.min_x, lag.max_x, points_lag );
 
       // AUTO-CORRELATION SETUP:
-      auto autocorr_data = dcol_spread_over_volume;
-      auto autocorr_data_mean = mean_spread_over_volume;
-      auto autocorr_data_variance = variance_spread_over_volume;
+      auto autocorr_data = data_active;
+      auto autocorr_data_mean = mean_active;
+      auto autocorr_data_variance = variance_active;
       // ======
       auto autocorr = AllocString<f64>( autocorr_data.len );
       AutoCorrelation<f64>( autocorr_data, autocorr_data_mean, autocorr_data_variance, autocorr );
@@ -665,10 +1053,10 @@ __OnRender( AppOnRender )
       PlotRunSequence<f64>( dim_00, autocorr, -1 /*min_autocorr*/, 1 /*max_autocorr*/, points_autocorr );
 
       // HISTOGRAM SETUP:
-      auto histogram_data = dcol_spread_over_volume;
-      auto histogram_data_variance = variance_spread_over_volume;
-      auto histogram_data_min = min_spread_over_volume;
-      auto histogram_data_max = max_spread_over_volume;
+      auto histogram_data = data_active;
+      auto histogram_data_variance = variance_active;
+      auto histogram_data_min = min_active;
+      auto histogram_data_max = max_active;
       // ======
       // Scott's rule for choosing histogram bin width is:
       //   B = 3.49 * stddev * N^(-1/3)
@@ -692,15 +1080,20 @@ __OnRender( AppOnRender )
       auto histogram_rects = AllocString<rectf32_t>( histogram_data.len );
       PlotHistogram<f64>( dim_00, histogram_counts, histogram_counts_max, bucket_from_close_idx, counts_when_inserted, histogram_rects );
 
+      // TODO: non-uniform DFT with date values.
       // POWER SPECTRUM SETUP:
-      auto power_data = dcol_spread_over_volume;
+      auto power_data = data_active;
       // ======
       auto power_pow2 = RoundUpToNextPowerOf2( power_data.len );
       auto power_re = AllocString<f64>( power_pow2 );
       auto power_im = AllocString<f64>( power_pow2 );
       TZero( ML( power_re ) );
       TZero( ML( power_im ) );
-      TMove( power_re.mem, ML( power_data ) );
+      // Use mean-centered data for the Fourier transform, so we have a better chance of seeing periods.
+      //   was: TMove( power_re.mem, ML( power_data ) );
+      ForLen( i, power_data ) {
+        power_re.mem[i] = power_data.mem[i] - mean_active;
+      }
       auto power_buffer = AllocString<f64>( 3 * power_pow2 );
       auto power = tslice_t<f64>{ power_buffer.mem + 2 * power_pow2, power_pow2 / 2 };
       auto power_phase  = tslice_t<f64>{ power_buffer.mem + 2 * power_pow2 + power_pow2 / 2, power_pow2 / 2 };
@@ -719,6 +1112,7 @@ __OnRender( AppOnRender )
       PlotRunSequence<f64>( dim_00, power_phase, -f64_PI /*min*/, f64_PI /*max*/, points_power_phase );
 
 
+#if 0 // TODO: add ui for this. ctrl+click?
       // 2-COLUMN ANALYSIS:
 
       // LAG-CORRELATION SETUP:
@@ -771,93 +1165,7 @@ __OnRender( AppOnRender )
       auto points_lagdistcorr = AllocString<vec2<f32>>( lagdistcorr.len );
       // We use [0,1] as the range, since it's guaranteed to be within that range.
       PlotRunSequence<f64>( dim_00, lagdistcorr, 0, 1, points_lagdistcorr );
-
-
-      auto DrawPoints = [](
-        app_t* app,
-        vec2<f32> zrange,
-        rectf32_t bounds,
-        vec2<f32> p0,
-        vec2<f32> dim,
-        tslice_t<vec2<f32>> points,
-        bool gradient = 1,
-        f32 radius = 0.0f
-        )
-      {
-        auto pointcolor_start = _vec4( 1.0f, 0.2f, 0.2f, 0.7f );
-        auto pointcolor_end = _vec4( 0.2f, 1.0f, 0.2f, 0.7f );
-        ForLen( i, points ) {
-          auto pointcolor = gradient ?
-            Lerp_from_idx( pointcolor_start, pointcolor_end, i, 0, points.len - 1 )
-            :
-            _vec4( 1.0f, 1.0f, 1.0f, 0.7f );
-          auto point = points.mem[i];
-          auto xi = point.x;
-          auto yi = point.y;
-          RenderQuad(
-            app->stream,
-            pointcolor,
-            p0 + _vec2<f32>( xi, dim.y - ( yi + 1 ) ) - _vec2( radius ),
-            p0 + _vec2<f32>( xi + 1, dim.y - yi ) + _vec2( radius ),
-            bounds,
-            GetZ( zrange, applayer_t::txt )
-            );
-        }
-      };
-
-      auto DrawColumns = [](
-        app_t* app,
-        vec2<f32> zrange,
-        rectf32_t bounds,
-        vec2<f32> p0,
-        vec2<f32> dim,
-        tslice_t<vec2<f32>> points
-        )
-      {
-        auto pointcolor_start = _vec4( 1.0f, 0.2f, 0.2f, 0.7f );
-        auto pointcolor_end = _vec4( 0.2f, 1.0f, 0.2f, 0.7f );
-        auto subdivision_w = Truncate32( dim.x / points.len );
-        auto col_w = subdivision_w - 1;
-        if( col_w < 1.0f ) return;
-        ForLen( i, points ) {
-          auto pointcolor = Lerp_from_idx( pointcolor_start, pointcolor_end, i, 0, points.len - 1 );
-          auto point = points.mem[i];
-          auto xi = i * subdivision_w;
-          auto yi = point.y;
-          RenderQuad(
-            app->stream,
-            pointcolor,
-            p0 + _vec2<f32>( xi, dim.y - 1 - yi ),
-            p0 + _vec2<f32>( xi + col_w, dim.y - 1 ),
-            bounds,
-            GetZ( zrange, applayer_t::txt )
-            );
-        }
-      };
-
-      auto DrawRects = [](
-        app_t* app,
-        vec2<f32> zrange,
-        rectf32_t bounds,
-        vec2<f32> p0,
-        tslice_t<rectf32_t> rects
-        )
-      {
-        auto pointcolor_start = _vec4( 1.0f, 0.2f, 0.2f, 1.0f );
-        auto pointcolor_end = _vec4( 0.2f, 1.0f, 0.2f, 1.0f );
-        ForLen( i, rects ) {
-          auto pointcolor = Lerp_from_idx( pointcolor_start, pointcolor_end, i, 0, rects.len - 1 );
-          auto rect = rects.mem[i];
-          RenderQuad(
-            app->stream,
-            pointcolor,
-            p0 + rect.p0,
-            p0 + rect.p1,
-            bounds,
-            GetZ( zrange, applayer_t::txt )
-            );
-        }
-      };
+#endif
 
       DrawPoints(
         app,
@@ -883,7 +1191,7 @@ __OnRender( AppOnRender )
         app,
         zrange,
         bounds,
-        rect_20.p0,
+        rect_01.p0,
         histogram_rects );
 
       {
@@ -895,8 +1203,8 @@ __OnRender( AppOnRender )
         RenderQuad(
           app->stream,
           linecolor,
-          rect_01.p0 + _vec2<f32>( 0, 0.5f * dim_00.y - 1 ),
-          rect_01.p0 + _vec2<f32>( dim_00.x - 1, 0.5f * dim_00.y + 1 ),
+          rect_11.p0 + _vec2<f32>( 0, 0.5f * dim_00.y - 1 ),
+          rect_11.p0 + _vec2<f32>( dim_00.x - 1, 0.5f * dim_00.y + 1 ),
           bounds,
           GetZ( zrange, applayer_t::txt )
           );
@@ -905,7 +1213,7 @@ __OnRender( AppOnRender )
           app,
           zrange,
           bounds,
-          rect_01.p0,
+          rect_11.p0,
           dim_00,
           points_autocorr,
           0 /*gradient*/,
@@ -916,7 +1224,7 @@ __OnRender( AppOnRender )
         app,
         zrange,
         bounds,
-        rect_11.p0,
+        rect_20.p0,
         dim_00,
         points_power,
         0 /*gradient*/,
@@ -933,7 +1241,7 @@ __OnRender( AppOnRender )
         1.0f /*radius*/ );
 
       // TODO: move the following graphs to 2-column analysis.
-
+#if 0
       DrawPoints(
         app,
         zrange,
@@ -983,25 +1291,29 @@ __OnRender( AppOnRender )
       Free( lagdistcorr );
       Free( lagdistcorr_buffer );
       Free( points_lagdistcorr );
+      Free( corr );
+      Free( points_corr );
+      Free( points_lagcorr );
+      Free( lagcorr );
+#endif
+
       Free( power_re );
       Free( power_im );
       Free( power_buffer );
       Free( points_power );
       Free( points_power_phase );
-      Free( corr );
-      Free( points_corr );
+#if 0
       Free( dcol_spread );
       Free( dcol_spread_over_volume );
       Free( dcol_low );
       Free( dcol_volume );
       Free( dcol_close );
       Free( dcol_high );
+#endif
       Free( histogram_counts );
       Free( bucket_from_close_idx );
       Free( counts_when_inserted );
       Free( autocorr );
-      Free( points_lagcorr );
-      Free( lagcorr );
       Free( points_sequence );
       Free( histogram_rects );
       Free( points_autocorr );
@@ -1338,10 +1650,16 @@ __OnMouseEvent( AppOnMouseEvent )
           auto headerrect = MapMouseToHeaderRect( SliceFromArray( app->headerrects ), mp );
           if( headerrect ) {
             AssertCrash( headerrect->table_idx < app->tables.len );
-            auto active_table = app->tables.mem + headerrect->table_idx;
-            AssertCrash( headerrect->header_idx < active_table->ncolumns );
-            app->active_table = active_table;
-            app->active_column = headerrect->header_idx;
+            auto next_table = app->tables.mem + headerrect->table_idx;
+            auto next_column_idx = headerrect->header_idx;
+            AssertCrash( next_column_idx < next_table->ncolumns );
+            auto next_column = next_table->columns.mem[next_column_idx];
+            // Disallow setting the active column to a non-numeric one.
+            // TODO: auto visualizations for string data.
+            if( next_column.is_numeric ) {
+              app->active_table = next_table;
+              app->active_column = next_column_idx;
+            }
           }
         } break;
 

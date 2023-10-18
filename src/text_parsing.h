@@ -8,7 +8,7 @@
 // - space/tab boundary counting/parsing/splitting
 
 #define CURSORMOVE( _idx_type, _name, _cond ) \
-  Inl _idx_type \
+  ForceInl _idx_type \
   NAMEJOIN( _name, L )( u8* src, _idx_type src_len, _idx_type pos ) \
   { \
     while( pos ) { \
@@ -20,7 +20,7 @@
     } \
     return pos; \
   } \
-  Inl _idx_type \
+  ForceInl _idx_type \
   NAMEJOIN( _name, R )( u8* src, _idx_type src_len, _idx_type pos ) \
   { \
     while( pos != src_len ) { \
@@ -45,6 +45,11 @@ CURSORMOVE( u64, CursorStopAtSpacetab, COND );
 #define COND( c )   ( c == ','  )
 CURSORMOVE( u32, CursorStopAtComma, COND );
 CURSORMOVE( u64, CursorStopAtComma, COND );
+#undef COND
+
+#define COND( c )   ( c == '/'  )
+CURSORMOVE( u32, CursorStopAtForwSlash, COND );
+CURSORMOVE( u64, CursorStopAtForwSlash, COND );
 #undef COND
 
 #define COND( c )   ( c != ' '  )  &&  ( c != '\t' )
@@ -337,6 +342,31 @@ SplitByCommas(
     }
   }
 }
+Inl void
+SplitByForwSlashes(
+  stack_resizeable_cont_t<slice_t>* entries,
+  u8* src,
+  idx_t src_len
+  )
+{
+  idx_t idx = 0;
+  while( idx < src_len ) {
+    auto elem_start = idx;
+    auto elem_end = CursorStopAtForwSlashR( src, src_len, idx );
+    auto elem_len = elem_end - elem_start;
+    auto elem = AddBack( *entries );
+    elem->mem = src + elem_start;
+    elem->len = elem_len;
+    idx = elem_end + 1;
+    // final trailing forwslash.
+    if( idx == src_len ) {
+      elem = AddBack( *entries );
+      elem->mem = src + idx;
+      elem->len = 0;
+      break;
+    }
+  }
+}
 
 struct
 wordspan_t
@@ -399,6 +429,26 @@ SplitBySpacesAndCopyContents(
   }
 }
 
+ForceInl slice_t
+TrimSpacetabsPrefixAndSuffix( slice_t value )
+{
+  auto start = CursorSkipSpacetabR( ML( value ), 0 );
+  AssertCrash( start <= value.len );
+  value.mem += start;
+  value.len -= start;
+  auto end = CursorSkipSpacetabL( ML( value ), value.len );
+  value.len = end;
+  return value;
+}
+ForceInl slice_t
+TrimSpacetabsPrefix( slice_t value )
+{
+  auto start = CursorSkipSpacetabR( ML( value ), 0 );
+  AssertCrash( start <= value.len );
+  value.mem += start;
+  value.len -= start;
+  return value;
+}
 
 
 #if defined(TEST)
