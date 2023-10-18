@@ -381,6 +381,93 @@ DistanceCorrelation(
   *distcov2 = distcov2_a_b.sum;
   *distcorr = Sqrt( distcov2 / ( distvar_a * distvar_b ) );
 }
+Templ Inl void
+LagDistanceCorrelation(
+  tslice_t<T> x,
+  tslice_t<T> y,
+  tslice_t<T> lagdistcorr, // length n
+  tslice_t<T> buffer // length n(n-1) + 6n
+  )
+{
+  auto N = x.len;
+  AssertCrash( x.len == y.len );
+  AssertCrash( buffer.len >= N * ( N - 1 ) + 6 * N );
+  AssertCrash( lagdistcorr.len == N );
+
+  For( lag, 0, N ) {
+    auto n = N - lag;
+    tslice_t<T> x_lag = { x.mem, n };
+    tslice_t<T> y_lag = { y.mem + lag, n };
+
+    auto a_len = ( n * ( n - 1 ) ) / 2 + n;
+    auto b_len = a_len;
+    auto tmp = buffer.mem;
+    tslice_t<T> a = { tmp, a_len };  tmp += a_len;
+    tslice_t<T> b = { tmp, b_len };  tmp += b_len;
+    tslice_t<T> a_row_means = { tmp, n };  tmp += n;
+    tslice_t<T> b_row_means = { tmp, n };  tmp += n;
+    tslice_t<T> a_col_means = { tmp, n };  tmp += n;
+    tslice_t<T> b_col_means = { tmp, n };  tmp += n;
+
+    auto rec_n = 1 / Cast( T, n );
+    auto rec_n2 = rec_n * rec_n;
+    // TODO: we could share a,b matrices across all lags.
+    For( i, 0, n ) {
+      For( j, i, n ) {
+        auto idx = SymmetricColWise_IndexFromXY( i, j );
+        auto a_diff = x_lag.mem[i] - x_lag.mem[j];
+        auto b_diff = y_lag.mem[i] - y_lag.mem[j];
+        a.mem[idx] = ABS( a_diff );
+        b.mem[idx] = ABS( b_diff );
+      }
+    }
+    For( j, 0, n ) {
+      kahansum_t<T> a_mean = {};
+      kahansum_t<T> b_mean = {};
+      For( i, 0, n ) {
+        auto idx = SymmetricColWise_IndexFromXY( i, j );
+        Add( a_mean, a.mem[idx] * rec_n );
+        Add( b_mean, b.mem[idx] * rec_n );
+      }
+      a_row_means.mem[j] = a_mean.sum;
+      b_row_means.mem[j] = b_mean.sum;
+    }
+    For( i, 0, n ) {
+      kahansum_t<T> a_mean = {};
+      kahansum_t<T> b_mean = {};
+      For( j, 0, n ) {
+        auto idx = SymmetricColWise_IndexFromXY( i, j );
+        Add( a_mean, a.mem[idx] * rec_n );
+        Add( b_mean, b.mem[idx] * rec_n );
+      }
+      a_col_means.mem[i] = a_mean.sum;
+      b_col_means.mem[i] = b_mean.sum;
+    }
+    kahansum_t<T> a_total_mean = {};
+    kahansum_t<T> b_total_mean = {};
+    For( i, 0, n ) {
+      Add( a_total_mean, a_col_means.mem[i] * rec_n );
+      Add( b_total_mean, b_col_means.mem[i] * rec_n );
+    }
+    kahansum_t<T> distcov2_a_b = {};
+    kahansum_t<T> distvar2_a = {};
+    kahansum_t<T> distvar2_b = {};
+    For( i, 0, n ) {
+      For( j, 0, n ) {
+        auto idx = SymmetricColWise_IndexFromXY( i, j );
+        auto A = a.mem[idx] + a_total_mean.sum - a_row_means.mem[j] - a_col_means.mem[i];
+        auto B = b.mem[idx] + b_total_mean.sum - b_row_means.mem[j] - b_col_means.mem[i];
+        Add( distcov2_a_b, A * B * rec_n2 );
+        Add( distvar2_a, A * A * rec_n2 );
+        Add( distvar2_b, B * B * rec_n2 );
+      }
+    }
+    auto distvar_a = Sqrt( distvar2_a.sum );
+    auto distvar_b = Sqrt( distvar2_b.sum );
+    auto distcov2 = MAX( 0, distcov2_a_b.sum );
+    lagdistcorr.mem[lag] = Sqrt( distcov2 / ( distvar_a * distvar_b ) );
+  }
+}
 
 // Discrete Fourier transform (DFT):
 //   F[n] = sum( k=0..N-1, f[k] * exp( i * -2pi * n * k / N ) )
@@ -663,28 +750,36 @@ InverseDiscreteFourierTransform(
   }
 }
 
+// Given complex input data, this computes the discrete Fourier transform of that data,
+// and decomposes the result into polar coordinates.
 Templ Inl void
 PowerSpectrum(
-  tslice_t<T> data,
-  tslice_t<T> power,
-  tslice_t<T> buffer // length 2 * data.len
+  tslice_t<T> Re_data,
+  tslice_t<T> Im_data,
+  tslice_t<T> polar_radius, // length Re_data.len / 2
+  tslice_t<T> polar_phase,  // length Re_data.len / 2
+  tslice_t<T> buffer // length 2 * Re_data.len
   )
 {
-  auto n = data.len;
-  AssertCrash( n == power.len );
-  tslice_t<T> Im_data = { buffer.mem, n };
-  TZero( ML( Im_data ) );
-  tslice_t<T> Im_power = { buffer.mem + n, n };
+  auto n = Re_data.len;
+  AssertCrash( n == Im_data.len );
+  AssertCrash( n/2 == polar_radius.len );
+  AssertCrash( n/2 == polar_phase.len );
+  AssertCrash( 2*n <= buffer.len );
+
+  tslice_t<T> Re_result = { buffer.mem, n };
+  tslice_t<T> Im_result = { buffer.mem + n, n };
   DiscreteFourierTransform(
-    data,
+    Re_data,
     Im_data,
-    power,
-    Im_power
+    Re_result,
+    Im_result
     );
-  For( i, 0, n ) {
-    auto a = power.mem[i];
-    auto b = Im_power.mem[i];
-    power.mem[i] = Sqrt( a * a + b * b );
+  For( i, 0, n/2 ) {
+    auto a = Re_result.mem[i];
+    auto b = Im_result.mem[i];
+    polar_radius.mem[i] = Sqrt( a * a + b * b );
+    polar_phase.mem[i] = std::atan2( b, a );
   }
 }
 

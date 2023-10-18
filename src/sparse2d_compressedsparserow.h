@@ -165,18 +165,21 @@ SymmetricRowWise_IndexFromXY(
   return i;
 }
 
-ForceInl idx_t
-SymmetricColWise_IndexFromXY(
-  idx_t x,
-  idx_t y
-  )
-{
-  if( x > y ) { // PERF: ensure branchless
-    SWAP( idx_t, x, y );
-  }
-  auto i = x * ( x + 1 ) / 2 + y;
-  return i;
-}
+#define SymmetricColWise_IndexFromXY( x, y ) \
+  ( x > y ) ? ( y * ( y + 1 ) / 2 + x ) : ( x * ( x + 1 ) / 2 + y )
+
+//ForceInl idx_t
+//SymmetricColWise_IndexFromXY(
+//  idx_t x,
+//  idx_t y
+//  )
+//{
+//  if( x > y ) { // PERF: ensure branchless
+//    SWAP( idx_t, x, y );
+//  }
+//  auto i = x * ( x + 1 ) / 2 + y;
+//  return i;
+//}
 
 // banded matrix
 // example with B=1, the band radius (# elements either side of diagonal, per-row)
