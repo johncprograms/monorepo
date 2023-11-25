@@ -111,25 +111,25 @@ typedef u32 enum_t;
 #define Enumc( name ) \
   enum class name : enum_t
 
-#if 0
-  // ugh, c++ doesn't let you do bitmask enums very easily.
-  // instead of reusing enumc for this, we'll make our own thing.
-
-  define ENUM_IS_BITMASK( type ) \
-    Inl type operator|( type a, type b ) \
-    { \
-      return Cast( type, Cast( enum_t, a ) | Cast( enum_t, b ) ); \
-    } \
-    Inl type operator&( type a, type b ) \
-    { \
-      return Cast( type, Cast( enum_t, a ) & Cast( enum_t, b ) ); \
-    } \
-    Inl bool operator bool( type a ) \
-    { \
-      return Cast( enum_t, a ); \
-    } \
-
-#endif
+#define ENUM_IS_BITMASK( type ) \
+  ForceInl type operator|( type a, type b ) \
+  { \
+    return Cast( type, Cast( enum_t, a ) | Cast( enum_t, b ) ); \
+  } \
+  ForceInl type& operator|=( type& a, type b ) \
+  { \
+    a = operator|( a, b ); \
+    return a; \
+  } \
+  ForceInl type operator&( type a, type b ) \
+  { \
+    return Cast( type, Cast( enum_t, a ) & Cast( enum_t, b ) ); \
+  } \
+  ForceInl type& operator&=( type& a, type b ) \
+  { \
+    a = operator&( a, b ); \
+    return a; \
+  } \
 
 
 // ============================================================================

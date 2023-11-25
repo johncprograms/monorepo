@@ -72,6 +72,8 @@
 
 // Test args:
 //   "C:\Users\admin\Desktop\aapl_5y.csv" "C:\Users\admin\Desktop\msft_5y.csv"
+// "C:\Users\admin\Desktop\DFF(1).csv"
+// "C:\Users\admin\Desktop\aapl_5y.csv" "C:\Users\admin\Desktop\msft_5y.csv" "C:\Users\admin\Desktop\nvda_5y.csv"
 
 #if 0
 
@@ -213,89 +215,154 @@ ParseNumeric(
     *numeric = CsTo_f64( ML( value ) ); // TODO: use our own instead.
   }
 }
-ForceInl void
-ParseMMDDYYYY(
-  stack_resizeable_cont_t<slice_t>* buffer,
-  slice_t value,
-  f64* numeric,
-  bool* is_datetime
+enum
+date_order_t
+{
+  ymd = 1u << 0,
+  mdy = 1u << 1,
+  dym = 1u << 2,
+  ydm = 1u << 3,
+  dmy = 1u << 4,
+  myd = 1u << 5,
+};
+ENUM_IS_BITMASK( date_order_t );
+struct
+date_t
+{
+  date_order_t order;
+  u32 slots[3];
+};
+Inl void
+UnpackDate(
+  date_t date,
+  u32* dd,
+  u32* mm,
+  u32* yyyy
   )
 {
-  *numeric = 0;
-  *is_datetime = 0;
-
+  AssertCrash( _popcnt_idx_t( date.order ) == 1u );
+  switch( date.order ) {
+    case date_order_t::ymd: {
+      *yyyy = date.slots[0];
+      *mm = date.slots[1];
+      *dd = date.slots[2];
+    } break;
+    case date_order_t::mdy: {
+      *yyyy = date.slots[2];
+      *mm = date.slots[0];
+      *dd = date.slots[1];
+    } break;
+    case date_order_t::dym: {
+      *yyyy = date.slots[1];
+      *mm = date.slots[2];
+      *dd = date.slots[0];
+    } break;
+    case date_order_t::ydm: {
+      *yyyy = date.slots[0];
+      *mm = date.slots[2];
+      *dd = date.slots[1];
+    } break;
+    case date_order_t::dmy: {
+      *yyyy = date.slots[2];
+      *mm = date.slots[1];
+      *dd = date.slots[0];
+    } break;
+    case date_order_t::myd: {
+      *yyyy = date.slots[1];
+      *mm = date.slots[0];
+      *dd = date.slots[2];
+    } break;
+  }
+}
+struct
+parsed_number_t
+{
+  f64 numeric;
+  date_t date;
+  bool is_numeric;
+  bool is_datetime;
+  bool is_usd;
+};
+ForceInl void
+ParseDate(
+  stack_resizeable_cont_t<slice_t>* buffer,
+  slice_t value,
+  parsed_number_t* result
+  )
+{
   buffer->len = 0;
   Reserve( *buffer, 4 );
-  SplitByForwSlashes( buffer, ML( value ) );
+  // Each split character is OR'ed when splitting, so the presence of any will cause a split.
+  auto split_chars = SliceFromCStr( "-/" );
+  SplitBy( buffer, split_chars, ML( value ) );
   if( buffer->len != 3 ) {
     return;
   }
 
-  auto mm_string = TrimSpacetabsPrefixAndSuffix( buffer->mem[0] );
-  auto mm = CsToIntegerU<u32>( ML( mm_string ), 0 );
-  auto dd_string = TrimSpacetabsPrefixAndSuffix( buffer->mem[1] );
-  auto dd = CsToIntegerU<u32>( ML( dd_string ), 0 );
-  auto yyyy_string = TrimSpacetabsPrefixAndSuffix( buffer->mem[2] );
-  auto yyyy = CsToIntegerU<u32>( ML( yyyy_string ), 0 );
-
-  struct tm time_data = { 0 };
-  // time_data.tm_sec = 0
-  // time_data.tm_min = 0
-  // time_data.tm_hour = 0
-  time_data.tm_mday = dd; // 1-based
-  time_data.tm_mon = mm - 1; // 0-based
-  time_data.tm_year = yyyy - 1900; // based on 1900
-  // time_data.tm_wday = 0
-  // time_data.tm_yday = 0
-  time_data.tm_isdst = -1;
-  auto result = mktime( &time_data );
-  if( result == -1 ) {
-    return;
-  }
-
-  // Cast the time_t result to f64, which should be big enough to hold it.
-  *numeric = Cast( f64, result );
-  *is_datetime = 1;
+  auto string0 = TrimSpacetabsPrefixAndSuffix( buffer->mem[0] );
+  auto val0 = CsToIntegerU<u32>( ML( string0 ), 0 );
+  auto string1 = TrimSpacetabsPrefixAndSuffix( buffer->mem[1] );
+  auto val1 = CsToIntegerU<u32>( ML( string1 ), 0 );
+  auto string2 = TrimSpacetabsPrefixAndSuffix( buffer->mem[2] );
+  auto val2 = CsToIntegerU<u32>( ML( string2 ), 0 );
+  constant u32 minyear = 1900;
+  constant u32 maxyear = 9999;
+  constant u32 minmonth = 1;
+  constant u32 maxmonth = 12;
+  constant u32 minday = 1;
+  constant u32 maxday = 31;
+  auto valid_y_0 = LTEandLTE( val0, minyear, maxyear );
+  auto valid_y_1 = LTEandLTE( val1, minyear, maxyear );
+  auto valid_y_2 = LTEandLTE( val2, minyear, maxyear );
+  auto valid_m_0 = LTEandLTE( val0, minmonth, maxmonth );
+  auto valid_m_1 = LTEandLTE( val1, minmonth, maxmonth );
+  auto valid_m_2 = LTEandLTE( val2, minmonth, maxmonth );
+  auto valid_d_0 = LTEandLTE( val0, minday, maxday );
+  auto valid_d_1 = LTEandLTE( val1, minday, maxday );
+  auto valid_d_2 = LTEandLTE( val2, minday, maxday );
+  date_t date = {};
+  date.slots[0] = val0;
+  date.slots[1] = val1;
+  date.slots[2] = val2;
+  if( valid_y_0 && valid_m_1 && valid_d_2 ) date.order |= date_order_t::ymd;
+  if( valid_m_0 && valid_d_1 && valid_y_2 ) date.order |= date_order_t::mdy;
+  if( valid_d_0 && valid_y_1 && valid_m_2 ) date.order |= date_order_t::dym;
+  if( valid_y_0 && valid_d_1 && valid_m_2 ) date.order |= date_order_t::ydm;
+  if( valid_d_0 && valid_m_1 && valid_y_2 ) date.order |= date_order_t::dmy;
+  if( valid_m_0 && valid_y_1 && valid_d_2 ) date.order |= date_order_t::myd;
+  result->date = date;
+  result->is_datetime = 1;
 }
 ForceInl void
 ParseNumericOrDatetimeOrUsd(
   stack_resizeable_cont_t<slice_t>* buffer,
   slice_t value,
-  f64* numeric,
-  bool* is_numeric,
-  bool* is_datetime,
-  bool* is_usd
+  parsed_number_t* result
   )
 {
-  *numeric = 0;
-  *is_numeric = 0;
-  *is_datetime = 0;
-  *is_usd = 0;
+  *result = {};
 
   value = TrimSpacetabsPrefixAndSuffix( value );
   if( !value.len ) return;
 
   // USD parsing
   if( value.mem[0] == '$' ) {
-    *is_usd = 1;
+    result->is_usd = 1;
     value.mem += 1;
     value.len -= 1;
     value = TrimSpacetabsPrefixAndSuffix( value );
     if( !value.len ) return;
-    ParseNumeric( value, numeric, is_numeric );
-    if( *is_numeric ) return;
+    ParseNumeric( value, &result->numeric, &result->is_numeric );
+    if( result->is_numeric ) return;
   }
 
   // datetime parsing
-  ParseMMDDYYYY( buffer, value, numeric, is_datetime );
-  if( *is_datetime ) {
-    *is_numeric = 1; // dates are numerically encoded.
-    return;
-  }
+  ParseDate( buffer, value, result );
+  if( result->is_datetime ) return;
 
   // Final numeric parsing for standalone numerics.
-  ParseNumeric( value, numeric, is_numeric );
-  if( *is_numeric ) return;
+  ParseNumeric( value, &result->numeric, &result->is_numeric );
+  if( result->is_numeric ) return;
 }
 
 int
@@ -383,42 +450,111 @@ LoadCsv( slice_t path, csv_t* table )
 
   Free( lines );
 
+  auto parsed_numbers = AllocString<parsed_number_t>( nrows );
   For( x, 0, ncolumns ) {
     auto column = columns.mem + x;
     auto column_string = column->string;
     auto column_numeric = column->numeric;
+    TZero( ML( parsed_numbers ) );
+    For( y, 0, nrows ) {
+      auto string = column_string.mem[y];
+      auto parsed_number = parsed_numbers.mem + y;
+      ParseNumericOrDatetimeOrUsd(
+        &entries,
+        string,
+        parsed_number
+        );
+    }
+    {
+      bool found_date = 0;
+      date_order_t order = {};
+      For( y, 0, nrows ) {
+        auto parsed_number = parsed_numbers.mem[y];
+        if( parsed_number.is_datetime ) {
+          if( !found_date ) {
+            found_date = 1;
+            order = parsed_number.date.order;
+          }
+          else {
+            order &= parsed_number.date.order;
+          }
+          if( !order ) break;
+        }
+      }
+      if( found_date ) {
+        if( !order ) {
+          printf( "ERROR: conflicting y/m/d date orders.\n" );
+          return 1;
+        }
+        if( _popcnt_idx_t( order ) != 1u ) {
+          printf( "ERROR: ambiguous y/m/d date orders.\n" );
+          return 1;
+        }
+        For( y, 0, nrows ) {
+          auto numeric = column_numeric.mem + y;
+          auto parsed_number = parsed_numbers.mem + y;
+          if( parsed_number->is_datetime ) {
+            // UnpackDate reads the order from the date_t, so use the shared, resolved order.
+            parsed_number->date.order = order;
+
+            u32 dd;
+            u32 mm;
+            u32 yyyy;
+            UnpackDate(
+              parsed_number->date,
+              &dd,
+              &mm,
+              &yyyy
+              );
+
+            struct tm time_data = { 0 };
+            // time_data.tm_sec = 0
+            // time_data.tm_min = 0
+            // time_data.tm_hour = 0
+            time_data.tm_mday = dd; // 1-based
+            time_data.tm_mon = mm - 1; // 0-based
+            time_data.tm_year = yyyy - 1900; // based on 1900
+            // time_data.tm_wday = 0
+            // time_data.tm_yday = 0
+            time_data.tm_isdst = -1;
+            auto sequence_number = mktime( &time_data );
+            if( sequence_number == -1 ) {
+              // TODO: we need to write our own date encoding?
+              printf( "ERROR: time before posix epoch, 1/1/1970.\n" );
+              return 1;
+            }
+
+            // Cast the time_t sequence_number to f64, which should be big enough to hold it.
+            parsed_number->numeric = Cast( f64, sequence_number );
+            parsed_number->is_numeric = 1; // dates are numerically encoded.
+          }
+        }
+      }
+    }
     bool handled_first = 0;
     bool all_numeric = 1;
     bool all_datetime = 1;
     bool all_usd = 1;
     bool all_mixed_string_numeric = 0;
     For( y, 0, nrows ) {
-      auto string = column_string.mem[y];
       auto numeric = column_numeric.mem + y;
-      bool value_is_numeric;
-      bool value_is_datetime;
-      bool value_is_usd;
-      ParseNumericOrDatetimeOrUsd(
-        &entries,
-        string,
-        numeric,
-        &value_is_numeric,
-        &value_is_datetime,
-        &value_is_usd
-        );
+      auto parsed_number = parsed_numbers.mem[y];
+      if( parsed_number.is_numeric ) {
+        *numeric = parsed_number.numeric;
+      }
       if( !handled_first ) {
         handled_first = 1;
-        all_numeric = value_is_numeric;
-        all_datetime = value_is_datetime;
-        all_usd = value_is_usd;
+        all_numeric = parsed_number.is_numeric;
+        all_datetime = parsed_number.is_datetime;
+        all_usd = parsed_number.is_usd;
       }
       else {
-        if( all_numeric != value_is_numeric ) {
+        if( all_numeric != parsed_number.is_numeric ) {
           all_mixed_string_numeric = 1;
         }
-        all_numeric &= value_is_numeric;
-        all_datetime &= value_is_datetime;
-        all_usd &= value_is_usd;
+        all_numeric &= parsed_number.is_numeric;
+        all_datetime &= parsed_number.is_datetime;
+        all_usd &= parsed_number.is_usd;
       }
     }
     // TODO: consistent naming for these aggregate flags.
@@ -427,6 +563,7 @@ LoadCsv( slice_t path, csv_t* table )
     column->is_mixed_string_numeric = all_mixed_string_numeric;
     column->is_all_usd = all_usd;
   }
+  Free( parsed_numbers );
 
   Free( entries );
 
@@ -482,7 +619,7 @@ LoadCsv( slice_t path, csv_t* table )
     if( column->is_datetime  ||  !column->is_numeric ) continue;
     auto column_numeric_mem = column->numeric.mem;
     For( y, 0, nrows ) {
-      column_numeric_mem[y] = Ln64( column_numeric_mem[y] );
+      //column_numeric_mem[y] = Ln64( column_numeric_mem[y] );
     }
   }
 
@@ -1016,9 +1153,9 @@ __OnRender( AppOnRender )
       auto sequence_data_max = max_active;
       // ======
       auto points_sequence = AllocString<vec2<f32>>( sequence_data.len );
-      PlotRunSequence<f64>( dim_00, sequence_data, 
-//        sequence_data_min, 
-        0,
+      PlotRunSequence<f64>( dim_00, sequence_data,
+        sequence_data_min,
+//        0,
         sequence_data_max, points_sequence );
       // TODO: if we have a domain X, then plot that instead of run-sequence.
       //   probably a per-table 'active_domain' column index.

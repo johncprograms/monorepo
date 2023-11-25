@@ -69,6 +69,34 @@ CURSORMOVE( u64, CursorStopAtWordChar, COND );
 
 #undef CURSORMOVE
 
+template<typename _idx_type, typename StopCondition>
+ForceInl _idx_type
+GenericCursorStopAtL( u8* src, _idx_type src_len, _idx_type pos, StopCondition fn_stop_condition )
+{
+  while( pos ) {
+    pos -= 1;
+    if( fn_stop_condition( src[pos] ) ) {
+      pos += 1;
+      break;
+    }
+  }
+  return pos;
+}
+template<typename _idx_type, typename StopCondition>
+ForceInl _idx_type
+GenericCursorStopAtR( u8* src, _idx_type src_len, _idx_type pos, StopCondition fn_stop_condition )
+{
+  while( pos != src_len ) {
+    if( fn_stop_condition( src[pos] ) ) {
+      break;
+    }
+    pos += 1;
+  }
+  return pos;
+}
+
+
+
 Templ Inl T
 CursorInlineEnd(
   u8* line,
@@ -353,6 +381,39 @@ SplitByForwSlashes(
   while( idx < src_len ) {
     auto elem_start = idx;
     auto elem_end = CursorStopAtForwSlashR( src, src_len, idx );
+    auto elem_len = elem_end - elem_start;
+    auto elem = AddBack( *entries );
+    elem->mem = src + elem_start;
+    elem->len = elem_len;
+    idx = elem_end + 1;
+    // final trailing forwslash.
+    if( idx == src_len ) {
+      elem = AddBack( *entries );
+      elem->mem = src + idx;
+      elem->len = 0;
+      break;
+    }
+  }
+}
+Inl void
+SplitBy(
+  stack_resizeable_cont_t<slice_t>* entries,
+  slice_t split_chars,
+  u8* src,
+  idx_t src_len
+  )
+{
+  auto StopCondition = [split_chars](u8 c)
+  {
+    ForLen( i, split_chars ) {
+      if( split_chars.mem[i] == c ) return 1;
+    }
+    return 0;
+  };
+  idx_t idx = 0;
+  while( idx < src_len ) {
+    auto elem_start = idx;
+    auto elem_end = GenericCursorStopAtR( src, src_len, idx, StopCondition );
     auto elem_len = elem_end - elem_start;
     auto elem = AddBack( *entries );
     elem->mem = src + elem_start;
