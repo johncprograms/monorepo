@@ -244,33 +244,33 @@ UnpackDate(
   switch( date.order ) {
     case date_order_t::ymd: {
       *yyyy = date.slots[0];
-      *mm = date.slots[1];
-      *dd = date.slots[2];
+      *mm   = date.slots[1];
+      *dd   = date.slots[2];
     } break;
     case date_order_t::mdy: {
       *yyyy = date.slots[2];
-      *mm = date.slots[0];
-      *dd = date.slots[1];
+      *mm   = date.slots[0];
+      *dd   = date.slots[1];
     } break;
     case date_order_t::dym: {
       *yyyy = date.slots[1];
-      *mm = date.slots[2];
-      *dd = date.slots[0];
+      *mm   = date.slots[2];
+      *dd   = date.slots[0];
     } break;
     case date_order_t::ydm: {
       *yyyy = date.slots[0];
-      *mm = date.slots[2];
-      *dd = date.slots[1];
+      *mm   = date.slots[2];
+      *dd   = date.slots[1];
     } break;
     case date_order_t::dmy: {
       *yyyy = date.slots[2];
-      *mm = date.slots[1];
-      *dd = date.slots[0];
+      *mm   = date.slots[1];
+      *dd   = date.slots[0];
     } break;
     case date_order_t::myd: {
       *yyyy = date.slots[1];
-      *mm = date.slots[0];
-      *dd = date.slots[2];
+      *mm   = date.slots[0];
+      *dd   = date.slots[2];
     } break;
   }
 }
@@ -801,13 +801,13 @@ DrawPoints(
   app_t* app,
   vec2<f32> zrange,
   rectf32_t bounds,
-  vec2<f32> p0,
-  vec2<f32> dim,
+  rectf32_t rect,
   tslice_t<vec2<f32>> points,
   bool gradient = 1,
   f32 radius = 0.0f
   )
 {
+  auto dim = rect.p1 - rect.p0;
   auto pointcolor_start = _vec4( 1.0f, 0.2f, 0.2f, 0.7f );
   auto pointcolor_end = _vec4( 0.2f, 1.0f, 0.2f, 0.7f );
   ForLen( i, points ) {
@@ -821,8 +821,8 @@ DrawPoints(
     RenderQuad(
       app->stream,
       pointcolor,
-      p0 + _vec2<f32>( xi, dim.y - ( yi + 1 ) ) - _vec2( radius ),
-      p0 + _vec2<f32>( xi + 1, dim.y - yi ) + _vec2( radius ),
+      rect.p0 + _vec2<f32>( xi, dim.y - ( yi + 1 ) ) - _vec2( radius ),
+      rect.p0 + _vec2<f32>( xi + 1, dim.y - yi ) + _vec2( radius ),
       bounds,
       GetZ( zrange, applayer_t::txt )
       );
@@ -883,6 +883,21 @@ DrawRects(
   }
 }
 
+#define DRAWSTRING( _pos, _clip, _text ) \
+  DrawString( \
+    app->stream, \
+    font, \
+    _pos, \
+    GetZ( zrange, applayer_t::txt ), \
+    _clip, \
+    rgba_notify_text, \
+    spaces_per_tab, \
+    ML( _text ) \
+    );
+
+#define LAYOUTSTRING( _str ) \
+  LayoutString( font, spaces_per_tab, ML( _str ) )
+
 __OnRender( AppOnRender )
 {
   ProfFunc();
@@ -900,19 +915,12 @@ __OnRender( AppOnRender )
   { // display timestep_realtime, as a way of tracking how long rendering takes.
     stack_nonresizeable_stack_t<u8, 64> tmp;
     CsFrom_f64( tmp.mem, Capacity( tmp ), &tmp.len, 1000 * timestep_realtime );
-    auto tmp_w = LayoutString( font, spaces_per_tab, ML( tmp ) );
-    DrawString(
-      app->stream,
-      font,
+    auto tmp_w = LAYOUTSTRING( tmp );
+    DRAWSTRING(
       AlignRight( bounds, tmp_w ),
-      GetZ( zrange, applayer_t::txt ),
       bounds,
-      rgba_notify_text,
-      spaces_per_tab,
-      ML( tmp )
+      tmp
       );
-
-    bounds.p0.y = MIN( bounds.p0.y + line_h, bounds.p1.y );
   }
 
   target_valid = 0;
@@ -931,12 +939,12 @@ __OnRender( AppOnRender )
     ForLen( t, app->tables ) {
       auto& table = app->tables.mem[t];
 
-      auto name_w = LayoutString( font, spaces_per_tab, ML( table.table_name ) );
+      auto name_w = LAYOUTSTRING( table.table_name );
       headers_w = MAX( headers_w, name_w );
       ForLen( i, table.headers ) {
         auto header = table.headers.mem[i];
         // TODO: could cache to avoid computing twice.
-        auto header_w = LayoutString( font, spaces_per_tab, ML( header ) );
+        auto header_w = LAYOUTSTRING( header );
         headers_w = MAX( headers_w, header_w + space_w );
       }
 
@@ -945,6 +953,14 @@ __OnRender( AppOnRender )
 
     auto bounds_headers = bounds;
     bounds_headers.p1.x = bounds.p0.x + headers_w;
+    auto header_bkgd_color = _vec4( 0.1f, 0.1f, 0.1f, 0.5f );
+    RenderQuad(
+      app->stream,
+      header_bkgd_color,
+      bounds_headers,
+      bounds,
+      GetZ( zrange, applayer_t::bkgd )
+      );
 
     // Fill headerrects for mouse hit-testing.
     Reserve( app->headerrects, sum_headers );
@@ -952,36 +968,26 @@ __OnRender( AppOnRender )
     ForLen( t, app->tables ) {
       auto table = app->tables.mem + t;
 
-      DrawString(
-        app->stream,
-        font,
+      DRAWSTRING(
         bounds_headers.p0,
-        GetZ( zrange, applayer_t::txt ),
         bounds_headers,
-        rgba_notify_text,
-        spaces_per_tab,
-        ML( table->table_name )
+        table->table_name
         );
       bounds_headers.p0.y = MIN( bounds_headers.p0.y + line_h, bounds_headers.p1.y );
       ForLen( i, table->headers ) {
         auto header = table->headers.mem[i];
-        auto header_w = LayoutString( font, spaces_per_tab, ML( header ) );
-        DrawString(
-          app->stream,
-          font,
+        auto header_w = LAYOUTSTRING( header );
+        DRAWSTRING(
           AlignRight( bounds_headers, header_w ),
-          GetZ( zrange, applayer_t::txt ),
           bounds_headers,
-          rgba_notify_text,
-          spaces_per_tab,
-          ML( header )
+          header
           );
         auto header_bkgd = _rect( bounds_headers.p0, _vec2( bounds_headers.p1.x, bounds_headers.p0.y + line_h ) );
         if( app->active_table == table  &&  app->active_column == i ) {
-          auto header_bkgd_color = _vec4( 0.1f, 0.4f, 0.1f, 0.5f );
+          auto header_select_color = _vec4( 0.1f, 0.4f, 0.1f, 0.5f );
           RenderQuad(
             app->stream,
-            header_bkgd_color,
+            header_select_color,
             header_bkgd,
             bounds,
             GetZ( zrange, applayer_t::bkgd )
@@ -1099,12 +1105,12 @@ __OnRender( AppOnRender )
           GetZ( zrange, applayer_t::txt ) \
           );
 
-      auto dim = bounds.p1 - bounds.p0;
+      auto dim_initial = bounds.p1 - bounds.p0;
       constexpr auto pct_gap = 1 / 256.0f;
-      auto border_radius = MAX( 3.0f, Truncate32( pct_gap * MIN( dim.x, dim.y ) ) );
+      auto border_gapwidth = MAX( 3.0f, Truncate32( pct_gap * MIN( dim_initial.x, dim_initial.y ) ) );
 
       // TODO: auto-layout the graphs
-      auto dim_00 = _vec2( Truncate32( dim.x / 3.0f ), Truncate32( dim.y / 2.0f ) );
+      auto dim_00 = _vec2( Truncate32( dim_initial.x / 4.0f ), Truncate32( dim_initial.y / 3.0f ) );
 
       auto p0_00 = bounds.p0;
       auto p0_10 = bounds.p0 + _vec2( dim_00.x, 0.0f );
@@ -1112,9 +1118,9 @@ __OnRender( AppOnRender )
       auto p0_01 = bounds.p0 + _vec2( 0.0f, dim_00.y );
       auto p0_11 = bounds.p0 + dim_00;
       auto p0_21 = bounds.p0 + _vec2( 2.0f * dim_00.x, dim_00.y );
-      // auto p0_02 = bounds.p0 + _vec2( 0.0f, 2 * dim_00.y );
-      // auto p0_12 = bounds.p0 + _vec2( dim_00.x, 2 * dim_00.y );
-      // auto p0_22 = bounds.p0 + _vec2( 2.0f * dim_00.x, 2 * dim_00.y );
+      auto p0_02 = bounds.p0 + _vec2( 0.0f, 2 * dim_00.y );
+      auto p0_12 = bounds.p0 + _vec2( dim_00.x, 2 * dim_00.y );
+      auto p0_22 = bounds.p0 + _vec2( 2.0f * dim_00.x, 2 * dim_00.y );
 
       auto rect_00 = _rect( p0_00, p0_00 + dim_00 );
       auto rect_10 = _rect( p0_10, p0_10 + dim_00 );
@@ -1122,135 +1128,424 @@ __OnRender( AppOnRender )
       auto rect_01 = _rect( p0_01, p0_01 + dim_00 );
       auto rect_11 = _rect( p0_11, p0_11 + dim_00 );
       auto rect_21 = _rect( p0_21, p0_21 + dim_00 );
-      // auto rect_02 = _rect( p0_02, p0_02 + dim_00 );
-      // auto rect_12 = _rect( p0_12, p0_12 + dim_00 );
-      // auto rect_22 = _rect( p0_22, p0_22 + dim_00 );
+      auto rect_02 = _rect( p0_02, p0_02 + dim_00 );
+      auto rect_12 = _rect( p0_12, p0_12 + dim_00 );
+      auto rect_22 = _rect( p0_22, p0_22 + dim_00 );
       rectf32_t* rects[] = {
         &rect_00, &rect_10, &rect_20,
         &rect_01, &rect_11, &rect_21,
-        // &rect_02, &rect_12, &rect_22
+        &rect_02, &rect_12, &rect_22
         };
-      For( r, 0, _countof( rects ) ) {
-        auto rect = *rects[r];
-        AssertCrash( border_radius >= 1.0f );
-        ShrinkRect( rect, border_radius - 1.0f, &rect, 0 );
-        rectf32_t within;
+      For( i, 0, _countof( rects ) ) {
+        auto rect = rects[i];
+        ShrinkRect( *rect, border_gapwidth, rect, 0 );
+      }
+
+      auto DrawBorderAndShrink = [&](
+        rectf32_t* rect,
+        f32 border_width
+        )
+      {
         rectf32_t borders[4];
-        ShrinkRect( rect, 1.0f, &within, borders );
-        auto bordercolor = _vec4( 0.4f, 0.4f, 0.4f, 1.0f );
+        ShrinkRect( *rect, border_width, rect, borders );
         For( i, 0, _countof( borders ) ) {
           auto border = borders + i;
+          auto bordercolor = _vec4( 0.4f, 0.4f, 0.4f, 1.0f );
           DRAWQUAD( bordercolor, border->p0, border->p1 );
         }
-        *rects[r] = within;
-      }
-      dim_00 = rect_00.p1 - rect_00.p0;
+      };
 
+      // TODO: remove.
+      dim_00 = rect_00.p1 - rect_00.p0;
+      auto Dim = []( rectf32_t* r )
+      {
+        return r->p1 - r->p0;
+      };
+
+      auto PrettyPrint = []( f64 value )
+      {
+        stack_nonresizeable_stack_t<u8, 32> r;
+        CsFrom_f64( r.mem, Capacity( r ), &r.len, value, 3 );
+        while( r.len ) {
+          auto c = r.mem[r.len - 1];
+          if( c == '0' ) {
+            r.len -= 1;
+            continue;
+          }
+          elif( c == '.' ) {
+            r.len -= 1;
+          }
+          break;
+        }
+        return r;
+      };
 
       // SEQUENCE SETUP:
       auto sequence_data = data_active;
       auto sequence_data_min = min_active;
+      // TODO: toggle for zeroing min/max
+//      sequence_data_min = 0;
       auto sequence_data_max = max_active;
+      auto sequence_rect = rect_00;
       // ======
-      auto points_sequence = AllocString<vec2<f32>>( sequence_data.len );
-      PlotRunSequence<f64>( dim_00, sequence_data,
-        sequence_data_min,
-//        0,
-        sequence_data_max, points_sequence );
-      // TODO: if we have a domain X, then plot that instead of run-sequence.
-      //   probably a per-table 'active_domain' column index.
-      //   and ui to pick that from the column list. a button per headerrect? or right-click menu option.
-//      PlotXY<f64>(
-//        dim_00,
-//        corr_a,
-//        corr_a_min,
-//        corr_a_max,
-//        corr_b,
-//        corr_b_min,
-//        corr_b_max,
-//        points_corr
-//        );
+      {
+        auto rect = sequence_rect;
+
+        auto title = SliceFromCStr( "SEQUENCE" );
+        auto title_w = LAYOUTSTRING( title );
+        DRAWSTRING( AlignCenter( rect, title_w ), bounds, title );
+        rect = MoveEdgeYL( rect, line_h );
+
+        auto min_text = PrettyPrint( sequence_data_min );
+        auto max_text = PrettyPrint( sequence_data_max );
+        auto min_text_w = LAYOUTSTRING( min_text );
+        auto max_text_w = LAYOUTSTRING( max_text );
+        auto axis_w = MAX( min_text_w, max_text_w );
+        auto axis_rect = _rect(
+          rect.p0,
+          _vec2( rect.p0.x + axis_w, rect.p1.y )
+          );
+        DRAWSTRING(
+          _vec2(
+            AlignR( axis_rect.p0.x, axis_rect.p1.x, min_text_w ),
+            AlignR( axis_rect.p0.y, axis_rect.p1.y, line_h )
+            ),
+          bounds,
+          min_text
+          );
+        DRAWSTRING(
+          _vec2(
+            AlignR( axis_rect.p0.x, axis_rect.p1.x, max_text_w ),
+            axis_rect.p0.y
+            ),
+          bounds,
+          max_text
+          );
+        rect = MoveEdgeXL( rect, axis_w + 0.5f * space_w );
+        DrawBorderAndShrink( &rect, 1.0f );
+        auto points_sequence = AllocString<vec2<f32>>( sequence_data.len );
+        PlotRunSequence<f64>(
+          Dim( &rect ),
+          sequence_data,
+          sequence_data_min,
+          sequence_data_max,
+          points_sequence
+          );
+        // TODO: if we have a domain X, then plot that instead of run-sequence.
+        //   probably a per-table 'active_domain' column index.
+        //   and ui to pick that from the column list. a button per headerrect? or right-click menu option.
+  //      PlotXY<f64>(
+  //        Dim( &rect ),
+  //        corr_a,
+  //        corr_a_min,
+  //        corr_a_max,
+  //        corr_b,
+  //        corr_b_min,
+  //        corr_b_max,
+  //        points_corr
+  //        );
+        DrawPoints(
+          app,
+          zrange,
+          bounds,
+          rect,
+          points_sequence,
+          0 /*gradient*/,
+          1.0f /*radius*/ );
+
+        Free( points_sequence );
+      }
+
+      // DRAWDOWN SETUP:
+      auto drawdown_input = data_active;
+      auto drawdown_rect = rect_02;
+      // ======
+      {
+        AssertCrash( drawdown_input.len );
+        auto rect = drawdown_rect;
+
+        auto title = SliceFromCStr( "CUMULATIVE DRAWDOWN %" );
+        auto title_w = LAYOUTSTRING( title );
+        DRAWSTRING( AlignCenter( rect, title_w ), bounds, title );
+        rect = MoveEdgeYL( rect, line_h );
+
+        auto drawdown = AllocString<f64>( drawdown_input.len );
+        auto cumulative_max = drawdown_input.mem[0];
+        f32 low_pct = 1;
+        ForLen( i, drawdown_input ) {
+          auto input = drawdown_input.mem[i];
+          cumulative_max = MAX( cumulative_max, input );
+          auto pct = input / cumulative_max;
+          low_pct = MIN( low_pct, Cast( f32, pct ) );
+          drawdown.mem[i] = pct;
+        }
+
+        auto min_text = PrettyPrint( 0 );
+        auto max_text = PrettyPrint( 1 );
+        auto low_text = PrettyPrint( low_pct );
+        auto min_text_w = LAYOUTSTRING( min_text );
+        auto max_text_w = LAYOUTSTRING( max_text );
+        auto low_text_w = LAYOUTSTRING( low_text );
+        auto axis_w = MAX3( min_text_w, max_text_w, low_text_w );
+        auto axis_rect = _rect(
+          rect.p0,
+          _vec2( rect.p0.x + axis_w, rect.p1.y )
+          );
+        DRAWSTRING(
+          _vec2(
+            AlignR( axis_rect.p0.x, axis_rect.p1.x, min_text_w ),
+            AlignR( axis_rect.p0.y, axis_rect.p1.y, line_h )
+            ),
+          bounds,
+          min_text
+          );
+        DRAWSTRING(
+          _vec2(
+            AlignR( axis_rect.p0.x, axis_rect.p1.x, max_text_w ),
+            axis_rect.p0.y
+            ),
+          bounds,
+          max_text
+          );
+        DRAWSTRING(
+          _vec2(
+            AlignR( axis_rect.p0.x, axis_rect.p1.x, low_text_w ),
+            lerp( axis_rect.p0.y, axis_rect.p1.y, 1 - low_pct ) - 0.5f * line_h
+            ),
+          bounds,
+          low_text
+          );
+        rect = MoveEdgeXL( rect, axis_w + 0.5f * space_w );
+        DrawBorderAndShrink( &rect, 1.0f );
+
+        auto linecolor = _vec4( 0.5f );
+        auto dim = Dim( &rect );
+        auto low_y = Cast( f32, ( low_pct - 0.0 ) / ( 1.0 - 0.0 ) ) * ( dim.y - 1 );
+        RenderQuad(
+          app->stream,
+          linecolor,
+          rect.p0 + _vec2<f32>( 0, dim.y - low_y ),
+          rect.p0 + _vec2<f32>( dim.x - 1, dim.y - low_y + 1 ),
+          bounds,
+          GetZ( zrange, applayer_t::txt )
+          );
+        auto points_drawdown = AllocString<vec2<f32>>( drawdown.len );
+        PlotRunSequence<f64>( Dim( &rect ), drawdown, 0, 1, points_drawdown );
+        DrawPoints(
+          app,
+          zrange,
+          bounds,
+          rect,
+          points_drawdown,
+          0, /*gradient*/
+          1.0f /*radius*/ );
+
+        Free( drawdown );
+        Free( points_drawdown );
+      }
+
 
       // LAG SETUP:
       auto lag_data = data_active;
+      auto lag_rect = rect_10;
       // ======
-      auto lag = Lag<f64>( lag_data );
-      auto points_lag = AllocString<vec2<f32>>( lag.len );
-      PlotXY<f64>( dim_00, { lag.y, lag.len }, lag.min_y, lag.max_y, { lag.x, lag.len }, lag.min_x, lag.max_x, points_lag );
+      {
+        auto rect = lag_rect;
+
+        auto title = SliceFromCStr( "LAG PLOT" );
+        auto title_w = LAYOUTSTRING( title );
+        DRAWSTRING( AlignCenter( rect, title_w ), bounds, title );
+        rect = MoveEdgeYL( rect, line_h );
+
+        DrawBorderAndShrink( &rect, 1.0f );
+        auto lag = Lag<f64>( lag_data );
+        auto points_lag = AllocString<vec2<f32>>( lag.len );
+        PlotXY<f64>( Dim( &rect ), { lag.y, lag.len }, lag.min_y, lag.max_y, { lag.x, lag.len }, lag.min_x, lag.max_x, points_lag );
+        DrawPoints(
+          app,
+          zrange,
+          bounds,
+          rect,
+          points_lag,
+          1, /*gradient*/
+          1.0f /*radius*/ );
+
+        Free( points_lag );
+      }
 
       // AUTO-CORRELATION SETUP:
       auto autocorr_data = data_active;
       auto autocorr_data_mean = mean_active;
       auto autocorr_data_variance = variance_active;
+      auto autocorr_rect = rect_11;
       // ======
-      auto autocorr = AllocString<f64>( autocorr_data.len );
-      AutoCorrelation<f64>( autocorr_data, autocorr_data_mean, autocorr_data_variance, autocorr );
-      auto points_autocorr = AllocString<vec2<f32>>( autocorr.len );
-      // We use [-1, 1] as the range, since it's guaranteed to be within [-1,1].
-      PlotRunSequence<f64>( dim_00, autocorr, -1 /*min_autocorr*/, 1 /*max_autocorr*/, points_autocorr );
+      {
+        auto rect = autocorr_rect;
+
+        auto title = SliceFromCStr( "AUTO-CORRELATION" );
+        auto title_w = LAYOUTSTRING( title );
+        DRAWSTRING( AlignCenter( rect, title_w ), bounds, title );
+        rect = MoveEdgeYL( rect, line_h );
+
+        DrawBorderAndShrink( &rect, 1.0f );
+        auto autocorr = AllocString<f64>( autocorr_data.len );
+        AutoCorrelation<f64>( autocorr_data, autocorr_data_mean, autocorr_data_variance, autocorr );
+        auto points_autocorr = AllocString<vec2<f32>>( autocorr.len );
+        // We use [-1, 1] as the range, since it's guaranteed to be within [-1,1].
+        PlotRunSequence<f64>( Dim( &rect ), autocorr, -1 /*min_autocorr*/, 1 /*max_autocorr*/, points_autocorr );
+
+        // TODO: one px line width if total dim is odd, otherwise two px when even.
+        //   this accurately represents the 0 line.
+        //   or maybe just always one px.
+        //   I need to do more detailed round-off error analysis of our drawing strategies.
+        auto linecolor = _vec4( 0.5f );
+        auto dim = Dim( &rect );
+        RenderQuad(
+          app->stream,
+          linecolor,
+          rect.p0 + _vec2<f32>( 0, 0.5f * dim.y - 1 ),
+          rect.p0 + _vec2<f32>( dim.x - 1, 0.5f * dim.y + 1 ),
+          bounds,
+          GetZ( zrange, applayer_t::txt )
+          );
+
+        DrawPoints(
+          app,
+          zrange,
+          bounds,
+          rect,
+          points_autocorr,
+          0 /*gradient*/,
+          1.0f /*radius*/ );
+
+        Free( autocorr );
+        Free( points_autocorr );
+      }
 
       // HISTOGRAM SETUP:
       auto histogram_data = data_active;
       auto histogram_data_variance = variance_active;
       auto histogram_data_min = min_active;
       auto histogram_data_max = max_active;
+      auto histogram_rect = rect_01;
       // ======
-      // Scott's rule for choosing histogram bin width is:
-      //   B = 3.49 * stddev * N^(-1/3)
-      auto histogram_nbins = 3.49 * Sqrt( histogram_data_variance ) * Pow64( Cast( f64, histogram_data.len ), -1.0 / 3.0 );
-      if( histogram_nbins < 3 ) {
-        histogram_nbins = Sqrt64( Cast( f64, histogram_data.len ) );
+      {
+        auto rect = histogram_rect;
+
+        auto title = SliceFromCStr( "HISTOGRAM" );
+        auto title_w = LAYOUTSTRING( title );
+        DRAWSTRING( AlignCenter( rect, title_w ), bounds, title );
+        rect = MoveEdgeYL( rect, line_h );
+
+        DrawBorderAndShrink( &rect, 1.0f );
+
+        // Scott's rule for choosing histogram bin width is:
+        //   B = 3.49 * stddev * N^(-1/3)
+        auto histogram_nbins = 3.49 * Sqrt( histogram_data_variance ) * Pow64( Cast( f64, histogram_data.len ), -1.0 / 3.0 );
+        if( histogram_nbins < 3 ) {
+          histogram_nbins = Sqrt64( Cast( f64, histogram_data.len ) );
+        }
+        histogram_nbins = MAX( histogram_nbins, 3 );
+        histogram_nbins = MIN( histogram_nbins, 0.499f * ( rect.p1.x - rect.p0.x ) );
+        auto histogram_counts = AllocString<f64>( Cast( idx_t, histogram_nbins ) + 1 );
+        auto bucket_from_close_idx = AllocString<idx_t>( histogram_data.len );
+        auto counts_when_inserted = AllocString<f64>( histogram_data.len );
+        Histogram<f64>( histogram_data, histogram_data_min, histogram_data_max, histogram_counts, bucket_from_close_idx, counts_when_inserted );
+        f64 histogram_counts_min;
+        f64 histogram_counts_max;
+        MinMax<f64>( histogram_counts, &histogram_counts_min, &histogram_counts_max );
+        auto histogram_rects = AllocString<rectf32_t>( histogram_data.len );
+        PlotHistogram<f64>( Dim( &rect ), histogram_counts, histogram_counts_max, bucket_from_close_idx, counts_when_inserted, histogram_rects );
+        DrawRects(
+          app,
+          zrange,
+          bounds,
+          rect.p0,
+          histogram_rects
+          );
+
+        Free( histogram_counts );
+        Free( bucket_from_close_idx );
+        Free( counts_when_inserted );
+        Free( histogram_rects );
       }
-      if( histogram_nbins < 3 ) {
-        histogram_nbins = 3;
-      }
-      if( histogram_nbins > 0.499f * dim_00.x ) {
-        histogram_nbins = 0.499f * dim_00.x;
-      }
-      auto histogram_counts = AllocString<f64>( Cast( idx_t, histogram_nbins ) + 1 );
-      auto bucket_from_close_idx = AllocString<idx_t>( histogram_data.len );
-      auto counts_when_inserted = AllocString<f64>( histogram_data.len );
-      Histogram<f64>( histogram_data, histogram_data_min, histogram_data_max, histogram_counts, bucket_from_close_idx, counts_when_inserted );
-      f64 histogram_counts_min;
-      f64 histogram_counts_max;
-      MinMax<f64>( histogram_counts, &histogram_counts_min, &histogram_counts_max );
-      auto histogram_rects = AllocString<rectf32_t>( histogram_data.len );
-      PlotHistogram<f64>( dim_00, histogram_counts, histogram_counts_max, bucket_from_close_idx, counts_when_inserted, histogram_rects );
 
       // TODO: non-uniform DFT with date values.
       // POWER SPECTRUM SETUP:
       auto power_data = data_active;
+      auto power_rect = rect_20;
+      auto power_phase_rect = rect_21;
       // ======
-      auto power_pow2 = RoundUpToNextPowerOf2( power_data.len );
-      auto power_re = AllocString<f64>( power_pow2 );
-      auto power_im = AllocString<f64>( power_pow2 );
-      TZero( ML( power_re ) );
-      TZero( ML( power_im ) );
-      // Use mean-centered data for the Fourier transform, so we have a better chance of seeing periods.
-      //   was: TMove( power_re.mem, ML( power_data ) );
-      ForLen( i, power_data ) {
-        power_re.mem[i] = power_data.mem[i] - mean_active;
-      }
-      auto power_buffer = AllocString<f64>( 3 * power_pow2 );
-      auto power = tslice_t<f64>{ power_buffer.mem + 2 * power_pow2, power_pow2 / 2 };
-      auto power_phase  = tslice_t<f64>{ power_buffer.mem + 2 * power_pow2 + power_pow2 / 2, power_pow2 / 2 };
-      PowerSpectrum<f64>( power_re, power_im, power, power_phase, power_buffer );
-      ForLen( i, power ) {
-        power.mem[i] = Sqrt( power.mem[i] );
-      }
-      f64 power_min;
-      f64 power_max;
-      MinMax<f64>( power, &power_min, &power_max );
-      auto points_power = AllocString<vec2<f32>>( power.len );
-      // We use [0, power_max] as the range, so we always plot against 0 power.
-      PlotRunSequence<f64>( dim_00, power, 0 /*power_min*/, power_max, points_power );
-      auto points_power_phase = AllocString<vec2<f32>>( power_phase.len );
-      // We use [-pi, pi] as the range
-      PlotRunSequence<f64>( dim_00, power_phase, -f64_PI /*min*/, f64_PI /*max*/, points_power_phase );
+      {
+        {
+          auto& rect = power_rect;
+          auto title = SliceFromCStr( "POWER SPECTRUM" );
+          auto title_w = LAYOUTSTRING( title );
+          DRAWSTRING( AlignCenter( rect, title_w ), bounds, title );
+          rect = MoveEdgeYL( rect, line_h );
+          DrawBorderAndShrink( &rect, 1.0f );
+        }
+        {
+          auto& rect = power_phase_rect;
+          auto title = SliceFromCStr( "POWER PHASE" );
+          auto title_w = LAYOUTSTRING( title );
+          DRAWSTRING( AlignCenter( rect, title_w ), bounds, title );
+          rect = MoveEdgeYL( rect, line_h );
+          DrawBorderAndShrink( &rect, 1.0f );
+        }
 
+        auto power_pow2 = RoundUpToNextPowerOf2( power_data.len );
+        auto power_re = AllocString<f64>( power_pow2 );
+        auto power_im = AllocString<f64>( power_pow2 );
+        TZero( ML( power_re ) );
+        TZero( ML( power_im ) );
+        // Use mean-centered data for the Fourier transform, so we have a better chance of seeing periods.
+        //   was: TMove( power_re.mem, ML( power_data ) );
+        ForLen( i, power_data ) {
+          power_re.mem[i] = power_data.mem[i] - mean_active;
+        }
+        auto power_buffer = AllocString<f64>( 3 * power_pow2 );
+        auto power = tslice_t<f64>{ power_buffer.mem + 2 * power_pow2, power_pow2 / 2 };
+        auto power_phase  = tslice_t<f64>{ power_buffer.mem + 2 * power_pow2 + power_pow2 / 2, power_pow2 / 2 };
+        PowerSpectrum<f64>( power_re, power_im, power, power_phase, power_buffer );
+        ForLen( i, power ) {
+          power.mem[i] = Sqrt( power.mem[i] );
+        }
+        f64 power_min;
+        f64 power_max;
+        MinMax<f64>( power, &power_min, &power_max );
+        auto points_power = AllocString<vec2<f32>>( power.len );
+        // We use [0, power_max] as the range, so we always plot against 0 power.
+        PlotRunSequence<f64>( Dim( &power_rect ), power, 0 /*power_min*/, power_max, points_power );
+        auto points_power_phase = AllocString<vec2<f32>>( power_phase.len );
+        // We use [-pi, pi] as the range
+        PlotRunSequence<f64>( Dim( &power_phase_rect ), power_phase, -f64_PI /*min*/, f64_PI /*max*/, points_power_phase );
+        DrawPoints(
+          app,
+          zrange,
+          bounds,
+          power_rect,
+          points_power,
+          0 /*gradient*/,
+          1.0f /*radius*/ );
+        DrawPoints(
+          app,
+          zrange,
+          bounds,
+          power_phase_rect,
+          points_power_phase,
+          0 /*gradient*/,
+          1.0f /*radius*/ );
 
-#if 0 // TODO: add ui for this. ctrl+click?
+        Free( power_re );
+        Free( power_im );
+        Free( power_buffer );
+        Free( points_power );
+        Free( points_power_phase );
+      }
+
       // 2-COLUMN ANALYSIS:
+#if 0 // TODO: add ui for this. ctrl+click?
 
       // LAG-CORRELATION SETUP:
       auto lagcorr_a = dcol_spread;
@@ -1266,6 +1561,29 @@ __OnRender( AppOnRender )
       auto points_lagcorr = AllocString<vec2<f32>>( lagcorr.len );
       // We use [-1, 1] as the range, since it's guaranteed to be within [-1,1].
       PlotRunSequence<f64>( dim_00, lagcorr, -1 /*min_lagcorr*/, 1 /*max_lagcorr*/, points_lagcorr );
+      {
+        // TODO: one px line width if total dim is odd, otherwise two px when even.
+        //   this accurately represents the 0 line.
+        //   or maybe just always one px.
+        //   I need to do more detailed round-off error analysis of our drawing strategies.
+        auto linecolor = _vec4( 0.5f );
+        RenderQuad(
+          app->stream,
+          linecolor,
+          rect_12.p0 + _vec2<f32>( 0, 0.5f * dim_00.y - 1 ),
+          rect_12.p0 + _vec2<f32>( dim_00.x - 1, 0.5f * dim_00.y + 1 ),
+          bounds,
+          GetZ( zrange, applayer_t::txt )
+          );
+        DrawPoints(
+          app,
+          zrange,
+          bounds,
+          rect_12,
+          points_lagcorr,
+          0 /*gradient*/,
+          1.0f /*radius*/ );
+      }
 
       // CORRELATION PLOT SETUP:
       auto corr_a = dcol_spread;
@@ -1288,6 +1606,14 @@ __OnRender( AppOnRender )
         corr_b_max,
         points_corr
         );
+      DrawPoints(
+        app,
+        zrange,
+        bounds,
+        rect_02,
+        points_corr,
+        0 /*gradient*/,
+        1.0f /*radius*/ );
 
       // TODO: this is a super slow N^2 computation, requiring N^2 memory.
       //   probably we can exclude this one in favor of a cheaper correlation metric.
@@ -1302,128 +1628,14 @@ __OnRender( AppOnRender )
       auto points_lagdistcorr = AllocString<vec2<f32>>( lagdistcorr.len );
       // We use [0,1] as the range, since it's guaranteed to be within that range.
       PlotRunSequence<f64>( dim_00, lagdistcorr, 0, 1, points_lagdistcorr );
-#endif
-
       DrawPoints(
         app,
         zrange,
         bounds,
-        rect_00.p0,
-        dim_00,
-        points_sequence,
-        0 /*gradient*/,
-        1.0f /*radius*/ );
-
-      DrawPoints(
-        app,
-        zrange,
-        bounds,
-        rect_10.p0,
-        dim_00,
-        points_lag,
-        1, /*gradient*/
-        1.0f /*radius*/ );
-
-      DrawRects(
-        app,
-        zrange,
-        bounds,
-        rect_01.p0,
-        histogram_rects );
-
-      {
-        // TODO: one px line width if total dim is odd, otherwise two px when even.
-        //   this accurately represents the 0 line.
-        //   or maybe just always one px.
-        //   I need to do more detailed round-off error analysis of our drawing strategies.
-        auto linecolor = _vec4( 0.5f );
-        RenderQuad(
-          app->stream,
-          linecolor,
-          rect_11.p0 + _vec2<f32>( 0, 0.5f * dim_00.y - 1 ),
-          rect_11.p0 + _vec2<f32>( dim_00.x - 1, 0.5f * dim_00.y + 1 ),
-          bounds,
-          GetZ( zrange, applayer_t::txt )
-          );
-
-        DrawPoints(
-          app,
-          zrange,
-          bounds,
-          rect_11.p0,
-          dim_00,
-          points_autocorr,
-          0 /*gradient*/,
-          1.0f /*radius*/ );
-      }
-
-      DrawPoints(
-        app,
-        zrange,
-        bounds,
-        rect_20.p0,
-        dim_00,
-        points_power,
-        0 /*gradient*/,
-        1.0f /*radius*/ );
-
-      DrawPoints(
-        app,
-        zrange,
-        bounds,
-        rect_21.p0,
-        dim_00,
-        points_power_phase,
-        0 /*gradient*/,
-        1.0f /*radius*/ );
-
-      // TODO: move the following graphs to 2-column analysis.
-#if 0
-      DrawPoints(
-        app,
-        zrange,
-        bounds,
-        rect_02.p0,
-        dim_00,
-        points_corr,
-        0 /*gradient*/,
-        1.0f /*radius*/ );
-
-      {
-        // TODO: one px line width if total dim is odd, otherwise two px when even.
-        //   this accurately represents the 0 line.
-        //   or maybe just always one px.
-        //   I need to do more detailed round-off error analysis of our drawing strategies.
-        auto linecolor = _vec4( 0.5f );
-        RenderQuad(
-          app->stream,
-          linecolor,
-          rect_12.p0 + _vec2<f32>( 0, 0.5f * dim_00.y - 1 ),
-          rect_12.p0 + _vec2<f32>( dim_00.x - 1, 0.5f * dim_00.y + 1 ),
-          bounds,
-          GetZ( zrange, applayer_t::txt )
-          );
-        DrawPoints(
-          app,
-          zrange,
-          bounds,
-          rect_12.p0,
-          dim_00,
-          points_lagcorr,
-          0 /*gradient*/,
-          1.0f /*radius*/ );
-      }
-
-      DrawPoints(
-        app,
-        zrange,
-        bounds,
-        rect_22.p0,
-        dim_00,
+        rect_22,
         points_lagdistcorr,
         0 /*gradient*/,
         1.0f /*radius*/ );
-
 
       Free( lagdistcorr );
       Free( lagdistcorr_buffer );
@@ -1434,11 +1646,6 @@ __OnRender( AppOnRender )
       Free( lagcorr );
 #endif
 
-      Free( power_re );
-      Free( power_im );
-      Free( power_buffer );
-      Free( points_power );
-      Free( points_power_phase );
 #if 0
       Free( dcol_spread );
       Free( dcol_spread_over_volume );
@@ -1447,14 +1654,6 @@ __OnRender( AppOnRender )
       Free( dcol_close );
       Free( dcol_high );
 #endif
-      Free( histogram_counts );
-      Free( bucket_from_close_idx );
-      Free( counts_when_inserted );
-      Free( autocorr );
-      Free( points_sequence );
-      Free( histogram_rects );
-      Free( points_autocorr );
-      Free( points_lag );
     }
   }
 

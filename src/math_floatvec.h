@@ -694,6 +694,16 @@ _rect( vec2<f32> p0, vec2<f32> p1 )
   return r;
 }
 
+Inl f32
+AlignR(
+  f32 x0,
+  f32 x1,
+  f32 w
+  )
+{
+  return CLAMP( x1 - w, x0, x1 );
+}
+
 Inl vec2<f32>
 AlignRight(
   rectf32_t bounds,
@@ -717,6 +727,26 @@ AlignRight(
   auto x = x1 - w;
   r.x = CLAMP( x, p0.x, x1 );
   r.y = p0.y;
+  return r;
+}
+Inl rectf32_t
+MoveEdgeXL(
+  rectf32_t bounds,
+  f32 w
+  )
+{
+  rectf32_t r = bounds;
+  r.p0.x = CLAMP( bounds.p0.x + w, bounds.p0.x, bounds.p1.x );
+  return r;
+}
+Inl rectf32_t
+MoveEdgeYL(
+  rectf32_t bounds,
+  f32 h
+  )
+{
+  rectf32_t r = bounds;
+  r.p0.y = CLAMP( bounds.p0.y + h, bounds.p0.y, bounds.p1.y );
   return r;
 }
 
