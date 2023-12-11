@@ -295,6 +295,26 @@ ParseDate(
   // Each split character is OR'ed when splitting, so the presence of any will cause a split.
   auto split_chars = SliceFromCStr( "-/" );
   SplitBy( buffer, split_chars, ML( value ) );
+  if( buffer->len == 1 ) {
+    // Handle dates without separators, like: "20120129"
+    // TODO: handle all possible orderings of ymd in this case.
+    //   it requires more possibilities than date_t.order at the moment, since the 3 integer values aren't
+    //   decided just yet. Or maybe we try the 3 possible slicings here, and error if more than one works?
+    if( value.len == 8 ) {
+      bool all_numbers = 1;
+      ForLen( i, value ) {
+        auto c = value.mem[i];
+        all_numbers &= ( '0' <= c  &&  c <= '9' );
+      }
+      if( all_numbers ) {
+        buffer->mem[0] = { value.mem, 4 };
+        buffer->mem[1] = { value.mem + 4, 2 };
+        buffer->mem[2] = { value.mem + 6, 2 };
+        buffer->len = 3;
+      }
+    }
+  }
+
   if( buffer->len != 3 ) {
     return;
   }
@@ -358,7 +378,10 @@ ParseNumericOrDatetimeOrUsd(
 
   // datetime parsing
   ParseDate( buffer, value, result );
-  if( result->is_datetime ) return;
+  // WARNING: some values are both datetime-like and numeric-like. E.g. "20120128"
+  // So for these, we want to set is_datetime=1 and is_numeric=1.
+  // It's up to the calling column-parsing logic to decide which way to treat these.
+  //if( result->is_datetime ) return;
 
   // Final numeric parsing for standalone numerics.
   ParseNumeric( value, &result->numeric, &result->is_numeric );
@@ -401,6 +424,19 @@ LoadCsv( slice_t path, csv_t* table )
   SplitIntoLines( &lines, ML( csv ) );
   AssertCrash( lines.len );
   AssertCrash( nlines == lines.len );
+
+  // remove empty lines
+  // TODO: optimal ordered contiguoize. This is n^2
+  For( i, 0, lines.len ) {
+    auto line = lines.mem[i];
+    if( !line.len ) {
+      RemAt( lines, i );
+      i -= 1;
+    }
+  }
+  nlines = Cast( u32, lines.len );
+  AssertCrash( nlines );
+
   auto nrows = nlines - 1;
   auto line_headers = lines.mem[0];
   AssertCrash( line_headers.len ); // TODO: More robust whitespace parsing support, handling empty lines.
@@ -425,7 +461,8 @@ LoadCsv( slice_t path, csv_t* table )
     column->string = { alloc_cells.mem + x * nrows, nrows };
     column->numeric = { alloc_cells_numeric.mem + x * nrows, nrows };
   }
-  Fori( u32, y, 1, lines.len ) {
+  Fori( u32, row, 0, nrows ) {
+    auto y = row + 1;
     auto line = lines.mem[y];
     AssertCrash( line.len ); // TODO: More robust whitespace parsing support, handling empty lines.
     auto nentries = CountCommas( ML( line ) ) + 1;
@@ -466,6 +503,7 @@ LoadCsv( slice_t path, csv_t* table )
         );
     }
     {
+      // Find a consistent date.order across the column.
       bool found_date = 0;
       date_order_t order = {};
       For( y, 0, nrows ) {
@@ -481,15 +519,16 @@ LoadCsv( slice_t path, csv_t* table )
           if( !order ) break;
         }
       }
-      if( found_date ) {
-        if( !order ) {
-          printf( "ERROR: conflicting y/m/d date orders.\n" );
-          return 1;
-        }
-        if( _popcnt_idx_t( order ) != 1u ) {
-          printf( "ERROR: ambiguous y/m/d date orders.\n" );
-          return 1;
-        }
+      // Convert the column to is_numeric=1 from is_datetime=1 if we have a consistent date.order.
+      if( found_date  &&  _popcnt_idx_t( order ) == 1u ) {
+        // if( !order ) {
+        //   printf( "ERROR: conflicting y/m/d date orders.\n" );
+        //   return 1;
+        // }
+        // if( _popcnt_idx_t( order ) != 1u ) {
+        //   printf( "ERROR: ambiguous y/m/d date orders.\n" );
+        //   return 1;
+        // }
         For( y, 0, nrows ) {
           auto numeric = column_numeric.mem + y;
           auto parsed_number = parsed_numbers.mem + y;
@@ -541,6 +580,9 @@ LoadCsv( slice_t path, csv_t* table )
       auto parsed_number = parsed_numbers.mem[y];
       if( parsed_number.is_numeric ) {
         *numeric = parsed_number.numeric;
+      }
+      else {
+        *numeric = 0;
       }
       if( !handled_first ) {
         handled_first = 1;
@@ -1155,8 +1197,6 @@ __OnRender( AppOnRender )
         }
       };
 
-      // TODO: remove.
-      dim_00 = rect_00.p1 - rect_00.p0;
       auto Dim = []( rectf32_t* r )
       {
         return r->p1 - r->p0;
@@ -1446,7 +1486,7 @@ __OnRender( AppOnRender )
           histogram_nbins = Sqrt64( Cast( f64, histogram_data.len ) );
         }
         histogram_nbins = MAX( histogram_nbins, 3 );
-        histogram_nbins = MIN( histogram_nbins, 0.499f * ( rect.p1.x - rect.p0.x ) );
+        histogram_nbins = MIN( histogram_nbins, 0.4f * ( rect.p1.x - rect.p0.x ) );
         auto histogram_counts = AllocString<f64>( Cast( idx_t, histogram_nbins ) + 1 );
         auto bucket_from_close_idx = AllocString<idx_t>( histogram_data.len );
         auto counts_when_inserted = AllocString<f64>( histogram_data.len );
@@ -2110,7 +2150,10 @@ Main( tslice_t<slice_t> args )
   PinThreadToOneCore();
 
   auto app = &g_app;
-  AppInit( app, args );
+  auto r = AppInit( app, args );
+  if( r ) {
+    return r;
+  }
 
   if( args.len ) {
     auto arg = args.mem + 0;
