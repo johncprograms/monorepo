@@ -1075,8 +1075,6 @@ static slice_t g_string_from_key [ 256 ] = {};
 
 #define CPPHASHSET 1
 
-DEFINE_HASHSET_TRAITS( HashsetTraits_SliceContents, slice_t, EqualContents, HashContents );
-
 static hashset_complexkey_t<
   slice_t,
   glwkey_t,

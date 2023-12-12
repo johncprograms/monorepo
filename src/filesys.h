@@ -349,7 +349,8 @@ FsIterate(
         Memmove( AddBack( searchdir, filename_len ), Cast( u8*, f.cFileName ), filename_len );
         bool readonly = f.dwFileAttributes & FILE_ATTRIBUTE_READONLY;
         u64 filesize = Pack( f.nFileSizeHigh, f.nFileSizeLow );
-        auto iter_result = FsIterator( ML( searchdir ), 1, readonly, filesize, misc );
+        auto normfile = _StandardFilename( ML( searchdir ) );
+        auto iter_result = FsIterator( ML( normfile ), 1, readonly, filesize, misc );
         switch( iter_result ) {
           case fsiter_result_t::continue_: {
           } break;
@@ -362,7 +363,8 @@ FsIterate(
       } elif( _IsRegularDir( f ) ) {
         auto filename_len = CstrLength( Cast( u8*, f.cFileName ) );
         Memmove( AddBack( searchdir, filename_len ), Cast( u8*, f.cFileName ), filename_len );
-        auto iter_result = FsIterator( ML( searchdir ), 0, 0, 0, misc );
+        auto normdir = _StandardDirname( ML( searchdir ) );
+        auto iter_result = FsIterator( ML( normdir ), 0, 0, 0, misc );
         switch( iter_result ) {
           case fsiter_result_t::continue_: {
           } break;

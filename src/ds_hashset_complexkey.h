@@ -80,7 +80,12 @@ Init( HASHSET* set, idx_t initial_capacity )
   // PERF: try one bulk allocation here.
   set->hashes = MemHeapAlloc( idx_t, initial_capacity );
   set->keys = MemHeapAlloc( Key, initial_capacity );
-  set->vals = MemHeapAlloc( Val, initial_capacity );
+  if constexpr( !std::is_same_v<Val, void> ) {
+    set->vals = MemHeapAlloc( Val, initial_capacity );
+  }
+  else {
+    set->vals = 0;
+  }
   set->capacity = initial_capacity;
   Clear( set );
 }
@@ -89,7 +94,9 @@ Kill( HASHSET* set )
 {
   MemHeapFree( set->hashes );
   MemHeapFree( set->keys );
-  MemHeapFree( set->vals );
+  if constexpr( !std::is_same_v<Val, void> ) {
+    MemHeapFree( set->vals );
+  }
   set->len = 0;
   set->capacity = 0;
 }
@@ -98,7 +105,7 @@ Resize( HASHSET* old_set, idx_t new_capacity )
 {
   AssertCrash( old_set->len <= new_capacity );
   HASHSET new_set;
-  Init( new_set, new_capacity );
+  Init( &new_set, new_capacity );
   Fori( idx_t, idx_old, 0, old_set->len ) {
     auto slot_hash_old = old_set->hashes[idx_old];
     auto has_data_old = slot_hash_old & HIGHBIT_idx;
@@ -106,24 +113,26 @@ Resize( HASHSET* old_set, idx_t new_capacity )
       continue;
     }
     auto hash = slot_hash_old & ~HIGHBIT_idx;
-    auto idx_new = hash % new_set->capacity;
-    Forever { // limited to O( new_set->capacity ) since we have empty slots
-      auto slot_hash_new = new_set->hashes[idx_new];
+    auto idx_new = hash % new_set.capacity;
+    Forever { // limited to O( new_set.capacity ) since we have empty slots
+      auto slot_hash_new = new_set.hashes[idx_new];
       auto has_data_new = slot_hash_new & HIGHBIT_idx;
       if( !has_data_new ) {
         // implicitly sets the high bit, since it's set already on slot_hash_old
-        new_set->hashes[idx_new] = slot_hash_old;
-        new_set->keys[idx_new] = old_set->keys[idx_old];
-        new_set->vals[idx_new] = old_set->vals[idx_old];
-        new_set->len += 1;
+        new_set.hashes[idx_new] = slot_hash_old;
+        new_set.keys[idx_new] = old_set->keys[idx_old];
+        if constexpr( !std::is_same_v<Val, void> ) {
+          new_set.vals[idx_new] = old_set->vals[idx_old];
+        }
+        new_set.len += 1;
         break;
       }
       auto hash_at_idx = slot_hash_new & ~HIGHBIT_idx;
       if( hash_at_idx == hash ) {
-        auto equal = TraitsComplexKey::EqualComplexKey( new_set->keys + idx_new, old_set->keys + idx_old );
+        auto equal = TraitsComplexKey::EqualComplexKey( new_set.keys + idx_new, old_set->keys + idx_old );
         AssertCrash( !equal );
       }
-      idx_new = ( idx_new + 1 ) % new_set->capacity;
+      idx_new = ( idx_new + 1 ) % new_set.capacity;
     }
   }
   Kill( old_set );
@@ -140,6 +149,9 @@ Add(
   )
 {
   CompileAssert( sizeof( idx_t ) == sizeof( set->hashes[0] ) );
+  if( set->len >= set->capacity ) {
+    Resize( set, 2 * set->capacity );
+  }
   AssertCrash( set->len < set->capacity );
   auto hash = TraitsComplexKey::HashComplexKey( key ) & ~HIGHBIT_idx;
   auto idx = hash % set->capacity;
@@ -153,7 +165,9 @@ Add(
       // empty slot! put our value in the slot.
       set->hashes[idx] = hash | HIGHBIT_idx;
       set->keys[idx] = *key;
-      set->vals[idx] = *val;
+      if constexpr( !std::is_same_v<Val, void> ) {
+        set->vals[idx] = *val;
+      }
       set->len += 1;
       if( already_there ) {
         *already_there = 0;
@@ -168,11 +182,13 @@ Add(
         if( already_there ) {
           *already_there = 1;
         }
-        if( val_already_there ) {
-          *val_already_there = set->vals[idx];
-        }
-        if( overwrite_val_if_already_there ) {
-          set->vals[idx] = *val;
+        if constexpr( !std::is_same_v<Val, void> ) {
+          if( val_already_there ) {
+            *val_already_there = set->vals[idx];
+          }
+          if( overwrite_val_if_already_there ) {
+            set->vals[idx] = *val;
+          }
         }
         return;
       }
@@ -221,7 +237,9 @@ LookupRaw(
           // return the value and clear the slot, before we deal with chains.
           //
           set->hashes[idx] = 0;
-          *found_value = set->vals[idx];
+          if constexpr( !std::is_same_v<Val, void> ) {
+            *found_value = set->vals[idx];
+          }
           //
           // find the contiguous chunk of filled slots that we need to consider for chaining.
           // note the bounds are: [ idx_contiguous_start, idx_contiguous_end ]
@@ -276,7 +294,9 @@ LookupRaw(
                   idx_contiguous_start <= idx_original_probe || idx_original_probe <= idx_empty;
               if( probe_belongs_on_left ) {
                 set->keys[idx_empty] = set->keys[idx_probe];
-                set->vals[idx_empty] = set->vals[idx_probe];
+                if constexpr( !std::is_same_v<Val, void> ) {
+                  set->vals[idx_empty] = set->vals[idx_probe];
+                }
                 set->hashes[idx_empty] = set->hashes[idx_probe];
                 set->hashes[idx_probe] = 0;
                 idx_empty = idx_probe;
@@ -289,7 +309,9 @@ LookupRaw(
           }
         }
         else {
-          *found_pointer = set->vals + idx;
+          if constexpr( !std::is_same_v<Val, void> ) {
+            *found_pointer = set->vals + idx;
+          }
         }
         break;
       }
@@ -342,10 +364,54 @@ Remove(
     *found_val = found_value;
   }
 }
+TKCHE Inl void
+Flatten(
+  HASHSET* set,
+  idx_t* dst_hashes, // length set.len
+  Key* dst_keys, // length set.len
+  Val* dst_vals // length set.len
+  )
+{
+  idx_t ndst = 0;
+  auto capacity = set->capacity;
+  auto hashes = set->hashes;
+  auto keys = set->keys;
+  For( idx, 0, capacity ) {
+    auto slot_hash = hashes[idx];
+    auto has_data = slot_hash & HIGHBIT_idx;
+    if( !has_data ) {
+      continue;
+    }
+    auto hash_at_idx = slot_hash & ~HIGHBIT_idx;
+    if( dst_hashes ) {
+      dst_hashes[ndst] = hash_at_idx;
+    }
+    if( dst_keys ) {
+      dst_keys[ndst] = keys[idx];
+    }
+    if constexpr( !std::is_same_v<Val, void> ) {
+      if( dst_vals ) {
+        dst_vals[ndst] = set->vals[idx];
+      }
+    }
+    ndst += 1;
+  }
+  AssertCrash( ndst == set->len );
+}
 
 #undef HASHSET
 #undef TKCHE
 
+
+
+DEFINE_HASHSET_TRAITS( HashsetTraits_SliceContents, slice_t, EqualContents, HashContents );
+
+template<typename Val> using hashset_slice_t =
+  hashset_complexkey_t<
+    slice_t,
+    Val,
+    HashsetTraits_SliceContents
+    >;
 
 
 #if defined(TEST)

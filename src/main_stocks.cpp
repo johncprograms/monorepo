@@ -391,16 +391,6 @@ ParseNumericOrDatetimeOrUsd(
 int
 LoadCsv( slice_t path, csv_t* table )
 {
-  if( path.len  &&  path.mem[0] == '\"' ) {
-    if( path.mem[ path.len - 1 ] != '\"' ) {
-      auto mem = AllocCstr( path );
-      printf( "Bad double-quoted file path, missing ending double-quote: %s\n", mem );
-      MemHeapFree( mem );
-      return 1;
-    }
-    path.mem += 1;
-    path.len -= 1;
-  }
   auto file = FileOpen( ML( path ), fileopen_t::only_existing, fileop_t::R, fileop_t::R );
   if( !file.loaded ) {
     auto mem = AllocCstr( path );
@@ -756,17 +746,78 @@ AppInit( app_t* app, tslice_t<slice_t> args )
     );
 
   if( !args.len ) {
-    printf( "Expected one or more arguments: path to a .csv file\n" );
+    printf( "Expected one or more arguments: path to a .csv file, or directory containing csv files.\n" );
     return 1;
   }
 
-  app->tables = AllocString<csv_t>( args.len );
-  ForLen( args_idx, args ) {
-    auto path = args.mem[ args_idx ];
-    auto table = app->tables.mem + args_idx;
+  hashset_slice_t<void> filepaths;
+  Init( &filepaths, 2 * args.len );
+  pagelist_t pagelist;
+  Init( pagelist, 64000 );
+  {
+    stack_resizeable_cont_t<slice_t> files_under_given_dir;
+    Alloc( files_under_given_dir, 200 );
+    ForLen( args_idx, args ) {
+      auto path = args.mem[ args_idx ];
+      if( path.len  &&  path.mem[0] == '\"' ) {
+        if( path.mem[ path.len - 1 ] != '\"' ) {
+          auto mem = AllocCstr( path );
+          printf( "Bad double-quoted file path, missing ending double-quote: %s\n", mem );
+          MemHeapFree( mem );
+          return 1;
+        }
+        path.mem += 1;
+        path.len -= 1;
+      }
+      if( DirExists( ML( path ) ) ) {
+        files_under_given_dir.len = 0;
+        FsFindFiles(
+          files_under_given_dir,
+          pagelist,
+          ML( path ),
+          1
+          );
+        ForLen( u, files_under_given_dir ) {
+          auto file_under_dir = files_under_given_dir.mem[u];
+          bool already_there; // we explicitly want to de-dupe.
+          Add(
+            &filepaths,
+            &file_under_dir,
+            Cast( void*, 0 ),
+            &already_there,
+            Cast( void*, 0 ),
+            0
+            );
+        }
+      }
+      else { // assume it's a file.
+        bool already_there; // we explicitly want to de-dupe.
+        Add(
+          &filepaths,
+          &path,
+          Cast( void*, 0 ),
+          &already_there,
+          Cast( void*, 0 ),
+          0
+          );
+      }
+    }
+    Free( files_under_given_dir );
+  }
+
+  auto paths = AllocString<slice_t>( filepaths.len );
+  Flatten( &filepaths, 0, paths.mem, Cast( void*, 0 ) );
+
+  app->tables = AllocString<csv_t>( paths.len );
+  ForLen( i, paths ) {
+    auto path = paths.mem[i];
+    auto table = app->tables.mem + i;
     int r = LoadCsv( path, table );
     if( r ) return r;
   }
+  Free( paths );
+  Kill( pagelist );
+  Kill( &filepaths );
 
   Alloc( app->headerrects, 32 );
   app->active_table = app->tables.len ? app->tables.mem + 0 : 0;
