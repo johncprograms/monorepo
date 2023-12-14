@@ -196,7 +196,7 @@ _AddPagelistSlice32(
 struct allocator_pagelist_t
 {
   pagelist_t* mem;
-  
+
   ForceInl allocator_pagelist_t()
   {
     mem = 0;
@@ -213,6 +213,12 @@ struct allocation_pagelist_t
 Templ Inl T* Allocate( allocator_pagelist_t& alloc, allocation_pagelist_t& allocn, idx_t num_elements, idx_t alignment_pow2 = DEFAULT_ALIGN )
 {
   return AddPagelist( *alloc.mem, T, alignment_pow2, num_elements );
+}
+Templ Inl T* Reallocate( allocator_pagelist_t& alloc, allocation_pagelist_t& allocn, T* oldmem, idx_t oldlen, idx_t newlen, idx_t alignment_pow2 = DEFAULT_ALIGN )
+{
+  auto newmem = Allocate<T>( alloc, allocn, newlen, alignment_pow2 );
+  TMove( newmem, oldmem, MIN( oldlen, newlen ) );
+  return newmem;
 }
 Templ Inl tslice_t<T> AllocateSlice( allocator_pagelist_t& alloc, allocation_pagelist_t& allocn, idx_t num_elements, idx_t alignment_pow2 = DEFAULT_ALIGN )
 {

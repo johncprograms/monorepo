@@ -668,13 +668,13 @@ LoadCsv( slice_t path, csv_t* table )
 }
 
 Inl
-tslice_t<slice_t>*
+csv_column_t*
 ColumnByName( csv_t& table, slice_t name )
 {
   For( x, 0, table.ncolumns ) {
     auto header = table.headers.mem[x];
     if( StringEquals( ML( name ), ML( header ), 0 ) ) {
-      return &table.columns.mem[x].string;
+      return table.columns.mem + x;
     }
   }
   return 0;
@@ -808,16 +808,119 @@ AppInit( app_t* app, tslice_t<slice_t> args )
   auto paths = AllocString<slice_t>( filepaths.len );
   Flatten( &filepaths, 0, paths.mem, Cast( void*, 0 ) );
 
-  app->tables = AllocString<csv_t>( paths.len );
+  auto tables = AllocString<csv_t>( paths.len );
+  app->tables = tables;
   ForLen( i, paths ) {
     auto path = paths.mem[i];
-    auto table = app->tables.mem + i;
+    auto table = tables.mem + i;
     int r = LoadCsv( path, table );
     if( r ) return r;
   }
   Free( paths );
-  Kill( pagelist );
   Kill( &filepaths );
+
+  struct
+  stooq_t
+  {
+    slice_t table_name;
+    f64 date_first;
+    f64 date_last;
+    tslice_t<f64> dates;
+    tslice_t<f64> opens;
+    tslice_t<f64> his;
+    tslice_t<f64> los;
+    tslice_t<f64> closes;
+    tslice_t<f64> volumes;
+    tslice_t<f64> openints;
+  };
+  auto stooqs = AllocString<stooq_t>( tables.len );
+  ForLen( i, tables ) {
+    auto table = tables.mem + i;
+    auto stooq = stooqs.mem + i;
+    auto SliceF64FromCol = []( csv_t* table, slice_t name )
+    {
+      auto col = ColumnByName( *table, name );
+      AssertCrash( col->is_numeric );
+      return col->numeric;
+    };
+    stooq->dates    = SliceF64FromCol( table, SliceFromCStr( "<DATE>" ) );
+    stooq->opens    = SliceF64FromCol( table, SliceFromCStr( "<OPEN>" ) );
+    stooq->his      = SliceF64FromCol( table, SliceFromCStr( "<HIGH>" ) );
+    stooq->los      = SliceF64FromCol( table, SliceFromCStr( "<LOW>" ) );
+    stooq->closes   = SliceF64FromCol( table, SliceFromCStr( "<CLOSE>" ) );
+    stooq->volumes  = SliceF64FromCol( table, SliceFromCStr( "<VOL>" ) );
+    stooq->openints = SliceF64FromCol( table, SliceFromCStr( "<OPENINT>" ) );
+    stooq->date_first = table->nrows ? stooq->dates.mem[0] : 0;
+    stooq->date_last  = table->nrows ? stooq->dates.mem[stooq->dates.len - 1] : 0;
+    stooq->table_name = table->table_name;
+  }
+  if( stooqs.len ) {
+    auto stooq_first = stooqs.mem[0];
+    AssertCrash( stooq_first.dates.len );
+    auto date_first = stooq_first.dates.mem[0];
+    auto date_last = date_first;
+    For( i, 1, stooqs.len ) {
+      auto stooq = stooqs.mem[i];
+      date_first = MIN( date_first, stooq.date_first );
+      date_last = MAX( date_last, stooq.date_last );
+    }
+
+    // BUGBUG: some bug where we're only keeping days in mm={1, 2, 3, 11, 12}.
+    //   the underlying csv data has all days, but we're filtering those out here somehow.
+
+    struct
+    day_t
+    {
+      u32 yyyy;
+      u32 mm;
+      u32 dd;
+      tslice_t<stooq_t*> availables;
+      f64 date;
+    };
+    stack_resizeable_cont_t<day_t, allocator_pagelist_t, allocation_pagelist_t> days;
+    Alloc( days, 366 * 100, allocator_pagelist_t{ &pagelist } );
+    // WARNING: we're assuming the mktime posix time units of seconds.
+    // The intention here is to advance by a day each iteration. We could skip weekends/holidays in faster ways, most likely.
+    constant f64 seconds_per_day = 60*60*24;
+    for(
+      f64 date = date_first;
+      date <= date_last;
+      date += seconds_per_day
+      ) {
+      day_t* day = 0;
+      ForLen( i, stooqs ) {
+        auto pstooq = stooqs.mem + i;
+        auto stooq = *pstooq;
+        if( LTEandLTE( date, stooq.date_first, stooq.date_last ) ) {
+          idx_t sorted_insert_idx;
+          BinarySearch( ML( stooq.dates ), date, &sorted_insert_idx );
+          auto found = sorted_insert_idx != stooq.dates.len && stooq.dates.mem[sorted_insert_idx] == date;
+          if( found ) {
+            if( !day ) {
+              day = AddBack( days );
+              auto availables = AddPagelistSlice( pagelist, stooq_t*, _SIZEOF_IDX_T, stooqs.len );
+              TZero( ML( availables ) );
+              day->availables = availables;
+              day->date = date;
+              auto ctime_date = Cast( time_t, date );
+              struct tm time_data;
+              localtime_s( &time_data, &ctime_date );
+              day->yyyy = time_data.tm_year + 1900; // based on 1900
+              day->mm = time_data.tm_mon + 1; // 0-based
+              day->dd = time_data.tm_mday; // 1-based
+            }
+            day->availables.mem[i] = pstooq;
+          }
+        }
+      }
+    }
+    printf("\n");
+  }
+  // TODO: time-aligned slices, so we can walk forward/backward in time with portfolio choice.
+
+
+  Kill( pagelist );
+  Free( stooqs );
 
   Alloc( app->headerrects, 32 );
   app->active_table = app->tables.len ? app->tables.mem + 0 : 0;
@@ -1108,85 +1211,6 @@ __OnRender( AppOnRender )
       MinMax<f64>( data_active, &min_active, &max_active );
       auto mean_active = Mean<f64>( data_active );
       auto variance_active = Variance<f64>( data_active, mean_active );
-
-#if 0
-      // TODO: use col_active as the basis for plots.
-      auto col_date = ColumnByName( *table, SliceFromCStr( "date" ) );
-      auto col_close = ColumnByName( *table, SliceFromCStr( "close/last" ) );
-      auto col_high = ColumnByName( *table, SliceFromCStr( "high" ) );
-      auto col_low = ColumnByName( *table, SliceFromCStr( "low" ) );
-      auto col_volume = ColumnByName( *table, SliceFromCStr( "volume" ) );
-
-      auto dcol_close = DColDollarF64( *col_close );
-      auto dcol_high = DColDollarF64( *col_high );
-      auto dcol_low = DColDollarF64( *col_low );
-      auto dcol_volume = DColF64( *col_volume );
-
-      // TODO: sort by date rather than just assume reverse.
-      //   either:
-      //     1. list of columns, and iterate it to swap during the sort alg.
-      //     2. generate an index permutation column, and then apply it to all columns.
-      //   i'm thinking option 2. It's more memory intensive, but has simpler inner loops.
-      TReverse( ML( dcol_close ) );
-      TReverse( ML( dcol_high ) );
-      TReverse( ML( dcol_low ) );
-      TReverse( ML( dcol_volume ) );
-
-      AssertCrash( dcol_high.len == dcol_low.len ); // TODO: domain join
-      auto dcol_spread = AllocString<f64>( dcol_high.len );
-      ForLen( i, dcol_spread ) {
-        auto spread = dcol_high.mem[i] - dcol_low.mem[i];
-        AssertCrash( spread >= 0 );
-        dcol_spread.mem[i] = spread;
-      }
-
-      // SCRATCH FORMULAIC COLUMN:
-      auto dcol_spread_over_volume = AllocString<f64>( dcol_spread.len );
-      ForLen( i, dcol_spread_over_volume ) {
-  //      dcol_spread_over_volume.mem[i] = dcol_spread.mem[i] * ( dcol_volume.mem[i] * 1e-9f );
-  //      dcol_spread_over_volume.mem[i] = dcol_volume.mem[i] / ( 1.0f + dcol_spread.mem[i] );
-  //      dcol_spread_over_volume.mem[i] = Ln64( dcol_volume.mem[i] / ( 1.0f + dcol_spread.mem[i] ) );
-        dcol_spread_over_volume.mem[i] = Ln64( dcol_spread.mem[i] / dcol_volume.mem[i] );
-  //      dcol_spread_over_volume.mem[i] = Ln64( dcol_spread.mem[i] / dcol_high.mem[i] );
-  //      dcol_spread_over_volume.mem[i] = Ln64( dcol_high.mem[i] );
-  //      dcol_spread_over_volume.mem[i] = Ln64( dcol_high.mem[i] / dcol_volume.mem[i] );
-  //      dcol_spread_over_volume.mem[i] = Ln64( dcol_high.mem[i] * ( dcol_volume.mem[i] * 1e-9f ) );
-  //      dcol_spread_over_volume.mem[i] = Cos64( Cast( f64, i ) * 1e-1 );
-      }
-
-      auto mean_close = Mean<f64>( dcol_close );
-      f64 min_close;
-      f64 max_close;
-      MinMax<f64>( dcol_close, &min_close, &max_close );
-      auto mean_high = Mean<f64>( dcol_high );
-      f64 min_high;
-      f64 max_high;
-      MinMax<f64>( dcol_high, &min_high, &max_high );
-      auto mean_low = Mean<f64>( dcol_low );
-      f64 min_low;
-      f64 max_low;
-      MinMax<f64>( dcol_low, &min_low, &max_low );
-      auto mean_spread = Mean<f64>( dcol_spread );
-      f64 min_spread;
-      f64 max_spread;
-      MinMax<f64>( dcol_spread, &min_spread, &max_spread );
-      auto mean_volume = Mean<f64>( dcol_volume );
-      f64 min_volume;
-      f64 max_volume;
-      MinMax<f64>( dcol_volume, &min_volume, &max_volume );
-      auto mean_spread_over_volume = Mean<f64>( dcol_spread_over_volume );
-      f64 min_spread_over_volume;
-      f64 max_spread_over_volume;
-      MinMax<f64>( dcol_spread_over_volume, &min_spread_over_volume, &max_spread_over_volume );
-
-      auto variance_close = Variance<f64>( dcol_close, mean_close );
-      auto varianc2_close = Variance2<f64>( dcol_close, mean_close );
-      auto variance_high = Variance<f64>( dcol_high, mean_high );
-      auto variance_low = Variance<f64>( dcol_low, mean_low );
-      auto variance_spread = Variance<f64>( dcol_spread, mean_spread );
-      auto variance_volume = Variance<f64>( dcol_volume, mean_volume );
-      auto variance_spread_over_volume = Variance<f64>( dcol_spread_over_volume, mean_spread_over_volume );
-#endif
 
       #define DRAWQUAD( _color, _p0, _p1 ) \
         RenderQuad( \
@@ -2137,6 +2161,85 @@ __OnWindowEvent( AppOnWindowEvent )
 
 
 
+
+#if 0
+      // TODO: use col_active as the basis for plots.
+      auto col_date = ColumnByName( *table, SliceFromCStr( "date" ) );
+      auto col_close = ColumnByName( *table, SliceFromCStr( "close/last" ) );
+      auto col_high = ColumnByName( *table, SliceFromCStr( "high" ) );
+      auto col_low = ColumnByName( *table, SliceFromCStr( "low" ) );
+      auto col_volume = ColumnByName( *table, SliceFromCStr( "volume" ) );
+
+      auto dcol_close = DColDollarF64( *col_close );
+      auto dcol_high = DColDollarF64( *col_high );
+      auto dcol_low = DColDollarF64( *col_low );
+      auto dcol_volume = DColF64( *col_volume );
+
+      // TODO: sort by date rather than just assume reverse.
+      //   either:
+      //     1. list of columns, and iterate it to swap during the sort alg.
+      //     2. generate an index permutation column, and then apply it to all columns.
+      //   i'm thinking option 2. It's more memory intensive, but has simpler inner loops.
+      TReverse( ML( dcol_close ) );
+      TReverse( ML( dcol_high ) );
+      TReverse( ML( dcol_low ) );
+      TReverse( ML( dcol_volume ) );
+
+      AssertCrash( dcol_high.len == dcol_low.len ); // TODO: domain join
+      auto dcol_spread = AllocString<f64>( dcol_high.len );
+      ForLen( i, dcol_spread ) {
+        auto spread = dcol_high.mem[i] - dcol_low.mem[i];
+        AssertCrash( spread >= 0 );
+        dcol_spread.mem[i] = spread;
+      }
+
+      // SCRATCH FORMULAIC COLUMN:
+      auto dcol_spread_over_volume = AllocString<f64>( dcol_spread.len );
+      ForLen( i, dcol_spread_over_volume ) {
+  //      dcol_spread_over_volume.mem[i] = dcol_spread.mem[i] * ( dcol_volume.mem[i] * 1e-9f );
+  //      dcol_spread_over_volume.mem[i] = dcol_volume.mem[i] / ( 1.0f + dcol_spread.mem[i] );
+  //      dcol_spread_over_volume.mem[i] = Ln64( dcol_volume.mem[i] / ( 1.0f + dcol_spread.mem[i] ) );
+        dcol_spread_over_volume.mem[i] = Ln64( dcol_spread.mem[i] / dcol_volume.mem[i] );
+  //      dcol_spread_over_volume.mem[i] = Ln64( dcol_spread.mem[i] / dcol_high.mem[i] );
+  //      dcol_spread_over_volume.mem[i] = Ln64( dcol_high.mem[i] );
+  //      dcol_spread_over_volume.mem[i] = Ln64( dcol_high.mem[i] / dcol_volume.mem[i] );
+  //      dcol_spread_over_volume.mem[i] = Ln64( dcol_high.mem[i] * ( dcol_volume.mem[i] * 1e-9f ) );
+  //      dcol_spread_over_volume.mem[i] = Cos64( Cast( f64, i ) * 1e-1 );
+      }
+
+      auto mean_close = Mean<f64>( dcol_close );
+      f64 min_close;
+      f64 max_close;
+      MinMax<f64>( dcol_close, &min_close, &max_close );
+      auto mean_high = Mean<f64>( dcol_high );
+      f64 min_high;
+      f64 max_high;
+      MinMax<f64>( dcol_high, &min_high, &max_high );
+      auto mean_low = Mean<f64>( dcol_low );
+      f64 min_low;
+      f64 max_low;
+      MinMax<f64>( dcol_low, &min_low, &max_low );
+      auto mean_spread = Mean<f64>( dcol_spread );
+      f64 min_spread;
+      f64 max_spread;
+      MinMax<f64>( dcol_spread, &min_spread, &max_spread );
+      auto mean_volume = Mean<f64>( dcol_volume );
+      f64 min_volume;
+      f64 max_volume;
+      MinMax<f64>( dcol_volume, &min_volume, &max_volume );
+      auto mean_spread_over_volume = Mean<f64>( dcol_spread_over_volume );
+      f64 min_spread_over_volume;
+      f64 max_spread_over_volume;
+      MinMax<f64>( dcol_spread_over_volume, &min_spread_over_volume, &max_spread_over_volume );
+
+      auto variance_close = Variance<f64>( dcol_close, mean_close );
+      auto varianc2_close = Variance2<f64>( dcol_close, mean_close );
+      auto variance_high = Variance<f64>( dcol_high, mean_high );
+      auto variance_low = Variance<f64>( dcol_low, mean_low );
+      auto variance_spread = Variance<f64>( dcol_spread, mean_spread );
+      auto variance_volume = Variance<f64>( dcol_volume, mean_volume );
+      auto variance_spread_over_volume = Variance<f64>( dcol_spread_over_volume, mean_spread_over_volume );
+#endif
 
 #if 0
   auto col_last_sale = ColumnByName( SliceFromCStr( "last sale" ) );
