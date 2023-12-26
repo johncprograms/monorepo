@@ -139,6 +139,37 @@ CsToIntegerU(
   }
   return dst;
 }
+Templ Inl void
+CsToIntegerU(
+  T* result,
+  bool* success,
+  u8* src,
+  idx_t src_len,
+  u8 ignore = ',',
+  u8 radix = 10,
+  u8* digitmap = Str( "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" )
+  )
+{
+  *success = 0;
+  *result = 0;
+  T dst = 0;
+  T digit_factor = 1;
+  ReverseFor( i, 0, src_len ) {
+    auto c = src[i];
+    if( ignore  &&  c == ignore ) {
+      continue;
+    }
+    // TODO: extended mapping.
+    if( !( '0' <= c  &&  c <= '9' ) ) {
+      return;
+    }
+    T digit = c - '0';
+    dst += digit * digit_factor;
+    digit_factor *= radix;
+  }
+  *success = 1;
+  *result = dst;
+}
 
 Templ Inl T
 CsToIntegerS(

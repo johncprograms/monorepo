@@ -320,13 +320,23 @@ ParseDate(
   }
 
   auto string0 = TrimSpacetabsPrefixAndSuffix( buffer->mem[0] );
-  auto val0 = CsToIntegerU<u32>( ML( string0 ), 0 );
+  u32 val0;
+  bool parsed0;
+  CsToIntegerU<u32>( &val0, &parsed0, ML( string0 ), 0 );
   auto string1 = TrimSpacetabsPrefixAndSuffix( buffer->mem[1] );
-  auto val1 = CsToIntegerU<u32>( ML( string1 ), 0 );
+  u32 val1;
+  bool parsed1;
+  CsToIntegerU<u32>( &val1, &parsed1, ML( string1 ), 0 );
   auto string2 = TrimSpacetabsPrefixAndSuffix( buffer->mem[2] );
-  auto val2 = CsToIntegerU<u32>( ML( string2 ), 0 );
+  u32 val2;
+  bool parsed2;
+  CsToIntegerU<u32>( &val2, &parsed2, ML( string2 ), 0 );
+  if( !parsed0 || !parsed1 || !parsed2 ) {
+    return;
+  }
+  // Use posix 32bit year bounds, since our CRT uses that.
   constant u32 minyear = 1900;
-  constant u32 maxyear = 9999;
+  constant u32 maxyear = 2037;
   constant u32 minmonth = 1;
   constant u32 maxmonth = 12;
   constant u32 minday = 1;
@@ -833,26 +843,29 @@ AppInit( app_t* app, tslice_t<slice_t> args )
     tslice_t<f64> volumes;
     tslice_t<f64> openints;
   };
-  auto stooqs = AllocString<stooq_t>( tables.len );
+  stack_resizeable_cont_t<stooq_t> stooqs;
+  Alloc( stooqs, tables.len );
   ForLen( i, tables ) {
     auto table = tables.mem + i;
-    auto stooq = stooqs.mem + i;
-    auto SliceF64FromCol = []( csv_t* table, slice_t name )
-    {
-      auto col = ColumnByName( *table, name );
-      AssertCrash( col->is_numeric );
-      return col->numeric;
-    };
-    stooq->dates    = SliceF64FromCol( table, SliceFromCStr( "<DATE>" ) );
-    stooq->opens    = SliceF64FromCol( table, SliceFromCStr( "<OPEN>" ) );
-    stooq->his      = SliceF64FromCol( table, SliceFromCStr( "<HIGH>" ) );
-    stooq->los      = SliceF64FromCol( table, SliceFromCStr( "<LOW>" ) );
-    stooq->closes   = SliceF64FromCol( table, SliceFromCStr( "<CLOSE>" ) );
-    stooq->volumes  = SliceF64FromCol( table, SliceFromCStr( "<VOL>" ) );
-    stooq->openints = SliceF64FromCol( table, SliceFromCStr( "<OPENINT>" ) );
-    stooq->date_first = table->nrows ? stooq->dates.mem[0] : 0;
-    stooq->date_last  = table->nrows ? stooq->dates.mem[stooq->dates.len - 1] : 0;
-    stooq->table_name = table->table_name;
+    if( ColumnByName( *table, SliceFromCStr( "<OPENINT>" ) ) ) {
+      auto SliceF64FromCol = []( csv_t* table, slice_t name )
+      {
+        auto col = ColumnByName( *table, name );
+        AssertCrash( col->is_numeric );
+        return col->numeric;
+      };
+      auto stooq = AddBack( stooqs );
+      stooq->dates    = SliceF64FromCol( table, SliceFromCStr( "<DATE>" ) );
+      stooq->opens    = SliceF64FromCol( table, SliceFromCStr( "<OPEN>" ) );
+      stooq->his      = SliceF64FromCol( table, SliceFromCStr( "<HIGH>" ) );
+      stooq->los      = SliceF64FromCol( table, SliceFromCStr( "<LOW>" ) );
+      stooq->closes   = SliceF64FromCol( table, SliceFromCStr( "<CLOSE>" ) );
+      stooq->volumes  = SliceF64FromCol( table, SliceFromCStr( "<VOL>" ) );
+      stooq->openints = SliceF64FromCol( table, SliceFromCStr( "<OPENINT>" ) );
+      stooq->date_first = table->nrows ? stooq->dates.mem[0] : 0;
+      stooq->date_last  = table->nrows ? stooq->dates.mem[stooq->dates.len - 1] : 0;
+      stooq->table_name = table->table_name;
+    }
   }
   if( stooqs.len ) {
     auto stooq_first = stooqs.mem[0];
@@ -865,56 +878,242 @@ AppInit( app_t* app, tslice_t<slice_t> args )
       date_last = MAX( date_last, stooq.date_last );
     }
 
-    // BUGBUG: some bug where we're only keeping days in mm={1, 2, 3, 11, 12}.
-    //   the underlying csv data has all days, but we're filtering those out here somehow.
-
     struct
     day_t
     {
       u32 yyyy;
       u32 mm;
       u32 dd;
-      tslice_t<stooq_t*> availables;
+      // PERF: change to slice of { stock_idx, index_into_dates }
+      tslice_t<idx_t> idx_into_dates_per_stooq;
       f64 date;
     };
-    stack_resizeable_cont_t<day_t, allocator_pagelist_t, allocation_pagelist_t> days;
-    Alloc( days, 366 * 100, allocator_pagelist_t{ &pagelist } );
-    // WARNING: we're assuming the mktime posix time units of seconds.
-    // The intention here is to advance by a day each iteration. We could skip weekends/holidays in faster ways, most likely.
-    constant f64 seconds_per_day = 60*60*24;
-    for(
-      f64 date = date_first;
-      date <= date_last;
-      date += seconds_per_day
-      ) {
-      day_t* day = 0;
-      ForLen( i, stooqs ) {
-        auto pstooq = stooqs.mem + i;
-        auto stooq = *pstooq;
-        if( LTEandLTE( date, stooq.date_first, stooq.date_last ) ) {
-          idx_t sorted_insert_idx;
-          BinarySearch( ML( stooq.dates ), date, &sorted_insert_idx );
-          auto found = sorted_insert_idx != stooq.dates.len && stooq.dates.mem[sorted_insert_idx] == date;
-          if( found ) {
-            if( !day ) {
-              day = AddBack( days );
-              auto availables = AddPagelistSlice( pagelist, stooq_t*, _SIZEOF_IDX_T, stooqs.len );
-              TZero( ML( availables ) );
-              day->availables = availables;
-              day->date = date;
-              auto ctime_date = Cast( time_t, date );
-              struct tm time_data;
-              localtime_s( &time_data, &ctime_date );
-              day->yyyy = time_data.tm_year + 1900; // based on 1900
-              day->mm = time_data.tm_mon + 1; // 0-based
-              day->dd = time_data.tm_mday; // 1-based
-            }
-            day->availables.mem[i] = pstooq;
-          }
+    hashset_f64_t<day_t> dayset;
+    Init( &dayset, 366*100 );
+    ForLen( i, stooqs ) {
+      auto pstooq = stooqs.mem + i;
+      auto stooq = *pstooq;
+      auto dates = stooq.dates;
+      ForLen( d, dates ) {
+        auto date = dates.mem[d];
+        // TODO: implement LookupOrAdd, which returns a pointer to the value
+        day_t* pday = 0;
+        bool found = 0;
+        Lookup(
+          &dayset,
+          &date,
+          &found,
+          &pday
+          );
+        if( found ) {
+          pday->idx_into_dates_per_stooq.mem[i] = d;
+        }
+        else {
+          auto idx_into_dates_per_stooq = AddPagelistSlice( pagelist, idx_t, _SIZEOF_IDX_T, stooqs.len );
+          TSet( ML( idx_into_dates_per_stooq ), MAX_idx );
+          idx_into_dates_per_stooq.mem[i] = d;
+          day_t day;
+          day.idx_into_dates_per_stooq = idx_into_dates_per_stooq;
+          day.date = date;
+          auto ctime_date = Cast( time_t, date );
+          struct tm time_data;
+          localtime_s( &time_data, &ctime_date );
+          day.yyyy = time_data.tm_year + 1900; // based on 1900
+          day.mm = time_data.tm_mon + 1; // 0-based
+          day.dd = time_data.tm_mday; // 1-based
+          Add(
+            &dayset,
+            &date,
+            &day,
+            Cast( bool*, 0 ),
+            Cast( day_t*, 0 ),
+            0
+            );
         }
       }
     }
-    printf("\n");
+    auto days = AllocString<day_t>( dayset.len );
+    Flatten(
+      &dayset,
+      Cast( idx_t*, 0 ),
+      Cast( f64*, 0 ),
+      days.mem
+      );
+    std::sort(
+      days.mem,
+      days.mem + days.len,
+      [](const day_t& a, const day_t& b)
+      {
+        return a.date < b.date;
+      }
+      );
+    Kill( &dayset );
+
+    struct
+    hold_t
+    {
+      idx_t stock_idx;
+      f64 nshares;
+    };
+    stack_resizeable_cont_t<hold_t> folio;
+    Alloc( folio, 1000 );
+    f64 folio_cash = 100;
+    auto daily_value = AllocString<f64>( days.len );
+
+    struct
+    buychoice_t
+    {
+      idx_t s;
+      f64 score;
+      f64 buy_price;
+      f64 nshares_max; // capping shares to a percentage of daily traded volume.
+    };
+    stack_resizeable_cont_t<buychoice_t> buychoices;
+    Alloc( buychoices, stooqs.len );
+    auto idx_into_dates_per_stooq = AllocString<idx_t>( stooqs.len );
+    ForLen( d, days ) {
+      if( d < 2 ) {
+        daily_value.mem[d] = folio_cash;
+        continue;
+      }
+
+      // TODO: increase lookbehind
+      auto day2 = days.mem[ d - 2 ];
+      auto day1 = days.mem[ d - 1 ];
+      auto day0 = days.mem[ d - 0 ];
+      AssertCrash( stooqs.len == day2.idx_into_dates_per_stooq.len );
+      AssertCrash( stooqs.len == day1.idx_into_dates_per_stooq.len );
+      AssertCrash( stooqs.len == day0.idx_into_dates_per_stooq.len );
+
+      // Sell the holdings.
+      while( folio.len ) {
+        auto hold = folio.mem[folio.len - 1];
+        auto s_held = hold.stock_idx;
+        auto stooq_held = stooqs.mem[s_held];
+        auto day0_idx_into_dates = day0.idx_into_dates_per_stooq.mem[s_held];
+        auto day0_lo = stooq_held.los.mem[day0_idx_into_dates];
+        auto day0_hi = stooq_held.his.mem[day0_idx_into_dates];
+        //auto sell_price = day0_lo; // pessimistic
+        auto sell_price = lerp( day0_lo, day0_hi, 0.45 ); // slightly pessimistic
+        //auto sell_price = lerp( day0_lo, day0_hi, 0.5 ); // neutral
+        //auto sell_price = day0_hi; // optimistic
+        auto sell_value = hold.nshares * sell_price;
+        folio_cash += sell_value;
+        RemBack( folio );
+      }
+
+      daily_value.mem[d] = folio_cash;
+
+      // Buy the best new holdings.
+      rng_xorshift32_t rng;
+      Init( rng, 0x1234567812345678ULL );
+      AssertCrash( folio_cash >= 0 );
+      buychoices.len = 0;
+      ForLen( s, stooqs ) {
+        auto stooq = stooqs.mem[s];
+
+        auto day2_idx_into_dates = day2.idx_into_dates_per_stooq.mem[s];
+        auto day1_idx_into_dates = day1.idx_into_dates_per_stooq.mem[s];
+        auto day0_idx_into_dates = day0.idx_into_dates_per_stooq.mem[s];
+        if( day2_idx_into_dates == MAX_idx ||
+            day1_idx_into_dates == MAX_idx ||
+            day0_idx_into_dates == MAX_idx )
+          continue;
+        auto day2_hi = stooq.his.mem[day2_idx_into_dates];
+        auto day1_hi = stooq.his.mem[day1_idx_into_dates];
+        auto day2_lo = stooq.los.mem[day2_idx_into_dates];
+        auto day1_lo = stooq.los.mem[day1_idx_into_dates];
+        auto day2_vol = stooq.volumes.mem[day2_idx_into_dates];
+        auto day1_vol = stooq.volumes.mem[day1_idx_into_dates];
+
+        // TODO: stop using future information here.
+        auto day0_vol = stooq.volumes.mem[day0_idx_into_dates];
+        auto day0_hi = stooq.his.mem[day0_idx_into_dates];
+        auto day0_lo = stooq.los.mem[day0_idx_into_dates];
+
+        // TODO: survivor bias; I think stooq data doesn't include stocks that died.
+        //auto score = day1_lo - day2_hi; // absolute price increase, pessimistic
+        //auto score = day2_hi / day1_lo; // relative price increase, pessimistic
+        //auto score = day2_hi - day1_lo;
+        //auto score = day1_lo / day2_hi;
+        //auto score = day1_lo - day2_lo;
+        auto score = Zeta32( rng );
+
+        // Cap volume buys to 1% of min daily trading volume over the last 3 days.
+        // Any larger would affect price (outstrip other demand).
+        // TODO: hyperparameter tuning here.
+        auto nshares_max = 0.01 * MIN3( day0_vol, day1_vol, day2_vol );
+        //auto buy_price = day0_hi; // pessimistic
+        auto buy_price = lerp( day0_lo, day0_hi, 0.55 ); // slightly pessimistic
+        //auto buy_price = lerp( day0_lo, day0_hi, 0.5 ); // neutral
+        //auto buy_price = day0_lo; // optimistic
+
+        auto buychoice = AddBack( buychoices );
+        buychoice->s = s;
+        buychoice->score = score;
+        buychoice->buy_price = buy_price;
+        buychoice->nshares_max = nshares_max;
+
+        // TODO: additional criteria, like market cap minimums to avoid penny stocks.
+        // TODO: maybe make hold decisions if all scores are really bad?
+      }
+      std::sort(
+        buychoices.mem,
+        buychoices.mem + buychoices.len,
+        [](const buychoice_t& a, const buychoice_t& b)
+        {
+          return a.score < b.score;
+        }
+        );
+      ReverseForLen( b, buychoices ) {
+        if( folio_cash <= 0 ) {
+          folio_cash = 0;
+          break;
+        }
+        auto buychoice = buychoices.mem[b];
+        auto buy_price = buychoice.buy_price;
+        auto nshares_max = buychoice.nshares_max;
+        auto buy_max = buy_price * nshares_max;
+        auto hold = AddBack( folio );
+        hold->stock_idx = buychoice.s;
+        if( folio_cash <= buy_max ) {
+          hold->nshares = folio_cash / buy_price;
+          folio_cash = 0;
+        }
+        else {
+          hold->nshares = nshares_max;
+          folio_cash -= buy_max;
+        }
+      }
+    }
+
+    stack_resizeable_cont_t<u8> rs;
+    Alloc( rs, daily_value.len * 10 );
+    AddBackCStr( &rs, "daily_value,ln(daily_value)\r\n" );
+    ForLen( dv, daily_value ) {
+      auto value = daily_value.mem[dv];
+      auto ln_value = Ln64( value );
+      AddBackF64( &rs, value );
+      AddBackCStr( &rs, "," );
+      AddBackF64( &rs, ln_value );
+      AddBackCStr( &rs, "\r\n" );
+    }
+    auto rs_filename = SliceFromCStr( "C:/admin/Desktop/daily_value.csv" );
+    file_t rs_file = FileOpen( ML( rs_filename ), fileopen_t::always, fileop_t::W, fileop_t::R );
+    if( !rs_file.loaded ) {
+      printf( "Failed to write resource file: %s\n", rs_filename.mem );
+      return 1;
+    }
+    FileWrite( rs_file, 0, ML( rs ) );
+    FileSetEOF( rs_file, rs.len );
+    FileFree( rs_file );
+    Free( rs );
+
+    Free( buychoices );
+    Free( daily_value );
+    Free( idx_into_dates_per_stooq );
+    Free( folio );
+    Free( days );
   }
   // TODO: time-aligned slices, so we can walk forward/backward in time with portfolio choice.
 

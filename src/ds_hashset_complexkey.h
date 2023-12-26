@@ -11,6 +11,9 @@
 // table size. So when we modulo table size, we're throwing away useful hashing work.
 // we should fold higher bits down into the lower bits for better hashing.
 
+// TODO: implement LookupOrAdd, which returns a pointer to the value (maybe uninit). Alternate name: LookupEnsure
+//   this de-dupes a hash + slot lookup.
+
 #define HASHSET_COMPLEXKEY_EQUAL( TKey, name )   bool ( name )( TKey* a, TKey* b )
 #define HASHSET_COMPLEXKEY_HASH( TKey, name )   idx_t ( name )( TKey* a )
 
@@ -411,6 +414,31 @@ template<typename Val> using hashset_slice_t =
     slice_t,
     Val,
     HashsetTraits_SliceContents
+    >;
+
+
+ForceInl
+HASHSET_COMPLEXKEY_EQUAL( f64, EqualF64 )
+{
+  return *a == *b;
+}
+ForceInl
+HASHSET_COMPLEXKEY_HASH( f64, HashF64 )
+{
+  #if _SIZEOF_IDX_T == 4
+    return *Cast( u32*, a ) ^ *Cast( u32*, Cast( u8*, a ) + 4 );
+  #elif _SIZEOF_IDX_T == 8
+    return *Cast( idx_t*, a );
+  #else
+    #error Unknown case!
+  #endif
+}
+DEFINE_HASHSET_TRAITS( HashsetTraits_F64, f64, EqualF64, HashF64 );
+template<typename Val> using hashset_f64_t =
+  hashset_complexkey_t<
+    f64,
+    Val,
+    HashsetTraits_F64
     >;
 
 
