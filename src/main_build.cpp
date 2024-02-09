@@ -1101,7 +1101,7 @@ Main( stack_resizeable_cont_t<slice_t>& args )
   AddBackCStr( &natvis, " " );
   // TODO: better logic here to find the full path of the natvis file or files.
   AddBackCStr( &natvis, "\"" );
-  AddBackCStr( &natvis, "C:/doc/dev/cpp/proj/main/natvisfile.natvis" );
+  AddBackCStr( &natvis, "C:/doc/git/monorepo/natvisfile.natvis" );
   AddBackCStr( &natvis, "\"" );
 
 #if PRINT_TOOL_COMMANDS

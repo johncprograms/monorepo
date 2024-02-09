@@ -205,3 +205,19 @@ RemBack( DEQUENONRESIZEABLE& q, T* dst, idx_t dst_len, idx_t* num_removed )
   RemBackAssumingRoom( q.mem, q.capacity, q.head, &q.tail, dst, num_remove );
   *num_removed = num_remove;
 }
+TEA Inl idx_t
+LenRemaining( DEQUENONRESIZEABLE& q )
+{
+  return RingbufferLenRemaining( q.capacity, q.head, q.tail );
+}
+TEA Inl idx_t
+Len( DEQUENONRESIZEABLE& q )
+{
+  return RingbufferLen( q.capacity, q.head, q.tail );
+}
+TEA Inl void
+Clear( DEQUENONRESIZEABLE& q )
+{
+  q.head = 0;
+  q.tail = 0;
+}

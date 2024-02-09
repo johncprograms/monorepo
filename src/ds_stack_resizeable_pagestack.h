@@ -6,7 +6,7 @@
 TEA struct
 stack_resizeable_pagestack_page_t
 {
-  stack_nonresizeable_t<T, Allocator, Allocation> space;
+  deque_nonresizeable_t<T, Allocator, Allocation> space;
   Allocation allocn;
 };
 TEA Inl STACKRESIZEABLEPAGESTACK_PAGE*
@@ -14,13 +14,14 @@ AllocatePagestackPage( Allocator& alloc, idx_t page_capacity )
 {
   Allocation allocn = {};
   auto page = Allocate<STACKRESIZEABLEPAGESTACK_PAGE>( alloc, allocn, 1 );
-  Alloc( page->space, page_capacity, alloc );
+  Init( page->space, page_capacity, alloc );
   page->allocn = allocn;
   return page;
 }
 TEA Inl void
 FreePage( Allocator& alloc, STACKRESIZEABLEPAGESTACK_PAGE* page )
 {
+  Kill( page->space );
   Allocation allocn = page->allocn;
   Free( alloc, allocn, page );
 }
@@ -72,7 +73,7 @@ Reset( STACKRESIZEABLEPAGESTACK& list )
     FreePage( list.pages.alloc, page );
   }
   auto page_first = list.pages.mem[0];
-  page_first->space.len = 0;
+  Clear( page_first->space );
   list.len = 0;
 }
 // TODO: contiguous version that returns T* instead of copying.
@@ -84,17 +85,25 @@ AddBack( STACKRESIZEABLEPAGESTACK& list, T* src, idx_t src_len )
   auto page = list.pages.mem[ list.pages.len - 1 ];
   AssertCrash( page );
   auto space = &page->space;
-  auto len_remaining = space->capacity - space->len;
-  auto num_add = MIN( src_len, len_remaining );
-  TMove( AddBack( *space, num_add ), src, num_add );
-  src += num_add;
-  src_len -= num_add;
+  {
+    auto len_remaining = LenRemaining( *space );
+    auto num_add = MIN( src_len, len_remaining );
+    idx_t num_added = 0;
+    AddBack( *space, src, num_add, &num_added );
+    AssertCrash( num_added == num_add );
+  //  TMove( AddBack( *space, num_add ), src, num_add );
+    src += num_add;
+    src_len -= num_add;
+  }
   if( src_len ) {
     list.default_page_capacity = MAX( 2 * list.default_page_capacity, src_len );
     auto newpage = AllocatePagestackPage<T>( list.pages.alloc, list.default_page_capacity );
     *AddBack( list.pages ) = newpage;
     auto newspace = &newpage->space;
-    TMove( AddBack( *newspace, src_len ), src, src_len );
+    idx_t num_added = 0;
+    AddBack( *newspace, src, src_len, &num_added );
+    AssertCrash( num_added == src_len );
+//    TMove( AddBack( *newspace, src_len ), src, src_len );
   }
 }
 TEA Inl void
@@ -196,8 +205,6 @@ LookupElemByLinearIndex( STACKRESIZEABLEPAGESTACK& list, idx_t idx )
   return 0;
 }
 
-#if defined(TEST)
-
 RegisterTest([]()
 {
   stack_resizeable_pagestack_t<idx_t> s;
@@ -207,7 +214,7 @@ RegisterTest([]()
   auto FnReset = [&]() {
     Reset( s );
     AssertCrash( s.pages.len == 1 );
-    AssertCrash( s.pages.mem[0]->space.len == 0 );
+    AssertCrash( Len( s.pages.mem[0]->space ) == 0 );
     AssertCrash( s.len == 0 );
     verif.len = 0;
   };
@@ -257,8 +264,6 @@ RegisterTest([]()
   Kill( s );
   Free( verif );
 });
-
-#endif // defined(TEST)
 
 
 // TODO: we really need an easier way of iterating pagearrays

@@ -25,22 +25,56 @@ Enqueue(
   *success = 1;
 }
 template< idx_t Capacity, typename Index, typename Data >
-Inl void
+ForceInl void
 EnqueueAssumingRoom(
   Data* mem,
+  Index* tail_,
   Index head,
-  Index* tail,
   Data* src,
-  Index src_len = 1
+  idx_t src_len = 1
   )
 {
-  auto local_wr = *tail;
-  local_wr = ( local_wr + 1 ) % Capacity;
-  AssertCrash( local_wr != head );
-  // mem[local_wr] = *src;
-  Memmove( mem + local_wr, src, src_len * sizeof( Data ) );
-  *tail = local_wr;
+  auto tail = *tail_;
+  auto len_used = RingbufferLenRemaining<Capacity>( head, tail );
+  AssertCrash( len_used + src_len <= Capacity );
+
+  auto local_wr = ( tail + 1 ) % Capacity;
+  auto num_write_to_end = MIN( src_len, Capacity - local_wr );
+  TMove(
+    mem + local_wr,
+    src + 0,
+    num_write_to_end
+    );
+  auto num_write_start = src_len - num_write_to_end;
+  if( num_write_start ) {
+    TMove(
+      mem + 0,
+      src + num_write_to_end,
+      num_write_start
+      );
+    *tail_ = num_write_start - 1;
+  }
+  else {
+    *tail_ = num_write_to_end;
+  }
 }
+//template< idx_t Capacity, typename Index, typename Data >
+//Inl void
+//EnqueueAssumingRoom(
+//  Data* mem,
+//  Index head,
+//  Index* tail,
+//  Data* src,
+//  Index src_len = 1
+//  )
+//{
+//  auto local_wr = *tail;
+//  local_wr = ( local_wr + 1 ) % Capacity;
+//  AssertCrash( local_wr != head );
+//  // mem[local_wr] = *src;
+//  Memmove( mem + local_wr, src, src_len * sizeof( Data ) );
+//  *tail = local_wr;
+//}
 
 template< idx_t Capacity, typename Index, typename Data >
 Inl void
@@ -109,5 +143,10 @@ Dequeue( QUEUE& q, T* dst, bool* success )
 {
   Dequeue<N>( q.mem, q.tail, &q.head, dst, success );
 }
+
+RegisterTest([]()
+{
+
+});
 
 #undef QUEUE

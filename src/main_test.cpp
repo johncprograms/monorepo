@@ -24,7 +24,14 @@ struct RegisterTestObject
 };
 #define ___JOIN( a, b ) a ## b
 #define __JOIN( a, b ) ___JOIN( a, b )
-#define RegisterTest static RegisterTestObject __JOIN( g_register_test_obj, __COUNTER__ ) = RegisterTestObject
+
+#if defined(TEST)
+  #define RegisterTest \
+    static RegisterTestObject __JOIN( g_register_test_obj, __COUNTER__ ) = RegisterTestObject
+#else
+  #define RegisterTest
+#endif
+
 
 #include "os_mac.h"
 #include "os_windows.h"
@@ -59,7 +66,6 @@ struct RegisterTestObject
 #include "ds_stack_nonresizeable.h"
 #include "ds_stack_resizeable_cont.h"
 #include "ds_stack_resizeable_pagelist.h"
-#include "ds_stack_resizeable_pagestack.h"
 #include "ds_bitarray_nonresizeable_stack.h"
 #include "ds_zipset.h"
 #include "ds_queue_resizeable_pagelist.h"
@@ -72,6 +78,7 @@ struct RegisterTestObject
 #include "ds_deque_nonresizeable.h"
 #include "ds_deque_resizeable_cont.h"
 #include "ds_deque_resizeable_pagelist.h"
+#include "ds_stack_resizeable_pagestack.h"
 #include "ds_hashset_cstyle.h"
 #include "ds_hashset_complexkey.h"
 #include "ds_hashset_nonzeroptrs.h"
