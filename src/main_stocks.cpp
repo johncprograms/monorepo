@@ -656,14 +656,14 @@ LoadCsv( slice_t path, csv_t* table )
   // TODO: per-column option to take a log?
   //   i'm thinking a log checkbox in the headerrect ui.
   //   more generally, it'd be nice to have a way of defining new columns as math ops on existing ones.
-  For( x, 0, ncolumns ) {
-    auto column = columns.mem + x;
-    if( column->is_datetime  ||  !column->is_numeric ) continue;
-    auto column_numeric_mem = column->numeric.mem;
-    For( y, 0, nrows ) {
-      //column_numeric_mem[y] = Ln64( column_numeric_mem[y] );
-    }
-  }
+//  For( x, 0, ncolumns ) {
+//    auto column = columns.mem + x;
+//    if( column->is_datetime  ||  !column->is_numeric ) continue;
+//    auto column_numeric_mem = column->numeric.mem;
+//    For( y, 0, nrows ) {
+//      //column_numeric_mem[y] = Ln64( column_numeric_mem[y] );
+//    }
+//  }
 
   table->table_name = table_name;
   table->csv = csv;
@@ -820,6 +820,8 @@ AppInit( app_t* app, tslice_t<slice_t> args )
 
   auto tables = AllocString<csv_t>( paths.len );
   app->tables = tables;
+  // TODO: parallelize this loop.
+  // TODO: binary file format: csv<->binary converter, and binary loader.
   ForLen( i, paths ) {
     auto path = paths.mem[i];
     auto table = tables.mem + i;
@@ -949,16 +951,29 @@ AppInit( app_t* app, tslice_t<slice_t> args )
       );
     Kill( &dayset );
 
+    {
+      auto ndays = AllocString<day_t>( Cast( idx_t, 0.12f * days.len ) );
+      TMove(
+        ndays.mem,
+        days.mem + days.len - ndays.len,
+        ndays.len
+        );
+      Free( days );
+      days = ndays;
+    }
+
     struct
     hold_t
     {
       idx_t stock_idx;
       f64 nshares;
+      f64 cost_basis;
     };
     stack_resizeable_cont_t<hold_t> folio;
     Alloc( folio, 1000 );
     f64 folio_cash = 100;
     auto daily_value = AllocString<f64>( days.len );
+    auto daily_holdings = AllocString<slice_t>( days.len );
 
     struct
     buychoice_t
@@ -971,65 +986,101 @@ AppInit( app_t* app, tslice_t<slice_t> args )
     stack_resizeable_cont_t<buychoice_t> buychoices;
     Alloc( buychoices, stooqs.len );
     auto idx_into_dates_per_stooq = AllocString<idx_t>( stooqs.len );
+    stack_resizeable_cont_t<u8> tickers;
+    Alloc( tickers, 1000 );
     ForLen( d, days ) {
-      if( d < 2 ) {
+      // TODO: increase lookbehind
+      day_t lastdays[10];
+      if( d <= _countof( lastdays ) ) {
         daily_value.mem[d] = folio_cash;
+        daily_holdings.mem[d] = {};
         continue;
       }
-
-      // TODO: increase lookbehind
-      auto day2 = days.mem[ d - 2 ];
-      auto day1 = days.mem[ d - 1 ];
-      auto day0 = days.mem[ d - 0 ];
-      AssertCrash( stooqs.len == day2.idx_into_dates_per_stooq.len );
-      AssertCrash( stooqs.len == day1.idx_into_dates_per_stooq.len );
-      AssertCrash( stooqs.len == day0.idx_into_dates_per_stooq.len );
+      For( i, 0, _countof( lastdays ) ) {
+        auto lastday = days.mem[ d - 1 - _countof( lastdays ) + i ];
+        lastdays[i] = lastday;
+        AssertCrash( stooqs.len == lastday.idx_into_dates_per_stooq.len );
+      }
 
       // Sell the holdings.
+      tickers.len = 0;
       while( folio.len ) {
         auto hold = folio.mem[folio.len - 1];
         auto s_held = hold.stock_idx;
         auto stooq_held = stooqs.mem[s_held];
+        auto day0 = days.mem[ d - 0 ];
         auto day0_idx_into_dates = day0.idx_into_dates_per_stooq.mem[s_held];
         auto day0_lo = stooq_held.los.mem[day0_idx_into_dates];
         auto day0_hi = stooq_held.his.mem[day0_idx_into_dates];
         //auto sell_price = day0_lo; // pessimistic
-        auto sell_price = lerp( day0_lo, day0_hi, 0.45 ); // slightly pessimistic
+        auto sell_price = lerp( day0_lo, day0_hi, 0.47 ); // slightly pessimistic
         //auto sell_price = lerp( day0_lo, day0_hi, 0.5 ); // neutral
         //auto sell_price = day0_hi; // optimistic
         auto sell_value = hold.nshares * sell_price;
         folio_cash += sell_value;
         RemBack( folio );
+
+        auto profit_per_share = sell_price - hold.cost_basis;
+        if( profit_per_share / hold.cost_basis >= 0.1 ) {
+          AddBackContents( &tickers, stooq_held.table_name );
+          if( folio.len ) {
+            *AddBack( tickers ) = ';';
+          }
+        }
       }
 
       daily_value.mem[d] = folio_cash;
+      auto holdings = AddPagelistSlice( pagelist, u8, _SIZEOF_IDX_T, tickers.len );
+      TMove( holdings.mem, ML( tickers ) );
+      daily_holdings.mem[d] = holdings;
 
       // Buy the best new holdings.
       rng_xorshift32_t rng;
-      Init( rng, 0x1234567812345678ULL );
+      u64 seed = 0x1234567812345678ULL;
+//      seed = 0x123ULL;
+      Init( rng, seed );
       AssertCrash( folio_cash >= 0 );
       buychoices.len = 0;
       ForLen( s, stooqs ) {
         auto stooq = stooqs.mem[s];
 
-        auto day2_idx_into_dates = day2.idx_into_dates_per_stooq.mem[s];
-        auto day1_idx_into_dates = day1.idx_into_dates_per_stooq.mem[s];
-        auto day0_idx_into_dates = day0.idx_into_dates_per_stooq.mem[s];
-        if( day2_idx_into_dates == MAX_idx ||
-            day1_idx_into_dates == MAX_idx ||
-            day0_idx_into_dates == MAX_idx )
-          continue;
-        auto day2_hi = stooq.his.mem[day2_idx_into_dates];
-        auto day1_hi = stooq.his.mem[day1_idx_into_dates];
-        auto day2_lo = stooq.los.mem[day2_idx_into_dates];
-        auto day1_lo = stooq.los.mem[day1_idx_into_dates];
-        auto day2_vol = stooq.volumes.mem[day2_idx_into_dates];
-        auto day1_vol = stooq.volumes.mem[day1_idx_into_dates];
+        bool not_enough_history = 0;
+        idx_t idx_into_dates[_countof( lastdays )];
+        For( i, 0, _countof( lastdays ) ) {
+          auto idx = lastdays[i].idx_into_dates_per_stooq.mem[s];
+          idx_into_dates[i] = idx;
+          if( idx == MAX_idx ) {
+            not_enough_history = 1;
+            break;
+          }
+        }
+        if( not_enough_history ) continue;
 
-        // TODO: stop using future information here.
-        auto day0_vol = stooq.volumes.mem[day0_idx_into_dates];
-        auto day0_hi = stooq.his.mem[day0_idx_into_dates];
-        auto day0_lo = stooq.los.mem[day0_idx_into_dates];
+        f64 d1dts[_countof( lastdays ) - 1];
+        For( i, 0, _countof( d1dts ) ) {
+          auto idx0 = idx_into_dates[i];
+          auto idx1 = idx_into_dates[i + 1];
+          auto hi0 = stooq.his.mem[idx0];
+          auto hi1 = stooq.his.mem[idx1];
+          auto lo0 = stooq.los.mem[idx0];
+          auto lo1 = stooq.los.mem[idx1];
+          auto value0 = 0.5 * ( hi0 + lo0 );
+          auto value1 = 0.5 * ( hi1 + lo1 );
+          auto d1dt = value1 - value0;
+          d1dts[i] = d1dt;
+        }
+        auto d1dt = 0.0;
+        For( i, 0, _countof( d1dts ) ) {
+          auto scale = Lerp_from_idx( 0.25, 1.0, i, 0, _countof( d1dts ) - 1 );
+          d1dt += scale * d1dts[i];
+        }
+        auto d2dt = 0.0;
+        For( i, 0, _countof( d1dts ) - 1 ) {
+          auto d1dt0 = d1dts[i];
+          auto d1dt1 = d1dts[i + 1];
+          auto scale = Lerp_from_idx( 0.25, 1.0, i, 0, _countof( d1dts ) - 2 );
+          d2dt += scale * ( d1dt1 - d1dt0 );
+        }
 
         // TODO: survivor bias; I think stooq data doesn't include stocks that died.
         //auto score = day1_lo - day2_hi; // absolute price increase, pessimistic
@@ -1037,16 +1088,46 @@ AppInit( app_t* app, tslice_t<slice_t> args )
         //auto score = day2_hi - day1_lo;
         //auto score = day1_lo / day2_hi;
         //auto score = day1_lo - day2_lo;
-        auto score = Zeta32( rng );
+        //auto score = Zeta32( rng );
+        //auto score = d1dt;
+        //auto score = d2dt;
+        auto score = d2dt + 0.5 * d1dt * d1dt;
+        score /= lerp( 0.5, 1.5, Zeta64( rng ) );
 
         // Cap volume buys to 1% of min daily trading volume over the last 3 days.
         // Any larger would affect price (outstrip other demand).
         // TODO: hyperparameter tuning here.
-        auto nshares_max = 0.01 * MIN3( day0_vol, day1_vol, day2_vol );
+        auto min_vol = MAX_f64;
+        For( i, 0, _countof( lastdays ) ) {
+          auto vol = stooq.volumes.mem[i];
+          min_vol = MIN( min_vol, vol );
+        }
+        auto nshares_max = 0.01 * min_vol;
+
+        // WARNING: we're using future information here (day0 data),
+        // since we need to estimate a buy price.
+        auto day0 = days.mem[ d - 0 ];
+        auto day0_idx_into_dates = day0.idx_into_dates_per_stooq.mem[s];
+        auto day0_hi = stooq.his.mem[day0_idx_into_dates];
+        auto day0_lo = stooq.los.mem[day0_idx_into_dates];
         //auto buy_price = day0_hi; // pessimistic
-        auto buy_price = lerp( day0_lo, day0_hi, 0.55 ); // slightly pessimistic
+        auto buy_price = lerp( day0_lo, day0_hi, 0.53 ); // slightly pessimistic
         //auto buy_price = lerp( day0_lo, day0_hi, 0.5 ); // neutral
         //auto buy_price = day0_lo; // optimistic
+
+        // Cap portfolio concentration in a single stock.
+        constant auto max_concentration = 0.01;
+        auto buy_max = folio_cash * max_concentration;
+        // nshares_max * buy_price vs. buy_max.
+        nshares_max = MIN( nshares_max, buy_max / buy_price );
+
+        // It looks like liquid stocks today have ~1% spread from daily high to low.
+        // To not lose tons of money on merchants, we need to stay within <10% of that 1% spread.
+        // That maps with the long-term market CAGR of ~10%:
+        //   0.10 / 250 trading days = 0.0004 = 0.04% gain per trading day, roughly.
+        // If we give that up to merchants, over the long term exponential growth kills us.
+        // We have to be on the positive side of that, more often than not.
+        // OPEN QUESTION: Does VWAP help with doing that?
 
         auto buychoice = AddBack( buychoices );
         buychoice->s = s;
@@ -1076,6 +1157,7 @@ AppInit( app_t* app, tslice_t<slice_t> args )
         auto buy_max = buy_price * nshares_max;
         auto hold = AddBack( folio );
         hold->stock_idx = buychoice.s;
+        hold->cost_basis = buy_price;
         if( folio_cash <= buy_max ) {
           hold->nshares = folio_cash / buy_price;
           folio_cash = 0;
@@ -1089,13 +1171,16 @@ AppInit( app_t* app, tslice_t<slice_t> args )
 
     stack_resizeable_cont_t<u8> rs;
     Alloc( rs, daily_value.len * 10 );
-    AddBackCStr( &rs, "daily_value,ln(daily_value)\r\n" );
+    AddBackCStr( &rs, "daily_value,ln(daily_value),holdings\r\n" );
     ForLen( dv, daily_value ) {
       auto value = daily_value.mem[dv];
       auto ln_value = Ln64( value );
+      auto holdings = daily_holdings.mem[dv];
       AddBackF64( &rs, value );
       AddBackCStr( &rs, "," );
       AddBackF64( &rs, ln_value );
+      AddBackCStr( &rs, "," );
+      AddBackContents( &rs, holdings );
       AddBackCStr( &rs, "\r\n" );
     }
     auto rs_filename = SliceFromCStr( "C:/admin/Desktop/daily_value.csv" );
@@ -1111,6 +1196,8 @@ AppInit( app_t* app, tslice_t<slice_t> args )
 
     Free( buychoices );
     Free( daily_value );
+    Free( daily_holdings );
+    Free( tickers );
     Free( idx_into_dates_per_stooq );
     Free( folio );
     Free( days );

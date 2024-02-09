@@ -13,4 +13,5 @@
 #include <bit>
 #include <algorithm>
 #include <atomic>
+#include <functional>
 //#include <stdatomic.h>

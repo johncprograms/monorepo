@@ -9,6 +9,23 @@ LogUI( const void* cstr ... )
 
 #define TEST 1
 
+using FnTest = void(*)();
+constexpr size_t g_ctests = 100;
+FnTest g_tests[g_ctests];
+size_t g_ntests = 0;
+
+struct RegisterTestObject
+{
+  RegisterTestObject( FnTest fn )
+  {
+    if( g_ntests >= g_ctests ) __debugbreak();
+    g_tests[g_ntests++] = fn;
+  }
+};
+#define ___JOIN( a, b ) a ## b
+#define __JOIN( a, b ) ___JOIN( a, b )
+#define RegisterTest static RegisterTestObject __JOIN( g_register_test_obj, __COUNTER__ ) = RegisterTestObject
+
 #include "os_mac.h"
 #include "os_windows.h"
 
@@ -29,6 +46,7 @@ LogUI( const void* cstr ... )
 #include "allocator_heap.h"
 #include "allocator_virtual.h"
 #include "allocator_heap_or_virtual.h"
+#include "rand.h"
 #include "cstr.h"
 #include "ds_slice.h"
 #include "ds_string.h"
@@ -41,6 +59,7 @@ LogUI( const void* cstr ... )
 #include "ds_stack_nonresizeable.h"
 #include "ds_stack_resizeable_cont.h"
 #include "ds_stack_resizeable_pagelist.h"
+#include "ds_stack_resizeable_pagestack.h"
 #include "ds_bitarray_nonresizeable_stack.h"
 #include "ds_zipset.h"
 #include "ds_queue_resizeable_pagelist.h"
@@ -56,7 +75,6 @@ LogUI( const void* cstr ... )
 #include "ds_hashset_cstyle.h"
 #include "ds_hashset_complexkey.h"
 #include "ds_hashset_nonzeroptrs.h"
-#include "rand.h"
 #include "ds_minheap_extractable.h"
 #include "ds_minheap_decreaseable.h"
 #include "ds_minheap_generic.h"
@@ -131,6 +149,10 @@ Main( u8* cmdline, idx_t cmdline_len )
     client.hwnd = GetActiveWindow();
   #endif
   g_client = &client;
+
+  For( i, 0, g_ntests ) {
+    g_tests[i]();
+  }
 
   TestSimplex();
   TestMathInteger();

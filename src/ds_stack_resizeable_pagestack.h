@@ -1,5 +1,7 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
+// TODO: change to stack_nonresizeable_stack_t for the page, to avoid an extra allocation/indirection.
+
 #define STACKRESIZEABLEPAGESTACK_PAGE   stack_resizeable_pagestack_page_t<T, Allocator, Allocation>
 TEA struct
 stack_resizeable_pagestack_page_t
@@ -12,8 +14,9 @@ AllocatePagestackPage( Allocator& alloc, idx_t page_capacity )
 {
   Allocation allocn = {};
   auto page = Allocate<STACKRESIZEABLEPAGESTACK_PAGE>( alloc, allocn, 1 );
-  Init( page->space, page_capacity, alloc );
+  Alloc( page->space, page_capacity, alloc );
   page->allocn = allocn;
+  return page;
 }
 TEA Inl void
 FreePage( Allocator& alloc, STACKRESIZEABLEPAGESTACK_PAGE* page )
@@ -32,7 +35,8 @@ stack_resizeable_pagestack_t
   //   we could share/inline a bunch of the code here, which sounds best i think.
   stack_resizeable_cont_t<STACKRESIZEABLEPAGESTACK_PAGE*> pages;
   idx_t default_page_capacity;
-  
+  idx_t len; // number of elements currently in the stack. Redundant, but useful.
+
   constant idx_t c_default_num_pages = 4000 / _SIZEOF_IDX_T;
 };
 TEA Inl void
@@ -40,14 +44,16 @@ Zero( STACKRESIZEABLEPAGESTACK& list )
 {
   Zero( list.pages );
   list.default_page_capacity = 0;
+  list.len = 0;
 }
 TEA Inl void
 Init( STACKRESIZEABLEPAGESTACK& list, idx_t nelems_capacity, Allocator alloc = {} )
 {
   AssertCrash( nelems_capacity );
-  Init( list.pages, STACKRESIZEABLEPAGESTACK::c_default_num_pages, alloc );
-  *AddBack( list.pages ) = AllocatePagestackPage( alloc, nelems_capacity );
+  Alloc( list.pages, STACKRESIZEABLEPAGESTACK::c_default_num_pages, alloc );
+  *AddBack( list.pages ) = AllocatePagestackPage<T>( alloc, nelems_capacity );
   list.default_page_capacity = nelems_capacity;
+  list.len = 0;
 }
 TEA Inl void
 Kill( STACKRESIZEABLEPAGESTACK& list )
@@ -56,6 +62,7 @@ Kill( STACKRESIZEABLEPAGESTACK& list )
     auto page = list.pages.mem[i];
     FreePage( list.pages.alloc, page );
   }
+  Zero( list );
 }
 TEA Inl void
 Reset( STACKRESIZEABLEPAGESTACK& list )
@@ -65,32 +72,36 @@ Reset( STACKRESIZEABLEPAGESTACK& list )
     FreePage( list.pages.alloc, page );
   }
   auto page_first = list.pages.mem[0];
-  page_first->len = 0;
+  page_first->space.len = 0;
+  list.len = 0;
 }
 // TODO: contiguous version that returns T* instead of copying.
 TEA Inl void
 AddBack( STACKRESIZEABLEPAGESTACK& list, T* src, idx_t src_len )
 {
+  list.len += src_len; // doing this first since nothing fails, and we modify src_len below.
   AssertCrash( list.pages.len );
   auto page = list.pages.mem[ list.pages.len - 1 ];
   AssertCrash( page );
   auto space = &page->space;
   auto len_remaining = space->capacity - space->len;
   auto num_add = MIN( src_len, len_remaining );
-  TMove( AddBack( space, num_add ), src, num_add );
+  TMove( AddBack( *space, num_add ), src, num_add );
   src += num_add;
   src_len -= num_add;
   if( src_len ) {
     list.default_page_capacity = MAX( 2 * list.default_page_capacity, src_len );
-    auto newpage = AllocatePagestackPage( list.pages.alloc, list.default_page_capacity );
+    auto newpage = AllocatePagestackPage<T>( list.pages.alloc, list.default_page_capacity );
     *AddBack( list.pages ) = newpage;
     auto newspace = &newpage->space;
-    TMove( AddBack( newspace, src_len ), src, src_len );
+    TMove( AddBack( *newspace, src_len ), src, src_len );
   }
 }
 TEA Inl void
 RemBack( STACKRESIZEABLEPAGESTACK& list, T* dst, idx_t dst_len )
 {
+  AssertCrash( dst_len <= list.len );
+  list.len -= dst_len; // doing this first since nothing fails, and we modify src_len below.
   auto& pages = list.pages;
   auto& pages_mem = list.pages.mem;
   auto& pages_len = list.pages.len;
@@ -100,7 +111,7 @@ RemBack( STACKRESIZEABLEPAGESTACK& list, T* dst, idx_t dst_len )
     auto space = &page->space;
     auto num_rem = MIN( dst_len, space->len );
     AssertCrash( num_rem );
-    RemBack( space, dst, num_rem );
+    RemBack( *space, dst, num_rem );
     dst += num_rem;
     dst_len -= num_rem;
     if( !space->len  &&  pages_len > 1 ) {
@@ -112,22 +123,22 @@ RemBack( STACKRESIZEABLEPAGESTACK& list, T* dst, idx_t dst_len )
 }
 
 
-#define PAGERELATIVEPOS   pagerelativepos_t<T, Allocation>
+#define STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS   stack_resizeable_pagestack_pagerelativepos_t<T, Allocation>
 template< typename T, typename Allocation = allocation_heap_or_virtual_t >
 struct
-pagerelativepos_t
+stack_resizeable_pagestack_pagerelativepos_t
 {
   STACKRESIZEABLEPAGE* page;
   idx_t idx;
 };
 
-TEA Inl PAGERELATIVEPOS
+TEA Inl STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS
 MakeIteratorAtLinearIndex( STACKRESIZEABLEPAGESTACK& list, idx_t idx )
 {
   AssertCrash( idx < list.totallen );
   ForNext( page, list.first_page ) {
     if( idx < page->len ) {
-      PAGERELATIVEPOS pos;
+      STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS pos;
       pos.page = page;
       pos.idx = idx;
       return pos;
@@ -139,7 +150,7 @@ MakeIteratorAtLinearIndex( STACKRESIZEABLEPAGESTACK& list, idx_t idx )
 }
 
 TEA Inl T*
-GetElemAtIterator( STACKRESIZEABLEPAGESTACK& list, PAGERELATIVEPOS pos )
+GetElemAtIterator( STACKRESIZEABLEPAGESTACK& list, STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS pos )
 {
   auto elem = pos.page->mem + pos.idx;
   return elem;
@@ -147,14 +158,14 @@ GetElemAtIterator( STACKRESIZEABLEPAGESTACK& list, PAGERELATIVEPOS pos )
 
 template< typename T, typename Allocation = allocation_heap_or_virtual_t >
 Inl bool
-CanIterate( PAGERELATIVEPOS pos )
+CanIterate( STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS pos )
 {
   auto r = pos.page;
   return r;
 }
 
-TEA Inl PAGERELATIVEPOS
-IteratorMoveR( STACKRESIZEABLEPAGESTACK& list, PAGERELATIVEPOS pos, idx_t nelems = 1 )
+TEA Inl STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS
+IteratorMoveR( STACKRESIZEABLEPAGESTACK& list, STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS pos, idx_t nelems = 1 )
 {
   auto r = pos;
   r.idx += nelems;
@@ -185,6 +196,70 @@ LookupElemByLinearIndex( STACKRESIZEABLEPAGESTACK& list, idx_t idx )
   return 0;
 }
 
+#if defined(TEST)
+
+RegisterTest([]()
+{
+  stack_resizeable_pagestack_t<idx_t> s;
+  Init( s, 10 );
+  stack_resizeable_cont_t<idx_t> verif;
+  Alloc( verif, 100000 );
+  auto FnReset = [&]() {
+    Reset( s );
+    AssertCrash( s.pages.len == 1 );
+    AssertCrash( s.pages.mem[0]->space.len == 0 );
+    AssertCrash( s.len == 0 );
+    verif.len = 0;
+  };
+  rng_xorshift32_t rng;
+  Init( rng, 0x1234567812345678ULL );
+  constant idx_t c_nchunk = 10;
+  idx_t counter = 0;
+  auto FnAddBack = [&]() {
+    stack_nonresizeable_stack_t<idx_t, c_nchunk> tmp;
+    Zero( tmp );
+    auto nchunk = Rand32( rng ) % c_nchunk;
+    For( c, 0, nchunk ) {
+      *AddBack( tmp ) = counter;
+      *AddBack( verif ) = counter;
+      counter += 1;
+    }
+    auto len_before = s.len;
+    AddBack( s, ML( tmp ) );
+    AssertCrash( s.len == len_before + tmp.len );
+  };
+  auto FnRemBack = [&]() {
+    stack_nonresizeable_stack_t<idx_t, c_nchunk> tmp;
+    tmp.len = MIN( s.len, Rand32( rng ) % c_nchunk );
+    auto len_before = s.len;
+    RemBack( s, ML( tmp ) );
+    AssertCrash( s.len == len_before - tmp.len );
+    // verify that the pop order is consistent with a stack by comparison with a simpler one.
+    // TODO: should the contract be s.t. tmp is reversed, or not?
+    ReverseForLen( t, tmp ) {
+      auto verif_last = verif.mem[ verif.len - 1 ];
+      RemBack( verif );
+      AssertCrash( tmp.mem[t] == verif_last );
+    }
+  };
+  std::function<void()> fns[] = {
+    FnAddBack,
+    FnRemBack,
+  };
+  For( r, 0, 1000 ) {
+    For( i, 0, 10000 ) {
+      auto idx = Rand32( rng ) % _countof( fns );
+      fns[idx]();
+    }
+    FnAddBack();
+    FnReset();
+  }
+  Kill( s );
+  Free( verif );
+});
+
+#endif // defined(TEST)
+
 
 // TODO: we really need an easier way of iterating pagearrays
 
@@ -204,11 +279,11 @@ LookupElemByLinearIndex( STACKRESIZEABLEPAGESTACK& list, idx_t idx )
     pa_iter = PageArrayIteratorR( list, pa_iter, 1 )
     )
 
-  Templ Inl PAGERELATIVEPOS
+  Templ Inl STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS
   PageArrayIteratorMake
 
   Templ Inl bool
-  IteratorLessThan( STACKRESIZEABLEPAGESTACK& list, PAGERELATIVEPOS pos, idx_t end )
+  IteratorLessThan( STACKRESIZEABLEPAGESTACK& list, STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS pos, idx_t end )
   {
   }
 
