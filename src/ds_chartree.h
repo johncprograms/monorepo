@@ -63,10 +63,7 @@ Uniquify( CHARTREE* tree, slice_t str )
 
 
 
-#if defined(TEST)
-
-void
-TestChartree()
+RegisterTest([]()
 {
   chartree_t<allocator_pagelist_t, allocation_pagelist_t> tree;
   pagelist_t mem;
@@ -89,6 +86,4 @@ TestChartree()
   }
 
   Kill( mem );
-}
-
-#endif // defined(TEST)
+});

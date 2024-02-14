@@ -126,10 +126,7 @@ MinHeapVerify( Data* data, idx_t len )
 
 
 
-#if defined(TEST)
-
-Inl void
-TestMinHeapGeneric()
+RegisterTest([]()
 {
   rng_lcg_t lcg;
   Init( lcg, 0x123456789 );
@@ -167,6 +164,4 @@ TestMinHeapGeneric()
     MemHeapFree( sorted.mem );
     Free( data );
   }
-}
-
-#endif // defined(TEST)
+});

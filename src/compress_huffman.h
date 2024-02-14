@@ -355,10 +355,7 @@ HuffmanDecode(
 }
 
 
-#if defined(TEST)
-
-void
-TestHuffman()
+RegisterTest([]()
 {
 	{
 		auto bytestream = SliceFromCStr( "abbcccddddeeeee" );
@@ -417,6 +414,4 @@ TestHuffman()
 			Free( bytestream );
 		}
 	}
-}
-
-#endif // defined(TEST)
+});

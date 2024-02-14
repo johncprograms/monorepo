@@ -44,6 +44,11 @@ Capacity( STACKNONRESIZEABLE& stack )
 {
   return stack.capacity;
 }
+TEA Inl idx_t
+LenRemaining( STACKNONRESIZEABLE& stack )
+{
+  return stack.capacity - stack.len;
+}
 TEA Inl T*
 AddBack( STACKNONRESIZEABLE& stack, idx_t nelems = 1 )
 {
@@ -59,11 +64,11 @@ AddAt( STACKNONRESIZEABLE& stack, idx_t idx, idx_t nelems = 1 )
   AssertCrash( idx <= stack.len );
   if( idx < stack.len ) {
     auto nshift = stack.len - idx;
-    Memmove(
+    TMove(
       stack.mem + idx + nelems,
       stack.mem + idx,
-      sizeof( T ) * nshift
-    );
+      nshift
+      );
   }
   auto r = stack.mem + idx;
   stack.len += nelems;
@@ -82,7 +87,23 @@ RemBack( STACKNONRESIZEABLE& stack, T* dst, idx_t dst_len = 1 )
   AssertCrash( stack.len <= stack.capacity );
   AssertCrash( dst_len <= stack.len );
   stack.len -= dst_len;
-  TMove( dst, stack.mem + stack.len, dst_len );
+  TMove(
+    dst,
+    stack.mem + stack.len,
+    dst_len
+    );
+}
+TEA Inl void
+RemBackReverse( STACKNONRESIZEABLE& stack, T* dst, idx_t dst_len = 1 )
+{
+  AssertCrash( stack.len <= stack.capacity );
+  AssertCrash( dst_len <= stack.len );
+  stack.len -= dst_len;
+  TMoveReverse(
+    dst,
+    stack.mem + stack.len,
+    dst_len
+    );
 }
 TEA Inl void
 RemAt( STACKNONRESIZEABLE& stack, idx_t idx, idx_t nelems = 1 )
@@ -90,10 +111,10 @@ RemAt( STACKNONRESIZEABLE& stack, idx_t idx, idx_t nelems = 1 )
   AssertCrash( stack.len <= stack.capacity );
   AssertCrash( idx + nelems <= stack.len );
   if( idx + nelems < stack.len ) {
-    Memmove(
+    TMove(
       stack.mem + idx,
       stack.mem + idx + nelems,
-      sizeof( T ) * ( stack.len - idx - nelems )
+      stack.len - idx - nelems
       );
   }
   stack.len -= nelems;

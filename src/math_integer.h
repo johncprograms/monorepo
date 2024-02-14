@@ -206,10 +206,7 @@ AModB( s64 a, u64 b )
 }
 
 
-#if defined(TEST)
-
-static void
-TestMathInteger()
+RegisterTest([]()
 {
   struct
   modtest_t
@@ -261,6 +258,5 @@ TestMathInteger()
     auto r = AModB( test.a, test.b );
     AssertCrash( r == test.r );
   }
-}
+});
 
-#endif // defined(TEST)

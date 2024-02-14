@@ -48,6 +48,15 @@
       </ArrayItems>
     </Expand>
   </Type>
+  <Type Name="stack_nonresizeable_t&lt;*,*,*&gt;">
+    <DisplayString>{{ {len} / {capacity} }}</DisplayString>
+    <Expand>
+      <ArrayItems>
+        <Size>len</Size>
+        <ValuePointer>mem</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
   <Type Name="tslice_t&lt;*&gt;">
     <DisplayString>{{ len={len} }}</DisplayString>
     <Expand>

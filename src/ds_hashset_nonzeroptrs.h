@@ -315,10 +315,7 @@ Remove(
 
 
 
-#if defined(TEST)
-
-static void
-TestHashsetNonzeroptrs()
+RegisterTest([]()
 {
   constant idx_t count = 256;
 
@@ -399,6 +396,4 @@ TestHashsetNonzeroptrs()
 
   Free( values );
   Kill( &set );
-}
-
-#endif // defined(TEST)
+});

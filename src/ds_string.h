@@ -164,18 +164,15 @@ AllocFormattedString( const void* cstr ... )
 
 
 
-#if defined(TEST)
-
-struct
-test_bool_void_t
+RegisterTest([]()
 {
-  bool b;
-  void* p;
-};
-
-static void
-TestString()
-{
+  struct
+  test_bool_void_t
+  {
+    bool b;
+    void* p;
+  };
+  
   idx_t indices[] = {
     10, 5, 7, 8, 1, 3, 5, 5000, 1221, 200, 0, 20,
   };
@@ -238,6 +235,5 @@ TestString()
 
     Free( str );
   }
-}
+});
 
-#endif // defined(TEST)

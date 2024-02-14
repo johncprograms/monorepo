@@ -1424,10 +1424,7 @@ DeleteRecur(
 
 
 
-#if defined(TEST)
-
-static void
-TestBtree()
+RegisterTest([]()
 {
   constexpr idx_t C = 10;
   btree_t<u32, C, allocator_pagelist_t, allocation_pagelist_t> t;
@@ -1456,9 +1453,7 @@ TestBtree()
   Free( flat );
   Free( infos );
   Kill( mem );
-}
-
-#endif // defined(TEST)
+});
 
 
 

@@ -1612,10 +1612,7 @@ FsFindDirs(
 
 
 
-#if defined(TEST)
-
-static void
-TestFilesys()
+RegisterTest([]()
 {
   {
     fsobj_t cwd;
@@ -1707,6 +1704,5 @@ TestFilesys()
   Kill( pagelist );
   Free( spans );
 #endif
-}
+});
 
-#endif // defined(TEST)

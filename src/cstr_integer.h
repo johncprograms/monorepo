@@ -311,8 +311,6 @@ CsTo_s8( u8* src, idx_t src_len, u8 radix = 10 )
 
 
 
-#if defined(TEST)
-
 Templ struct
 test_cstr_t
 {
@@ -344,8 +342,7 @@ ValidateS( test_cstr_t<T>& test )
   AssertCrash( value == test.value );
 };
 
-static void
-TestCstrInteger()
+RegisterTest([]()
 {
   test_cstr_t<u8> cases_u8[] = {
     { 0, Str( "0" ) },
@@ -420,6 +417,4 @@ TestCstrInteger()
   ForEach( test, cases_s64 ) {
     ValidateS( test );
   }
-}
-
-#endif // defined(TEST)
+});

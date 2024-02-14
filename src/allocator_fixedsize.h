@@ -275,10 +275,7 @@ Free( generalfsalloc_t* g, void* pv )
 
 
 
-#if defined(TEST)
-
-Inl void
-TestFsalloc()
+RegisterTest([]()
 {
   rng_xorshift32_t rng;
   Init( rng, 0x1234567812345678ULL );
@@ -370,6 +367,4 @@ TestFsalloc()
   }
 
   Free( allocs );
-}
-
-#endif // defined(TEST)
+});

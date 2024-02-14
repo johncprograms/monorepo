@@ -150,10 +150,7 @@ MinHeapExtract(
 
 
 
-#if defined(TEST)
-
-Inl void
-TestMinHeap()
+RegisterTest([]()
 {
   rng_lcg_t lcg;
   Init( lcg, 0x123456789 );
@@ -198,6 +195,4 @@ TestMinHeap()
     MemHeapFree( int_from_ext.mem );
     MemHeapFree( ext_from_int.mem );
   }
-}
-
-#endif // defined(TEST)
+});

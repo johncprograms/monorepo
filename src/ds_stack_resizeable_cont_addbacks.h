@@ -73,14 +73,3 @@ AddBackSInt(
   AddBackContents( array, SliceFromArray( tmp ) );
 }
 
-
-
-#if defined(TEST)
-
-static void
-TestArrayAddBackCustom()
-{
-
-}
-
-#endif // defined(TEST)

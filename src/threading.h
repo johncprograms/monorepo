@@ -729,8 +729,6 @@ MainThreadKill()
 
 
 
-#if defined(TEST)
-
 __ExecuteOutput( OutputForExecute )
 {
   using pa_t = stack_resizeable_pagelist_t<u8>;
@@ -739,8 +737,7 @@ __ExecuteOutput( OutputForExecute )
   Memmove( dst, ML( *message ) );
 }
 
-Inl void
-TestExecute()
+RegisterTest([]()
 {
   stack_resizeable_pagelist_t<u8> output;
   Init( output, 64 );
@@ -751,6 +748,4 @@ TestExecute()
   AssertCrash( !r );
   AssertCrash( MemEqual( ML( expected ), ML( *output_pos.page ) ) );
   Kill( output );
-}
-
-#endif // defined(TEST)
+});

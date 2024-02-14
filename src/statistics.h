@@ -882,8 +882,6 @@ PixelSnap(
 }
 
 
-#if defined(TEST)
-
 Inl bool
 RoughlyEqual(
   f64* a,
@@ -902,8 +900,7 @@ RoughlyEqual(
   return 1;
 }
 
-Inl void
-TestStatistics()
+RegisterTest([]()
 {
   auto epsilon = 1e-6;
 
@@ -1084,6 +1081,5 @@ TestStatistics()
     AssertCrash( RoughlyEqual( AL( Re_f ), AL( Re_expected ), epsilon ) );
     AssertCrash( RoughlyEqual( AL( Im_f ), AL( Im_expected ), epsilon ) );
   }
-}
+});
 
-#endif // defined(TEST)

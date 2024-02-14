@@ -157,10 +157,7 @@ UnorderedRemAt( STACK& stack, idx_t idx )
 
 
 
-#if defined(TEST)
-
-static void
-TestArray()
+RegisterTest([]()
 {
   idx_t indices[] = {
     10, 5, 7, 8, 1, 3, 5, 5000, 1221, 200, 0, 20, 2
@@ -282,10 +279,9 @@ TestArray()
 
     Free( stack );
   }
-}
+});
 
-Inl void
-TestBinSearch()
+RegisterTest([]()
 {
   {
     idx_t sorted[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
@@ -311,6 +307,5 @@ TestBinSearch()
       AssertCrash( sorted_insert_idx == expect );
     }
   }
-}
+});
 
-#endif // defined(TEST)

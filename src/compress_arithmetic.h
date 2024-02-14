@@ -531,10 +531,7 @@ RDecode(
 	}
 }
 
-#if defined(TEST)
-
-void
-TestCompressArith()
+RegisterTest([]()
 {
 	{
 		auto bytestream = SliceFromCStr( "abbccc" );
@@ -614,9 +611,7 @@ TestCompressArith()
 		}
 	}
 #endif
-}
-
-#endif // defined(TEST)
+});
 
 #if 0
 

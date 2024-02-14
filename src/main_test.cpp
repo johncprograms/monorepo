@@ -161,44 +161,6 @@ Main( u8* cmdline, idx_t cmdline_len )
     g_tests[i]();
   }
 
-  TestSimplex();
-  TestMathInteger();
-  TestString();
-  TestStringSequenceAlignment();
-  TestArray();
-  TestArrayAddBackCustom();
-  TestBinSearch();
-  TestPagelist();
-  TestCstr();
-  TestCstrFloat();
-  TestCstrInteger();
-  TestStatistics();
-  TestCoreText();
-  TestBuf();
-  #if !defined(MAC)
-  // TODO: resolve issues around .config file.
-  TestTxt();
-  // TODO: reimplement filesys for mac
-  TestFilesys();
-  // TODO: reimplement Execute for mac
-  TestExecute();
-  #endif
-  TestHashset();
-  TestHashsetNonzeroptrs();
-  TestHashsetComplexkey();
-  TestIdxHashset();
-  TestChartree();
-  TestRng();
-  TestMathFloat();
-  TestGraph();
-  TestMinHeap();
-  TestMinHeapGeneric();
-  TestRLE();
-  TestHuffman();
-  TestCompressArith();
-  TestBtree();
-  TestFsalloc();
-
   CalcJunk();
 
 #if defined(WIN)

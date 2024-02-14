@@ -259,10 +259,7 @@ IntervalsOverlap( f32 x0, f32 x1, f32 y0, f32 y1, f32 epsilon )
 
 
 
-#if defined(TEST)
-
-Inl void
-TestMathFloat()
+RegisterTest([]()
 {
   struct
   {
@@ -374,6 +371,5 @@ TestMathFloat()
 //    { MAX_u64, Str( "18446744073709551615" ) },
 //    { MIN_s64, Str( "-9223372036854775808" ) },
 //    { MAX_s64, Str( "9223372036854775807" ) },
-}
+});
 
-#endif // defined(TEST)

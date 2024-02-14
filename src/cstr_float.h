@@ -991,10 +991,7 @@ CsToFloat32(
 
 
 
-#if defined(TEST)
-
-static void
-TestCstrFloat()
+RegisterTest([]()
 {
   {
     f32 d;
@@ -1045,6 +1042,4 @@ TestCstrFloat()
     Kill( d );
     Kill( e );
   }
-}
-
-#endif // defined(TEST)
+});

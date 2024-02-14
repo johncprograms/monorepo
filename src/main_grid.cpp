@@ -3234,9 +3234,9 @@ DrawGraph(
         );
     }
     // pick a new, different color to use.
-    rgba_col.x = MIN( Mod32( rgba_col.x + 0.30f, 1.01f ), 1.0f );
-    rgba_col.y = MIN( Mod32( rgba_col.x + 0.23f, 1.01f ), 1.0f );
-    rgba_col.z = MIN( Mod32( rgba_col.x + 0.19f, 1.01f ), 1.0f );
+    rgba_col.x = Min<f32>( Mod32( rgba_col.x + 0.30f, 1.01f ), 1.0f );
+    rgba_col.y = Min<f32>( Mod32( rgba_col.x + 0.23f, 1.01f ), 1.0f );
+    rgba_col.z = Min<f32>( Mod32( rgba_col.x + 0.19f, 1.01f ), 1.0f );
   }
 }
 

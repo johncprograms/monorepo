@@ -395,10 +395,7 @@ GetElement(
 
 
 
-#if defined(TEST)
-
-static void
-TestIdxHashset()
+RegisterTest([]()
 {
   idx_hashset_t set;
   Init(
@@ -500,6 +497,4 @@ TestIdxHashset()
   Free( idx_ext );
 
   Kill( set );
-}
-
-#endif // defined(TEST)
+});

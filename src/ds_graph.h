@@ -1865,10 +1865,7 @@ LayoutSimpleSpring(
 
 
 
-#if defined(TEST)
-
-Inl void
-TestGraph()
+RegisterTest([]()
 {
   rng_lcg_t lcg;
   Init( lcg, 0x123456789 );
@@ -2127,9 +2124,7 @@ TestGraph()
       }
     }
   }
-}
-
-#endif // defined(TEST)
+});
 
 //ShortestPathsFloydWarshall(
 //  n_t N,

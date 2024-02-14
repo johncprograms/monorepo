@@ -94,10 +94,7 @@ LOOP:
 }
 
 
-#if defined(TEST)
-
-void
-TestSimplex()
+RegisterTest([]()
 {
   f32 slack_matrix[4*4] = {
     -2.0f, -3.0f, -1.0f, 5.0f,
@@ -107,7 +104,7 @@ TestSimplex()
   };
   auto z = SimplexMaximize( 3, 3, slack_matrix );
   AssertCrash( z == 13.0f );
-}
+});
 
 
 #if 0
@@ -190,5 +187,3 @@ LOOP:
   auto z = slack[M][N];
   AssertCrash( z == 13.0f );
 #endif
-
-#endif // defined(TEST)

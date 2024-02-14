@@ -441,12 +441,3 @@ template<typename Val> using hashset_f64_t =
     HashsetTraits_F64
     >;
 
-
-#if defined(TEST)
-
-static void
-TestHashsetComplexkey()
-{
-}
-
-#endif // defined(TEST)

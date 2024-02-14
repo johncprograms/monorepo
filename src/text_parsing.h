@@ -512,10 +512,7 @@ TrimSpacetabsPrefix( slice_t value )
 }
 
 
-#if defined(TEST)
-
-static void
-TestCoreText()
+RegisterTest([]()
 {
   {
     stack_resizeable_cont_t<slice32_t> lines;
@@ -570,6 +567,5 @@ TestCoreText()
       AssertCrash( count == cstr.value );
     }
   }
-}
+});
 
-#endif // defined(TEST)

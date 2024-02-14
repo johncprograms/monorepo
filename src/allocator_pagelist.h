@@ -241,10 +241,7 @@ Inl void Reset( allocator_pagelist_t& alloc )
 
 
 
-#if defined(TEST)
-
-Inl void
-TestPagelist()
+RegisterTest([]()
 {
   struct
   bytes16408_t
@@ -282,9 +279,7 @@ TestPagelist()
 
     Kill( list );
   }
-}
-
-#endif // defined(TEST)
+});
 
 
 

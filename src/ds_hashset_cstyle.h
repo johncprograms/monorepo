@@ -384,10 +384,7 @@ HASHSET_ELEM_HASH( Hash_SliceContents )
 
 
 
-#if defined(TEST)
-
-static void
-TestHashset()
+RegisterTest([]()
 {
   // TODO: test overwrite_assoc_if_already_there
 
@@ -469,6 +466,4 @@ TestHashset()
   AssertCrash( !found );
 
   Kill( set );
-}
-
-#endif // defined(TEST)
+});

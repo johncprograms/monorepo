@@ -139,6 +139,14 @@ TMove( T* dst, T* src, idx_t num_elements )
 }
 
 Templ Inl void
+TMoveReverse( T* dst, T* src, idx_t num_elements )
+{
+  while( num_elements-- ) {
+    *dst++ = *src++;
+  }
+}
+
+Templ Inl void
 TZero( T* dst, idx_t num_elements )
 {
   Memzero( dst, num_elements * sizeof( T ) );

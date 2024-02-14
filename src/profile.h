@@ -679,7 +679,7 @@ ProfOutputZoneStats()
     if( !filename )
       filename = stats.file.mem - 1;
     filename += 1; // skip slash
-    auto tmpsize = MIN( CstrLength( filename ), FILE_W );
+    auto tmpsize = Min<idx_t>( CstrLength( filename ), FILE_W );
     Clear( tmp );
     Memmove( AddBack( tmp, tmpsize ), filename, tmpsize );
     *AddBack( tmp ) = 0;
@@ -688,7 +688,7 @@ ProfOutputZoneStats()
 
     LogInline( "%7u   ", stats.line );
 
-    tmpsize = MIN( CstrLength( stats.name ), FUNCTION_W );
+    tmpsize = Min<idx_t>( CstrLength( stats.name ), FUNCTION_W );
     Clear( tmp );
     Memmove( AddBack( tmp, tmpsize ), stats.name, tmpsize );
     *AddBack( tmp ) = 0;

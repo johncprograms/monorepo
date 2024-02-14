@@ -1833,7 +1833,8 @@ CursorLineU(
 {
   AssertCrash( *y < NLines( buf ) );
   *y = MAX( *y, dy ) - dy;
-  *x = MIN( x_virtual, CursorInlineEOL( buf, *y ) );
+  auto new_eol = CursorInlineEOL( buf, *y );
+  *x = MIN( x_virtual, new_eol );
 }
 Inl void
 CursorLineD(
@@ -1847,7 +1848,8 @@ CursorLineD(
   AssertCrash( *y < NLines( buf ) );
   auto last_line = LastLine( buf );
   *y = MIN( last_line, *y + dy );
-  *x = MIN( x_virtual, CursorInlineEOL( buf, *y ) );
+  auto new_eol = CursorInlineEOL( buf, *y );
+  *x = MIN( x_virtual, new_eol );
 }
 
 
@@ -1938,15 +1940,6 @@ AllocContents(
 
 
 
-#if defined(TEST)
-
-struct
-test_bufchange_t
-{
-  slice_t* str_old;
-  slice_t* str_new;
-};
-
 Inl void
 AssertCrashBuf( buf_t& buf, u8* str, eoltype_t eoltype )
 {
@@ -1960,9 +1953,15 @@ AssertCrashBuf( buf_t& buf, u8* str )
   AssertCrashBuf( buf, str, eoltype_t::crlf );
 }
 
-static void
-TestBuf()
+RegisterTest([]()
 {
+  struct
+  test_bufchange_t
+  {
+    slice_t* str_old;
+    slice_t* str_new;
+  };
+  
   static u8 dump2[4096];
 
   buf_t buf;
@@ -2500,6 +2499,5 @@ TestBuf()
 
     Kill( &buf );
   }
-}
+});
 
-#endif // defined(TEST)

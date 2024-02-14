@@ -49,10 +49,7 @@ RunLengthDecode(
 }
 
 
-#if defined(TEST)
-
-static void
-TestRLE()
+RegisterTest([]()
 {
   constant idx_t N = 50;
   u8 input[N];
@@ -85,6 +82,4 @@ TestRLE()
       AssertCrash( input_i == decoded_i );
     }
   }
-}
-
-#endif // defined(TEST)
+});

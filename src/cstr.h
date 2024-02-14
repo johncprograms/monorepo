@@ -622,13 +622,3 @@ Format( u8* dst, idx_t dstlen, u8* format, idx_t formatlen, ... )
 }
 #endif
 
-
-#if defined(TEST)
-
-static void
-TestCstr()
-{
-
-}
-
-#endif // defined(TEST)

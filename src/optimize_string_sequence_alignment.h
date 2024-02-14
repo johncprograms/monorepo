@@ -1018,18 +1018,6 @@ LSingleCharY:
 
 
 
-#if defined(TEST)
-
-struct
-test_hirschberg_t
-{
-  const void* x;
-  const void* y;
-  const void* z;
-  const void* w;
-  // TODO: cost params?
-};
-
 Inl s32
 CostInsDel( u8 c )
 {
@@ -1041,9 +1029,18 @@ CostRep( u8 a, u8 b )
   return a == b  ?  2  :  -1;
 }
 
-static void
-TestStringSequenceAlignment()
+RegisterTest([]()
 {
+  struct
+  test_hirschberg_t
+  {
+    const void* x;
+    const void* y;
+    const void* z;
+    const void* w;
+    // TODO: cost params?
+  };
+
   {
     s32 expected[] = {
       // Reference result F matrix:
@@ -1248,6 +1245,5 @@ TestStringSequenceAlignment()
       Free( buffer2 );
     }
   }
-}
+});
 
-#endif // defined(TEST)

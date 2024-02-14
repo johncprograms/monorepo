@@ -1,12 +1,13 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
 // TODO: change to stack_nonresizeable_stack_t for the page, to avoid an extra allocation/indirection.
+//   the problem there is that the page capacity is dynamic.
 
 #define STACKRESIZEABLEPAGESTACK_PAGE   stack_resizeable_pagestack_page_t<T, Allocator, Allocation>
 TEA struct
 stack_resizeable_pagestack_page_t
 {
-  deque_nonresizeable_t<T, Allocator, Allocation> space;
+  stack_nonresizeable_t<T, Allocator, Allocation> space;
   Allocation allocn;
 };
 TEA Inl STACKRESIZEABLEPAGESTACK_PAGE*
@@ -14,14 +15,14 @@ AllocatePagestackPage( Allocator& alloc, idx_t page_capacity )
 {
   Allocation allocn = {};
   auto page = Allocate<STACKRESIZEABLEPAGESTACK_PAGE>( alloc, allocn, 1 );
-  Init( page->space, page_capacity, alloc );
+  Alloc( page->space, page_capacity, alloc );
   page->allocn = allocn;
   return page;
 }
 TEA Inl void
 FreePage( Allocator& alloc, STACKRESIZEABLEPAGESTACK_PAGE* page )
 {
-  Kill( page->space );
+  Free( page->space );
   Allocation allocn = page->allocn;
   Free( alloc, allocn, page );
 }
@@ -35,7 +36,6 @@ stack_resizeable_pagestack_t
   //   for simplest generated code we'd dedupe, so probably it's worth doing.
   //   we could share/inline a bunch of the code here, which sounds best i think.
   stack_resizeable_cont_t<STACKRESIZEABLEPAGESTACK_PAGE*> pages;
-  idx_t default_page_capacity;
   idx_t len; // number of elements currently in the stack. Redundant, but useful.
 
   constant idx_t c_default_num_pages = 4000 / _SIZEOF_IDX_T;
@@ -44,7 +44,6 @@ TEA Inl void
 Zero( STACKRESIZEABLEPAGESTACK& list )
 {
   Zero( list.pages );
-  list.default_page_capacity = 0;
   list.len = 0;
 }
 TEA Inl void
@@ -53,7 +52,6 @@ Init( STACKRESIZEABLEPAGESTACK& list, idx_t nelems_capacity, Allocator alloc = {
   AssertCrash( nelems_capacity );
   Alloc( list.pages, STACKRESIZEABLEPAGESTACK::c_default_num_pages, alloc );
   *AddBack( list.pages ) = AllocatePagestackPage<T>( alloc, nelems_capacity );
-  list.default_page_capacity = nelems_capacity;
   list.len = 0;
 }
 TEA Inl void
@@ -63,6 +61,7 @@ Kill( STACKRESIZEABLEPAGESTACK& list )
     auto page = list.pages.mem[i];
     FreePage( list.pages.alloc, page );
   }
+  Free( list.pages );
   Zero( list );
 }
 TEA Inl void
@@ -73,7 +72,8 @@ Reset( STACKRESIZEABLEPAGESTACK& list )
     FreePage( list.pages.alloc, page );
   }
   auto page_first = list.pages.mem[0];
-  Clear( page_first->space );
+  page_first->space.len = 0;
+  list.pages.len = 1;
   list.len = 0;
 }
 // TODO: contiguous version that returns T* instead of copying.
@@ -88,22 +88,27 @@ AddBack( STACKRESIZEABLEPAGESTACK& list, T* src, idx_t src_len )
   {
     auto len_remaining = LenRemaining( *space );
     auto num_add = MIN( src_len, len_remaining );
-    idx_t num_added = 0;
-    AddBack( *space, src, num_add, &num_added );
-    AssertCrash( num_added == num_add );
-  //  TMove( AddBack( *space, num_add ), src, num_add );
+//    idx_t num_added = 0;
+//    AddBack( *space, src, num_add, &num_added );
+//    AssertCrash( num_added == num_add );
+    TMove( AddBack( *space, num_add ), src, num_add );
     src += num_add;
     src_len -= num_add;
   }
   if( src_len ) {
-    list.default_page_capacity = MAX( 2 * list.default_page_capacity, src_len );
-    auto newpage = AllocatePagestackPage<T>( list.pages.alloc, list.default_page_capacity );
+    AssertCrash( space->len <= MAX_idx / 2 );
+    auto new_default = 2 * space->len;
+    while( src_len > new_default ) {
+      AssertCrash( new_default <= MAX_idx / 2 );
+      new_default *= 2;
+    }
+    auto newpage = AllocatePagestackPage<T>( list.pages.alloc, new_default );
     *AddBack( list.pages ) = newpage;
     auto newspace = &newpage->space;
-    idx_t num_added = 0;
-    AddBack( *newspace, src, src_len, &num_added );
-    AssertCrash( num_added == src_len );
-//    TMove( AddBack( *newspace, src_len ), src, src_len );
+//    idx_t num_added = 0;
+//    AddBack( *newspace, src, src_len, &num_added );
+//    AssertCrash( num_added == src_len );
+    TMove( AddBack( *newspace, src_len ), src, src_len );
   }
 }
 TEA Inl void
@@ -115,13 +120,14 @@ RemBack( STACKRESIZEABLEPAGESTACK& list, T* dst, idx_t dst_len )
   auto& pages_mem = list.pages.mem;
   auto& pages_len = list.pages.len;
   AssertCrash( pages_len );
+  auto dst_write = dst + dst_len;
   while( dst_len ) {
     auto page = pages_mem[ pages_len - 1 ];
     auto space = &page->space;
     auto num_rem = MIN( dst_len, space->len );
     AssertCrash( num_rem );
-    RemBack( *space, dst, num_rem );
-    dst += num_rem;
+    dst_write -= num_rem;
+    RemBackReverse( *space, dst_write, num_rem );
     dst_len -= num_rem;
     if( !space->len  &&  pages_len > 1 ) {
       FreePage( pages.alloc, page );
@@ -214,7 +220,7 @@ RegisterTest([]()
   auto FnReset = [&]() {
     Reset( s );
     AssertCrash( s.pages.len == 1 );
-    AssertCrash( Len( s.pages.mem[0]->space ) == 0 );
+    AssertCrash( s.pages.mem[0]->space.len == 0 );
     AssertCrash( s.len == 0 );
     verif.len = 0;
   };
@@ -237,12 +243,11 @@ RegisterTest([]()
   };
   auto FnRemBack = [&]() {
     stack_nonresizeable_stack_t<idx_t, c_nchunk> tmp;
-    tmp.len = MIN( s.len, Rand32( rng ) % c_nchunk );
+    tmp.len = Min<idx_t>( s.len, Rand32( rng ) % c_nchunk );
     auto len_before = s.len;
     RemBack( s, ML( tmp ) );
     AssertCrash( s.len == len_before - tmp.len );
     // verify that the pop order is consistent with a stack by comparison with a simpler one.
-    // TODO: should the contract be s.t. tmp is reversed, or not?
     ReverseForLen( t, tmp ) {
       auto verif_last = verif.mem[ verif.len - 1 ];
       RemBack( verif );
