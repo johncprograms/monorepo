@@ -9,6 +9,7 @@ LogUI( const void* cstr ... )
 
 #define TEST 1
 
+// NOTE: we may have to move this RegisterTest defn and such to a separate header, for other binaries to opt out with TEST=0.
 using FnTest = void(*)();
 constexpr size_t g_ctests = 100;
 FnTest g_tests[g_ctests];

@@ -1,8 +1,16 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 //
-// min-heap, that only allows this sequence of ops:
+// min-heap, externally indexed, that only allows this sequence of ops:
 // 1. InitMinHeapInPlace
 // 2. any number of MinHeapExtract or MinHeapDecreasedKey calls
+//
+// this is externally indexed, meaning the original data array is untouched.
+// ExtIndex space is the real index into the data array.
+// IntIndex space is the heap order space. This is where we do all the 'element swaps' to maintain the heap
+// invariant. Although notice we're not actually swapping data array elements, it's virtual swaps.
+// This has the benefit of leaving the original data alone, which is useful for serializeability.
+// Instead of copying the original data so we can heap order the copy, we have two index arrays.
+// So this is a net memory size win when: 2 * sizeof(Index) < sizeof(Data) and data must be read-only.
 //
 // if you DON'T need DecreaseKey support, use ds_minheap_extractable.h
 // it's a simpler tslice_t without as much index mapping nonsense, which is nice.
@@ -10,9 +18,21 @@
 // if you need to add things to the min-heap, don't use this, go use some other structure!
 // we'd have to be smarter about reserving space than this simple slice can support.
 //
+// the binary tree layout we're using is:
+//       0
+//     1   2
+//    3 4 5 6
+//   ...
+// which in sequential memory looks like:
+//    0 1 2 3 4 5 6 ...
+// this means our mapping functions are:
+//    left-child(i) = 2i + 1
+//    rght-child(i) = 2i + 2
+//    parent(i) = (i - 1) / 2
+//
 
 template< typename ExtIndex, typename IntIndex, typename Data >
-Inl void
+ForceInl void
 _MinHeapifyDown(
   ExtIndex* external_from_internal,
   IntIndex* internal_from_external,
@@ -54,7 +74,7 @@ _MinHeapifyDown(
 }
 
 template< typename ExtIndex, typename IntIndex, typename Data >
-Inl void
+ForceInl void
 _MinHeapifyUp(
   ExtIndex* external_from_internal,
   IntIndex* internal_from_external,
@@ -155,7 +175,7 @@ RegisterTest([]()
   rng_lcg_t lcg;
   Init( lcg, 0x123456789 );
 
-  idx_t N = 128;
+  idx_t N = 1000;
   For( len, 1, N ) {
     tslice_t<u32> data;
     data.mem = MemHeapAlloc( u32, len );

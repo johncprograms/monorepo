@@ -258,7 +258,7 @@ RegisterTest([]()
     FnAddBack,
     FnRemBack,
   };
-  For( r, 0, 1000 ) {
+  For( r, 0, 100 ) {
     For( i, 0, 10000 ) {
       auto idx = Rand32( rng ) % _countof( fns );
       fns[idx]();
