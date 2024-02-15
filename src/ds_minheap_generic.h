@@ -131,19 +131,16 @@ RegisterTest([]()
   rng_lcg_t lcg;
   Init( lcg, 0x123456789 );
 
-  idx_t N = 128;
+  idx_t N = 1000;
   For( len, 1, N ) {
     stack_resizeable_cont_t<u32> data;
     Alloc( data, len );
     data.len = len;
-
-    tslice_t<u32> sorted;
-    sorted.mem = MemHeapAlloc( u32, len );
-    sorted.len = len;
-
     ForLen( i, data ) {
       data.mem[i] = Rand32( lcg );
     }
+
+    auto sorted = AllocString<u32>( len );
 
     InitMinHeapInPlace( ML( data ) );
     MinHeapVerify( ML( data ) );
@@ -161,7 +158,24 @@ RegisterTest([]()
       AssertCrash( data_i <= data_n );
     }
 
-    MemHeapFree( sorted.mem );
+    Free( sorted );
+    Free( data );
+  }
+
+  {
+    stack_resizeable_cont_t<u32> data;
+    Alloc( data, 10000 );
+    For( c, 0, 10000 ) {
+      if( data.len  &&  Zeta32( lcg ) < 0.34 ) {
+        u32 min;
+        MinHeapExtract( &data, &min );
+      }
+      else {
+        auto val = Rand32( lcg );
+        MinHeapInsert( &data, &val );
+      }
+      MinHeapVerify( ML( data ) );
+    }
     Free( data );
   }
 });

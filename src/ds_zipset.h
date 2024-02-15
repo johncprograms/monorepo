@@ -39,6 +39,32 @@ Init( ZIPSET& s, Allocator alloc = {} )
   s.N = 0;
   s.alloc = alloc;
 }
+ForceInl idx_t 
+NumRows( idx_t N )
+{
+  return 8u * sizeof( idx_t ) - _lzcnt_idx_t( N );
+}
+TEA Inl void
+Kill(
+  ZIPSET& s
+  )
+{
+  auto N = s.N;
+  auto rows = s.rows;
+  auto num_rows = NumRows( N );
+  For( i, 0, num_rows ) {
+    auto row = rows[ i ];
+    auto row_len = 1u << i;
+    if( !( N & row_len ) ) {
+      if( row ) {
+        Free( s.alloc, s.allocns[i], row );
+        rows[ i ] = 0;
+      }
+    }
+  }
+  s.N = 0;
+  s.alloc = {};
+}
 // TODO: InsertIfUnique
 //   we could use the same algorithm as InsertAllowDuplicates and just throw away the carry_row if we
 //   find a duplicate.
@@ -59,7 +85,7 @@ InsertAllowDuplicates(
   AssertCrash( !( N & carry_row_len ) );
 
   if( !rows[ num_carries ] ) {
-    rows[ num_carries ] = Allocate<int>( s.allocs[ num_carries ], carry_row_len );
+    rows[ num_carries ] = Allocate<T>( s.alloc, s.allocns[ num_carries ], carry_row_len );
   }
   auto carry_row = rows[ num_carries ];
 
@@ -140,7 +166,7 @@ Lookup(
   auto N = s.N;
   auto rows = s.rows;
 
-  auto num_rows = ZIPSET::c_num_rows - _lzcnt_idx_t( N );
+  auto num_rows = NumRows( N );
   For( i, 0, num_rows ) {
     auto row = rows[ i ];
     auto row_len = 1u << i;
@@ -189,26 +215,6 @@ Delete(
 
   *found = 0;
 }
-TEA Inl void
-FreeUnusedRows(
-  ZIPSET& s
-  )
-{
-  auto N = s.N;
-  auto rows = s.rows;
-
-  auto num_rows = ZIPSET::c_num_rows - _lzcnt_idx_t( N );
-  For( i, 0, num_rows ) {
-    auto row = rows[ i ];
-    auto row_len = 1u << i;
-    if( !( N & row_len ) ) {
-      if( row ) {
-        Free( s.alloc, row );
-        rows[ i ] = 0;
-      }
-    }
-  }
-}
 
 // TODO: zipset_t but for some other base, e.g. base16 instead of base2.
 //   that would allow for some leeway to avoid borrowing work during deletion.
@@ -221,7 +227,7 @@ struct
 zip10set_t
 {
   static constexpr idx_t c_num_rows = 9;
-  
+
   // rows[i].len is the active size of that row.
   // it's capacity is 10^(i+1) by definition, so we don't store that.
   tslice_t<int> rows[ c_num_rows ];
@@ -230,3 +236,26 @@ zip10set_t
 
 
 #endif
+
+
+RegisterTest([]()
+{
+  rng_xorshift32_t rng;
+  Init( rng, 1234 );
+  zipset_t<u32> s;
+  Init( s );
+
+  For( i, 0, 100000 ) {
+    auto val = Rand32( rng );
+    InsertAllowDuplicates( s, val );
+
+    bool found;
+    idx_t row_idx;
+    idx_t idx_in_row;
+    Lookup( s, val, &found, &row_idx, &idx_in_row );
+    AssertCrash( found );
+    AssertCrash( s.rows[row_idx][idx_in_row] == val );
+  }
+
+  Kill( s );
+});
