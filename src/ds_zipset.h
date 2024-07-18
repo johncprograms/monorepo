@@ -79,76 +79,83 @@ InsertAllowDuplicates(
   auto rows = s.rows;
 
   AssertCrash( N <= MAX_u32 );
+  
+  // the number of rows, starting with the len=1 one, that we have to merge upwards.
+  auto num_rows_to_merge = _tzcnt_idx_t( ~N );
+  
+  auto dst_row_len = 1u << num_rows_to_merge; // length of the row we're merging into.
+  AssertCrash( !( N & dst_row_len ) ); // the row we're merging into should be unpopulated.
 
-  auto num_carries = _tzcnt_idx_t( ~N );
-  auto carry_row_len = 1u << num_carries;
-  AssertCrash( !( N & carry_row_len ) );
-
-  if( !rows[ num_carries ] ) {
-    rows[ num_carries ] = Allocate<T>( s.alloc, s.allocns[ num_carries ], carry_row_len );
+  if( !rows[ num_rows_to_merge ] ) {
+    rows[ num_rows_to_merge ] = Allocate<T>( s.alloc, s.allocns[ num_rows_to_merge ], dst_row_len );
   }
-  auto carry_row = rows[ num_carries ];
-
-  //
-  // write the new value to the start + 1 of the new carry_row.
-  // why the initial offset of +1? see below.
-  //
-  // then we'll zipper-merge existing lower-level rows with the last merge-result in the carry_row.
-  //
-  // e.g. say N=15
-  // [ h i j k l m n o ]
-  // [ d e f g ]
-  // [ b c ]
-  // [ a ]
-  // and we insert p
-  //
-  // each subsequent carry zipper-merge will have carry_row:
-  // zipper 0: [ _ p _ _ _ _ _ _ _ _ _ _ _ _ _ _ ] len = 1
-  // zipper 1: [ _ p a p _ _ _ _ _ _ _ _ _ _ _ _ ] len = 1 + 2
-  // zipper 2: [ _ p a p a b c p _ _ _ _ _ _ _ _ ] len = 1 + 2 + 4
-  // zipper 3: [ _ p a p a b c p a b c d e f g p ] len = 1 + 2 + 4 + 8
-  // zipper 4: [ a b c d e f g h i j k l m n o p ] carry_row is now full and valid!
-  // where the _ indicates empty space.
-  //
-  // note that we initially skip the first slot so that zipper 3 writes its results into
-  // the second half of carry_row precisely.
-  //
-  // that's important so that the last carry zipper-merge can write to the start of carry_row,
-  // as we read from the second half of carry_row.
-  // there's no danger of read overtaking write here, as long as the carry_row is precisely twice
-  // the size of the row we're zipper-merging with.
-  // this is the core idea to help avoid having to allocate a temporary buffer.
-  //
-  auto carry_row_write = carry_row + 1;
-  *carry_row_write++ = value;
-  auto carry_row_read = carry_row;
-
-  For( i, 0, num_carries ) {
-    // note the final zipper-merge writes to the start of carry_row, see above.
-    if( i + 1 == num_carries ) {
-      carry_row_write = carry_row;
-    }
-
-    auto row = rows[ i ];
-    auto row_len = 1u << i;
-    AssertCrash( N & row_len );
-
+  auto dst_row = rows[ num_rows_to_merge ];
+  
+  if( !num_rows_to_merge ) { // writing to empty row 0.
+    *dst_row = value;
+  }
+  else {
     //
-    // standard zipper-merge: ( carry_row_read, row_read ) -> ( carry_row_write )
+    // write the new value to the start + 1 of the empty dst_row.
+    // why the initial offset of +1? see below.
     //
-    auto carry_row_read_before_merge = carry_row_read;
-    auto row_read = row;
-    auto merge_len = 2 * row_len;
-    For( merge_idx, 0, merge_len ) {
-      if( *carry_row_read < *row_read ) {
-        *carry_row_write++ = *carry_row_read++;
+    // then we'll zipper-merge existing lower-level rows with the last merge-result in the dst_row.
+    //
+    // e.g. say N=15
+    // [ h i j k l m n o ]
+    // [ d e f g ]
+    // [ b c ]
+    // [ a ]
+    // and we insert p
+    //
+    // each subsequent carry zipper-merge will have dst_row:
+    // zipper 0: [ _ p _ _ _ _ _ _ _ _ _ _ _ _ _ _ ] len = 1
+    // zipper 1: [ _ p a p _ _ _ _ _ _ _ _ _ _ _ _ ] len = 1 + 2
+    // zipper 2: [ _ p a p a b c p _ _ _ _ _ _ _ _ ] len = 1 + 2 + 4
+    // zipper 3: [ _ p a p a b c p a b c d e f g p ] len = 1 + 2 + 4 + 8
+    // zipper 4: [ a b c d e f g h i j k l m n o p ] dst_row is now full and valid!
+    // where the _ indicates empty space.
+    //
+    // note that we initially skip the first slot so that zipper 3 writes its results into
+    // the second half of dst_row precisely.
+    //
+    // that's important so that the last carry zipper-merge can write to the start of dst_row,
+    // as we read from the second half of dst_row.
+    // there's no danger of read overtaking write here, as long as the dst_row is precisely twice
+    // the size of the row we're zipper-merging with.
+    // this is the core idea to help avoid having to allocate a temporary buffer.
+    //
+    auto dst_write = dst_row + 1;
+    *dst_write++ = value;
+    auto dst_read = dst_row + 1;
+  
+    For( i, 0, num_rows_to_merge ) {
+      // note the final zipper-merge writes to the start of dst_row, see above.
+      if( i + 1 == num_rows_to_merge ) {
+        dst_write = dst_row;
       }
-      else {
-        *carry_row_write++ = *row_read++;
+  
+      auto row_i = rows[ i ];
+      auto row_i_len = 1u << i;
+      AssertCrash( N & row_i_len );
+  
+      //
+      // standard zipper-merge: ( dst_read, row_i_read ) -> ( dst_write )
+      //
+      auto dst_read_before_merge = dst_read;
+      auto row_i_read = row_i;
+      auto merge_len = 2 * row_i_len;
+      For( merge_idx, 0, merge_len ) {
+        if( *dst_read < *row_i_read ) {
+          *dst_write++ = *dst_read++;
+        }
+        else {
+          *dst_write++ = *row_i_read++;
+        }
       }
+      AssertCrash( row_i_read == row_i + row_i_len );
+      AssertCrash( dst_read == dst_read_before_merge + row_i_len );
     }
-    AssertCrash( row_read == row + row_len );
-    AssertCrash( carry_row_read == carry_row_read_before_merge + row_len );
   }
 
   // note that integer arithmetic does the appropriate bit carries trivially, which is nice.
@@ -168,11 +175,12 @@ Lookup(
 
   auto num_rows = NumRows( N );
   For( i, 0, num_rows ) {
-    auto row = rows[ i ];
     auto row_len = 1u << i;
+    if( !( N & row_len ) ) continue;
+    auto row = rows[ i ];
     idx_t sorted_insert_idx;
     BinarySearch( row, row_len, value, &sorted_insert_idx );
-    if( row[ sorted_insert_idx ] == value ) {
+    if( sorted_insert_idx < row_len  &&  row[ sorted_insert_idx ] == value ) {
       *found = 1;
       *row_idx = i;
       *idx_in_row = sorted_insert_idx;
@@ -238,6 +246,8 @@ zip10set_t
 #endif
 
 
+// TODO: fix the zipset bugs.
+#if 1
 RegisterTest([]()
 {
   rng_xorshift32_t rng;
@@ -247,6 +257,7 @@ RegisterTest([]()
 
   For( i, 0, 100000 ) {
     auto val = Rand32( rng );
+//    auto val = Cast( u32, i );
     InsertAllowDuplicates( s, val );
 
     bool found;
@@ -259,3 +270,4 @@ RegisterTest([]()
 
   Kill( s );
 });
+#endif
