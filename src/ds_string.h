@@ -133,15 +133,15 @@ AllocCstr( TSTRING& str )
      va_list argptr
   )
   {
-		char* temp_buffer;
-		int len = vasprintf( &temp_buffer, format, argptr );
-		if( len <= 0 ) {
-			return len;
-		}
-		auto ulen = MIN( Cast( idx_t, len ), numberOfElements );
-		Memmove( buffer, temp_buffer, ulen );
-		free( temp_buffer );
-		return Cast( s32, ulen );
+    char* temp_buffer;
+    int len = vasprintf( &temp_buffer, format, argptr );
+    if( len <= 0 ) {
+      return len;
+    }
+    auto ulen = MIN( Cast( idx_t, len ), numberOfElements );
+    Memmove( buffer, temp_buffer, ulen );
+    free( temp_buffer );
+    return Cast( s32, ulen );
   }
 #endif
 tstring_t<u8, allocator_heap_t, allocation_heap_t>

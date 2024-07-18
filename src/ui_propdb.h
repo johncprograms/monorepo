@@ -596,14 +596,14 @@ _Init( propdb_t& db )
   if( db.filename.len ) {
     auto last_dot = StringScanL( ML( db.filename ), '.' );
     if( last_dot ) {
-			AssertCrash( last_dot );
-			db.filename.len = ( last_dot - db.filename.mem );
-			db.filename.len += 1; // include dot.
-		}
-		else {
-			*AddBack( db.filename ) = '.';
-		}
-		Memmove( AddBack( db.filename, 6 ), "config", 6 );
+      AssertCrash( last_dot );
+      db.filename.len = ( last_dot - db.filename.mem );
+      db.filename.len += 1; // include dot.
+    }
+    else {
+      *AddBack( db.filename ) = '.';
+    }
+    Memmove( AddBack( db.filename, 6 ), "config", 6 );
   }
 
   // TODO: timestep_fixed ?

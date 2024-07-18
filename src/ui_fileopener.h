@@ -107,8 +107,8 @@ asynccontext_fileopenerfillpool_t
 
 Enumc( fileopenermode_t )
 {
-	normal,
-	renaming,
+  normal,
+  renaming,
 };
 
 struct
@@ -153,7 +153,7 @@ Init( fileopener_t& fo )
   Alloc( fo.history, 512 );
   fo.history_idx = 0;
 
-	fo.mode = fileopenermode_t::normal;
+  fo.mode = fileopenermode_t::normal;
   fo.focus = fileopenerfocus_t::query;
 
   Init( fo.cwd );
@@ -209,7 +209,7 @@ Kill( fileopener_t& fo )
   Free( fo.history );
   fo.history_idx = 0;
 
-	fo.mode = fileopenermode_t::normal;
+  fo.mode = fileopenermode_t::normal;
   fo.focus = fileopenerfocus_t::query;
 
   Kill( fo.cwd );
@@ -609,11 +609,11 @@ typedef __FileopenerOpenFileFromRow( *FnOpenFileFromRow ); // TODO: rename to sn
 
 Inl void
 FileopenerOpenRow(
-	fileopener_t& fo,
-	fileopener_row_t* row,
-	FnOpenFileFromRow fnOpenFileFromRow,
-	idx_t misc
-	)
+  fileopener_t& fo,
+  fileopener_row_t* row,
+  FnOpenFileFromRow fnOpenFileFromRow,
+  idx_t misc
+  )
 {
   fsobj_t name;
   name.len = 0;
@@ -623,14 +623,14 @@ FileopenerOpenRow(
   Memmove( AddBack( name, row->name.len ), ML( row->name ) );
 
   if( row->is_file ) {
-		auto slice = SliceFromArray( name );
-		bool loaded;
-		fnOpenFileFromRow( misc, slice, &loaded );
-		if( !loaded ) {
-			auto cstr = AllocCstr( slice );
-			LogUI( "[EDIT] Fileopener couldn't open file: \"%s\"", cstr );
-			MemHeapFree( cstr );
-		}
+    auto slice = SliceFromArray( name );
+    bool loaded;
+    fnOpenFileFromRow( misc, slice, &loaded );
+    if( !loaded ) {
+      auto cstr = AllocCstr( slice );
+      LogUI( "[EDIT] Fileopener couldn't open file: \"%s\"", cstr );
+      MemHeapFree( cstr );
+    }
   }
   else {
     bool up_dir = MemEqual( ML( row->name ), "..", 2 );
@@ -893,7 +893,7 @@ FileopenerRename( fileopener_t& fo, slice_t& src, slice_t& dst )
 
 __FileopenerCmd( CmdFileopenerRenamingApply )
 {
-	AssertCrash( fo.mode == fileopenermode_t::renaming );
+  AssertCrash( fo.mode == fileopenermode_t::renaming );
   AssertCrash( fo.renaming_row < fo.matches.totallen );
   auto row = *LookupElemByLinearIndex( fo.matches, fo.renaming_row );
 
@@ -938,7 +938,7 @@ __FileopenerCmd( CmdFileopenerRenamingApply )
 
 __FileopenerCmd( CmdMode_fileopener_from_fileopener_renaming )
 {
-	fo.mode = fileopenermode_t::normal;
+  fo.mode = fileopenermode_t::normal;
 }
 
 __FileopenerCmd( CmdFileopenerUndo ) // TODO: finish writing this.
@@ -1197,17 +1197,17 @@ FileopenerRender(
 
   if( !lines.len ) {
     static const auto label_nothing_found = SliceFromCStr( "--- nothing found ---" );
-		auto label_w = LayoutString( font, spaces_per_tab, ML( label_nothing_found ) );
-		DrawString(
-			stream,
-			font,
-			AlignCenter( bounds, label_w, line_h ),
-			GetZ( zrange, dirlayer_t::txt ),
-			bounds,
-			rgba_text,
-			spaces_per_tab,
-			ML( label_nothing_found )
-			);
+    auto label_w = LayoutString( font, spaces_per_tab, ML( label_nothing_found ) );
+    DrawString(
+      stream,
+      font,
+      AlignCenter( bounds, label_w, line_h ),
+      GetZ( zrange, dirlayer_t::txt ),
+      bounds,
+      rgba_text,
+      spaces_per_tab,
+      ML( label_nothing_found )
+      );
     return;
   }
 
@@ -1458,7 +1458,7 @@ FileopenerControlKeyboard(
 {
   ProfFunc();
 
-	switch (fo.mode) {
+  switch (fo.mode) {
     case fileopenermode_t::normal: {
       if( kb_command ) {
         switch( type ) {
@@ -1625,6 +1625,6 @@ FileopenerControlKeyboard(
           );
       }
     } break;
-	}
+  }
 }
 

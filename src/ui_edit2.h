@@ -68,7 +68,7 @@ edit_t
 
   idx_t nlines_screen;
 
-	switchopened_t switchopened;
+  switchopened_t switchopened;
   findinfiles_t findinfiles;
   fileopener_t fileopener;
 
@@ -86,24 +86,24 @@ edit_t
 typedef __EditCmdDef( *pfn_editcmd_t );
 
 
-		#if 0
-		// NOTE: opens a txt not backed by a real file!
-		void
-		EditOpenEmptyTxt( edit_t& edit )
-		{
-			txt_t txt;
-			Init( txt );
-			LoadEmpty( txt.buf );
-			// set txt.filename so we can uniquely identify this empty txt.
-			TimeDate( txt.filename.mem, Capacity( txt.filename ), &txt.filename.len );
-			AddBack( edit.opened, &txt );
+    #if 0
+    // NOTE: opens a txt not backed by a real file!
+    void
+    EditOpenEmptyTxt( edit_t& edit )
+    {
+      txt_t txt;
+      Init( txt );
+      LoadEmpty( txt.buf );
+      // set txt.filename so we can uniquely identify this empty txt.
+      TimeDate( txt.filename.mem, Capacity( txt.filename ), &txt.filename.len );
+      AddBack( edit.opened, &txt );
 
-			if( TxtLen( edit.opened_list ) ) {
-				CmdAddLn( edit.opened_list );
-			}
-			CmdAddString( edit.opened_list, Cast( idx_t, txt.filename.mem ), txt.filename.len );
-		}
-		#endif
+      if( TxtLen( edit.opened_list ) ) {
+        CmdAddLn( edit.opened_list );
+      }
+      CmdAddString( edit.opened_list, Cast( idx_t, txt.filename.mem ), txt.filename.len );
+    }
+    #endif
 
 
 Inl void
@@ -256,24 +256,24 @@ __EditCmd( CmdMode_fileopener_from_switchopened )
 
 __FileopenerOpenFileFromRow( EditOpenFileFromRow )
 {
-	auto edit = Cast( edit_t*, misc );
+  auto edit = Cast( edit_t*, misc );
 
 #if USE_FILEMAPPED_OPEN
-	auto file = FileOpenMappedExistingReadShareRead( ML( filename ) );
+  auto file = FileOpenMappedExistingReadShareRead( ML( filename ) );
 #else
-	auto file = FileOpen( ML( filename ), fileopen_t::only_existing, fileop_t::R, fileop_t::R );
+  auto file = FileOpen( ML( filename ), fileopen_t::only_existing, fileop_t::R, fileop_t::R );
 #endif
-	*loaded = file.loaded;
-	if( file.loaded ) {
-		edittxtopen_t* open = 0;
-		bool opened_existing = 0;
-		EditOpen( *edit, file, &open, &opened_existing );
-		AssertCrash( open );
-		EditSetActiveTxt( *edit, open );
-		CmdMode_editfile_from_fileopener( *edit );
-	}
+  *loaded = file.loaded;
+  if( file.loaded ) {
+    edittxtopen_t* open = 0;
+    bool opened_existing = 0;
+    EditOpen( *edit, file, &open, &opened_existing );
+    AssertCrash( open );
+    EditSetActiveTxt( *edit, open );
+    CmdMode_editfile_from_fileopener( *edit );
+  }
 #if !USE_FILEMAPPED_OPEN
-	FileFree( file );
+  FileFree( file );
 #endif
 }
 
@@ -430,7 +430,7 @@ __EditCmd( CmdMode_findinfiles_from_fileopener )
 
 __FindinfilesOpenFileForChoose( EditOpenFileForChoose )
 {
-	auto edit = Cast( edit_t*, misc );
+  auto edit = Cast( edit_t*, misc );
 
 #if USE_FILEMAPPED_OPEN
   auto file = FileOpenMappedExistingReadShareRead( ML( filename ) );
@@ -438,7 +438,7 @@ __FindinfilesOpenFileForChoose( EditOpenFileForChoose )
   auto file = FileOpen( ML( filename ), fileopen_t::only_existing, fileop_t::R, fileop_t::R );
 #endif
 
-	*loaded = file.loaded;
+  *loaded = file.loaded;
   if( file.loaded ) {
     edittxtopen_t* open = 0;
     *opened_existing = 0;
@@ -448,7 +448,7 @@ __FindinfilesOpenFileForChoose( EditOpenFileForChoose )
     CmdMode_editfile_from_findinfiles( *edit );
 
     *txt = &open->txt;
-	}
+  }
 
 #if !USE_FILEMAPPED_OPEN
   FileFree( file );
@@ -457,7 +457,7 @@ __FindinfilesOpenFileForChoose( EditOpenFileForChoose )
 
 __FindinfilesOpenFileForReplace( EditOpenFileForReplace )
 {
-	auto edit = Cast( edit_t*, misc );
+  auto edit = Cast( edit_t*, misc );
   auto open = EditGetOpenedFile( edit->so, ML( filename ) );
   *opened_existing = 0;
   if( open ) {
@@ -470,7 +470,7 @@ __FindinfilesOpenFileForReplace( EditOpenFileForReplace )
 #else
     auto file = FileOpen( ML( filename ), fileopen_t::only_existing, fileop_t::R, fileop_t::R );
 #endif
-		*loaded = file.loaded;
+    *loaded = file.loaded;
     if( file.loaded ) {
       EditOpen( *edit, file, &open, opened_existing );
       AssertCrash( open );
@@ -752,22 +752,22 @@ __EditCmd( CmdMode_editfile_from_switchopened )
 
 __SwitchopenedOpenFileForChoose( EditSOOpenFileForChoose )
 {
-	auto edit = Cast( edit_t*, misc );
+  auto edit = Cast( edit_t*, misc );
 #if USE_FILEMAPPED_OPEN
-	auto file = FileOpenMappedExistingReadShareRead( ML( filename ) );
+  auto file = FileOpenMappedExistingReadShareRead( ML( filename ) );
 #else
-	auto file = FileOpen( ML( filename ), fileopen_t::only_existing, fileop_t::R, fileop_t::R );
+  auto file = FileOpen( ML( filename ), fileopen_t::only_existing, fileop_t::R, fileop_t::R );
 #endif
-	if( file.loaded ) {
-		edittxtopen_t* open = 0;
-		bool opened_existing = 0;
-		EditOpen( edit, file, &open, &opened_existing );
-		AssertCrash( open );
-		EditSetActiveTxt( edit, open );
-		CmdMode_editfile_from_switchopened( edit );
-	}
+  if( file.loaded ) {
+    edittxtopen_t* open = 0;
+    bool opened_existing = 0;
+    EditOpen( edit, file, &open, &opened_existing );
+    AssertCrash( open );
+    EditSetActiveTxt( edit, open );
+    CmdMode_editfile_from_switchopened( edit );
+  }
 #if !USE_FILEMAPPED_OPEN
-	FileFree( file );
+  FileFree( file );
 #endif
 }
 
@@ -1651,33 +1651,33 @@ EditControlMouse(
       }
     } break;
 
-		case editmode_t::editfile_findrepl: {
-		} break;
-		case editmode_t::editfile_gotoline: {
-		} break;
-		case editmode_t::switchopened: {
-		} break;
+    case editmode_t::editfile_findrepl: {
+    } break;
+    case editmode_t::editfile_gotoline: {
+    } break;
+    case editmode_t::switchopened: {
+    } break;
 
-		case editmode_t::fileopener: {
-			FileopenerControlMouse(
-			  edit.fileopener,
-			  target_valid,
-			  font,
-			  bounds,
-			  type,
-			  btn,
-			  m,
-			  raw_delta,
-			  dwheel,
-			  EditOpenFileFromRow,
-			  Cast( idx_t, &edit )
-			  );
-		} break;
+    case editmode_t::fileopener: {
+      FileopenerControlMouse(
+        edit.fileopener,
+        target_valid,
+        font,
+        bounds,
+        type,
+        btn,
+        m,
+        raw_delta,
+        dwheel,
+        EditOpenFileFromRow,
+        Cast( idx_t, &edit )
+        );
+    } break;
 
-		case editmode_t::externalmerge: {
-		} break;
+    case editmode_t::externalmerge: {
+    } break;
 
-		case editmode_t::findinfiles: {
+    case editmode_t::findinfiles: {
       FindinfilesControlMouse(
         edit.findinfiles,
         target_valid,
@@ -1963,17 +1963,17 @@ EditControlKeyboard(
       }
 
       if( !ran_cmd ) {
-				FileopenerControlKeyboard(
-			    edit.fileopener,
-			    kb_command,
-			    target_valid,
-			    ran_cmd,
-			    type,
-			    key,
-			    keylocks,
-			    EditOpenFileFromRow,
-			    Cast( idx_t, &edit )
-			    );
+        FileopenerControlKeyboard(
+          edit.fileopener,
+          kb_command,
+          target_valid,
+          ran_cmd,
+          type,
+          key,
+          keylocks,
+          EditOpenFileFromRow,
+          Cast( idx_t, &edit )
+          );
       }
     } break;
 
@@ -2036,19 +2036,19 @@ EditControlKeyboard(
       }
 
       if( !ran_cmd ) {
-				FindinfilesControlKeyboard(
-					edit.findinfiles,
-					kb_command,
-					target_valid,
-					ran_cmd,
-					type,
-					key,
-					keylocks,
-					EditOpenFileForReplace,
-					Cast( idx_t, &edit ),
-					EditOpenFileForChoose,
-					Cast( idx_t, &edit )
-					);
+        FindinfilesControlKeyboard(
+          edit.findinfiles,
+          kb_command,
+          target_valid,
+          ran_cmd,
+          type,
+          key,
+          keylocks,
+          EditOpenFileForReplace,
+          Cast( idx_t, &edit ),
+          EditOpenFileForChoose,
+          Cast( idx_t, &edit )
+          );
       }
     } break;
 

@@ -159,14 +159,14 @@ Inl f32 fastpow32( f32 x, f32 e )
   #define Ceil32( x )   std::ceilf( x )
   #define Ceil64( x )   std::ceil( x )
 
-	#define Truncate32( x )   Cast( f32, Truncate_s32_from_f32( x ) )
-	#define Truncate64( x )   Cast( f64, Truncate_s64_from_f64( x ) )
+  #define Truncate32( x )   Cast( f32, Truncate_s32_from_f32( x ) )
+  #define Truncate64( x )   Cast( f64, Truncate_s64_from_f64( x ) )
 
-	#define Round32( x )   std::roundf( x )
-	#define Round64( x )   std::round( x )
+  #define Round32( x )   std::roundf( x )
+  #define Round64( x )   std::round( x )
 
-	#define Sqrt32( x )   std::sqrtf( x )
-	#define Sqrt64( x )   std::sqrt( x )
+  #define Sqrt32( x )   std::sqrtf( x )
+  #define Sqrt64( x )   std::sqrt( x )
 
 #else
 

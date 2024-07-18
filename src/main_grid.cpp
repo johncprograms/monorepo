@@ -1802,38 +1802,38 @@ _ParseExpr(
 
       if( reorder_child ) {
         // for clarity, consider the explicit example of 2*3+4, which we've just parsed into
-      	//     mul( 2, add( 3, 4 ) )
-      	// we parsed into that form, since we have to avoid left-recursion in our grammar.
-      	// now we have to reorder the tree, according to operator precedence, to make the math work out.
-      	// we want to reorder to:
-      	//     add( mul( 2, 3 ), 4 )
-      	// note that we've already constructed the add( 3, 4 ) in the expr_r parse.
-      	// now we're finishing the mul parse, and we want to switch things around.
-      	// i.e. 'expr' is the mul
-      	//      'expr_r' is the add
-      	auto mul = expr;
-      	auto add = expr_r;
+        //     mul( 2, add( 3, 4 ) )
+        // we parsed into that form, since we have to avoid left-recursion in our grammar.
+        // now we have to reorder the tree, according to operator precedence, to make the math work out.
+        // we want to reorder to:
+        //     add( mul( 2, 3 ), 4 )
+        // note that we've already constructed the add( 3, 4 ) in the expr_r parse.
+        // now we're finishing the mul parse, and we want to switch things around.
+        // i.e. 'expr' is the mul
+        //      'expr_r' is the add
+        auto mul = expr;
+        auto add = expr_r;
 
-      	AssertCrash( mul->type == exprtype_t::binop );
-      	AssertCrash( add->type == exprtype_t::binop );
-
-        // current state:
-      	// mul( 2, add( 3, 4 ) )
-
-      	// mul.rhs <- add.lhs
-      	mul->binop.expr_r = add->binop.expr_l;
+        AssertCrash( mul->type == exprtype_t::binop );
+        AssertCrash( add->type == exprtype_t::binop );
 
         // current state:
-      	// mul( 2, 3 )   add( 3, 4 )
+        // mul( 2, add( 3, 4 ) )
 
-      	// add.lhs <- mul
-      	add->binop.expr_l = mul;
+        // mul.rhs <- add.lhs
+        mul->binop.expr_r = add->binop.expr_l;
 
         // current state:
-      	// add( mul( 2, 3 ), 4 )
+        // mul( 2, 3 )   add( 3, 4 )
 
-      	// now we're done! make sure we return the new parent.
-      	expr = add;
+        // add.lhs <- mul
+        add->binop.expr_l = mul;
+
+        // current state:
+        // add( mul( 2, 3 ), 4 )
+
+        // now we're done! make sure we return the new parent.
+        expr = add;
       }
 
       return expr;

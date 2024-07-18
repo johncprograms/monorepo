@@ -1,3 +1,4 @@
+// Copyright (c) John A. Carlos Jr., all rights reserved.
 
 // arbitrary-length contiguous string of memory.
 // short-lived view on other memory.

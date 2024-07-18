@@ -39,7 +39,7 @@ SetBit1( bitarray_nonresizeable_stack_t<N>& array, idx_t index )
   auto bit = index & 63;
   AssertCrash( index < N );
   AssertCrash( bin < _countof( array.mem ) );
-	array.mem[bin] |= ( 1ULL << bit );
+  array.mem[bin] |= ( 1ULL << bit );
 }
 TemplIdxN ForceInl void
 SetBit0( bitarray_nonresizeable_stack_t<N>& array, idx_t index )
@@ -48,7 +48,7 @@ SetBit0( bitarray_nonresizeable_stack_t<N>& array, idx_t index )
   auto bit = index & 63;
   AssertCrash( index < N );
   AssertCrash( bin < _countof( array.mem ) );
-	array.mem[bin] &= ~( 1ULL << bit );
+  array.mem[bin] &= ~( 1ULL << bit );
 }
 TemplIdxN ForceInl bool
 GetBit( bitarray_nonresizeable_stack_t<N>& array, idx_t index )
@@ -81,7 +81,7 @@ SetBit1( u64* mem, idx_t bitcapacity, idx_t bitindex )
   auto bin = bitindex >> 6;
   auto bit = bitindex & 63;
   AssertCrash( bitindex < bitcapacity );
-	mem[bin] |= ( 1ULL << bit );
+  mem[bin] |= ( 1ULL << bit );
 }
 ForceInl void
 SetBit0( u64* mem, idx_t bitcapacity, idx_t bitindex )
@@ -89,7 +89,7 @@ SetBit0( u64* mem, idx_t bitcapacity, idx_t bitindex )
   auto bin = bitindex >> 6;
   auto bit = bitindex & 63;
   AssertCrash( bitindex < bitcapacity );
-	mem[bin] &= ~( 1ULL << bit );
+  mem[bin] &= ~( 1ULL << bit );
 }
 ForceInl bool
 GetBit( u64* mem, idx_t bitlen, idx_t index )
@@ -121,7 +121,7 @@ SetBit1( u32* mem, idx_t bitcapacity, idx_t bitindex )
   auto bin = bitindex >> 5;
   auto bit = bitindex & 31;
   AssertCrash( bitindex < bitcapacity );
-	mem[bin] |= ( 1u << bit );
+  mem[bin] |= ( 1u << bit );
 }
 ForceInl void
 SetBit0( u32* mem, idx_t bitcapacity, idx_t bitindex )
@@ -129,7 +129,7 @@ SetBit0( u32* mem, idx_t bitcapacity, idx_t bitindex )
   auto bin = bitindex >> 5;
   auto bit = bitindex & 31;
   AssertCrash( bitindex < bitcapacity );
-	mem[bin] &= ~( 1u << bit );
+  mem[bin] &= ~( 1u << bit );
 }
 ForceInl bool
 GetBit( u32* mem, idx_t bitlen, idx_t index )

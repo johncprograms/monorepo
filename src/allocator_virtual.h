@@ -24,15 +24,15 @@
   Inl void
   MemVirtualFree( void* mem )
   {
-		auto umem = Cast( idx_t*, mem );
-		auto nbytes_alloc = umem[-1];
+    auto umem = Cast( idx_t*, mem );
+    auto nbytes_alloc = umem[-1];
     int result = munmap( umem - 1, nbytes_alloc );
     AssertCrash( !result );
   }
   Inl void*
   MemVirtualAllocBytes( idx_t nbytes )
   {
-		auto nbytes_alloc = nbytes + _SIZEOF_IDX_T;
+    auto nbytes_alloc = nbytes + _SIZEOF_IDX_T;
     void* memnew = mmap( 0 /*start_addr*/, nbytes_alloc, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1 /*file_descriptor*/, 0 /*offset_into_file*/);
     if( !memnew || memnew == Cast( void*, -1 ) ) {
       return 0;

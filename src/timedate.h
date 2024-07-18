@@ -22,12 +22,12 @@ static u32 g_sleep_prec_period_min;
 //   already had one bug like that.
 
 #ifdef MAC
-	ForceInl u64 __rdtsc()
-	{
-		u64 r;
-		asm volatile( "mrs %0, cntvct_el0" : "=r" (r) );
-		return r;
-	}
+  ForceInl u64 __rdtsc()
+  {
+    u64 r;
+    asm volatile( "mrs %0, cntvct_el0" : "=r" (r) );
+    return r;
+  }
 #endif
 
 Inl u64
@@ -328,8 +328,8 @@ LocalTimeDate()
   time_t time_raw;
   time( &time_raw );
 #if defined(MAC)
-	auto time_data = localtime( &time_raw );
-	return *time_data;
+  auto time_data = localtime( &time_raw );
+  return *time_data;
 #else
   struct tm time_data;
   localtime_s( &time_data, &time_raw );

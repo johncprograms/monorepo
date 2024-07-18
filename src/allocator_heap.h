@@ -18,7 +18,7 @@
     // we have to write our own version which stores away the allocation size, so we can realloc appropriately.
     // our reallocs depend on knowing old and new lengths, since we always try to use spans.
     AssertCrash( IsPowerOf2( alignment ) );
-		alignment = MAX( alignment, _SIZEOF_IDX_T );
+    alignment = MAX( alignment, _SIZEOF_IDX_T );
     AssertCrash( alignment % _SIZEOF_IDX_T == 0u );
     // alignment - 1 is the maximum amount of correction we could possibly have to make.
     // we also need space to store the allocation size, independent of that.
@@ -43,8 +43,8 @@
   }
   Inl void AlignedFree( void* mem_aligned )
   {
-		auto umem_aligned = Cast( volatile idx_t*, mem_aligned );
-		auto mem = Cast( void*, umem_aligned[-2] );
+    auto umem_aligned = Cast( volatile idx_t*, mem_aligned );
+    auto mem = Cast( void*, umem_aligned[-2] );
     free( mem );
   }
   Inl void* AlignedRealloc( void* old_mem_aligned, idx_t new_num_bytes, idx_t new_alignment )

@@ -8,11 +8,11 @@
      ...
   )
   {
-		va_list args;
-		va_start( args, format );
-		int r = vsprintf_s( buffer, sizeOfBuffer, format, args );
-		va_end( args );
-		return r;
+    va_list args;
+    va_start( args, format );
+    int r = vsprintf_s( buffer, sizeOfBuffer, format, args );
+    va_end( args );
+    return r;
   }
 #endif
 

@@ -181,18 +181,18 @@ __SwitchopenedCmd( CmdUpdateSearchMatches )
   auto key = AllocContents( &so.opened_search.buf, eoltype_t::crlf );
 
   // TODO: openedmru access how?
-	ForList( elem, so.openedmru ) {
-		auto open = elem->value;
-		if( !key.len ) {
-			*AddBack( so.search_matches ) = open;
-		}
-		else {
+  ForList( elem, so.openedmru ) {
+    auto open = elem->value;
+    if( !key.len ) {
+      *AddBack( so.search_matches ) = open;
+    }
+    else {
       idx_t pos;
       if( StringIdxScanR( &pos, ML( open->txt.filename ), 0, ML( key ), 0, 0 ) ) {
         *AddBack( so.search_matches ) = open;
       }
-		}
-	}
+    }
+  }
 
   Free( key );
   so.opened_scroll_start = MIN( so.opened_scroll_start, MAX( so.search_matches.len, 1 ) - 1 );
@@ -220,15 +220,15 @@ __SwitchopenedCmd( CmdSwitchopenedChoose )
   auto fnSOOpenFileForChoose = Cast( FnSOOpenFileForChoose, misc );
   auto obj = SwitchopenedGetSelection( so );
   if( obj ) {
-		bool loaded;
-		auto filename = SliceFromArray( *obj );
-		fnSOOpenFileForChoose( misc2, filename, &loaded );
-		if( !loaded ) {
-			auto cstr = AllocCstr( filename );
-			LogUI( "[EDIT] SwithopenedChoose couldn't load file: \"%s\"", cstr );
-			MemHeapFree( cstr );
-			return;
-		}
+    bool loaded;
+    auto filename = SliceFromArray( *obj );
+    fnSOOpenFileForChoose( misc2, filename, &loaded );
+    if( !loaded ) {
+      auto cstr = AllocCstr( filename );
+      LogUI( "[EDIT] SwithopenedChoose couldn't load file: \"%s\"", cstr );
+      MemHeapFree( cstr );
+      return;
+    }
   }
 }
 
@@ -298,111 +298,111 @@ SwitchopenedRender(
 
   auto line_h = FontLineH( font );
 
-	static const auto header = Str( "SWITCH TO FILE ( MRU ):" );
-	static const auto header_len = CstrLength( header );
-	auto header_w = LayoutString( font, spaces_per_tab, header, header_len );
-	DrawString(
-		stream,
-		font,
-		AlignCenter( bounds, header_w ),
-		GetZ( zrange, solayer_t::txt ),
-		bounds,
-		rgba_text,
-		spaces_per_tab,
-		header, header_len
-		);
-	bounds.p0.y = MIN( bounds.p0.y + line_h, bounds.p1.y );
+  static const auto header = Str( "SWITCH TO FILE ( MRU ):" );
+  static const auto header_len = CstrLength( header );
+  auto header_w = LayoutString( font, spaces_per_tab, header, header_len );
+  DrawString(
+    stream,
+    font,
+    AlignCenter( bounds, header_w ),
+    GetZ( zrange, solayer_t::txt ),
+    bounds,
+    rgba_text,
+    spaces_per_tab,
+    header, header_len
+    );
+  bounds.p0.y = MIN( bounds.p0.y + line_h, bounds.p1.y );
 
-	so.opened_scroll_start = MIN( so.opened_scroll_start, MAX( so.search_matches.len, 1 ) - 1 );
-	so.opened_cursor = MIN( so.opened_cursor, MAX( so.search_matches.len, 1 ) - 1 );
+  so.opened_scroll_start = MIN( so.opened_scroll_start, MAX( so.search_matches.len, 1 ) - 1 );
+  so.opened_cursor = MIN( so.opened_cursor, MAX( so.search_matches.len, 1 ) - 1 );
 
-	auto nlines_screen_max = Cast( idx_t, ( bounds.p1.y - bounds.p0.y ) / line_h );
-	if( nlines_screen_max ) {
-		nlines_screen_max -= 1; // for search bar.
-	}
-	so.nlines_screen = MIN( nlines_screen_max, so.search_matches.len - so.opened_scroll_start );
-	so.opened_scroll_end = so.opened_scroll_start + so.nlines_screen;
+  auto nlines_screen_max = Cast( idx_t, ( bounds.p1.y - bounds.p0.y ) / line_h );
+  if( nlines_screen_max ) {
+    nlines_screen_max -= 1; // for search bar.
+  }
+  so.nlines_screen = MIN( nlines_screen_max, so.search_matches.len - so.opened_scroll_start );
+  so.opened_scroll_end = so.opened_scroll_start + so.nlines_screen;
 
-	// render search bar.
-	static const auto search = Str( "Search: " );
-	static const auto search_len = CstrLength( search );
-	auto search_w = LayoutString( font, spaces_per_tab, search, search_len );
-	DrawString(
-		stream,
-		font,
-		bounds.p0,
-		GetZ( zrange, solayer_t::txt ),
-		bounds,
-		rgba_text,
-		spaces_per_tab,
-		search, search_len
-		);
+  // render search bar.
+  static const auto search = Str( "Search: " );
+  static const auto search_len = CstrLength( search );
+  auto search_w = LayoutString( font, spaces_per_tab, search, search_len );
+  DrawString(
+    stream,
+    font,
+    bounds.p0,
+    GetZ( zrange, solayer_t::txt ),
+    bounds,
+    rgba_text,
+    spaces_per_tab,
+    search, search_len
+    );
 
-	TxtRenderSingleLineSubset(
-		so.opened_search,
-		stream,
-		font,
-		0,
-		_rect( bounds.p0 + _vec2( search_w, 0.0f ), bounds.p1 ),
-		ZRange( zrange, solayer_t::txt ),
-		0,
-		1,
-		1
-		);
+  TxtRenderSingleLineSubset(
+    so.opened_search,
+    stream,
+    font,
+    0,
+    _rect( bounds.p0 + _vec2( search_w, 0.0f ), bounds.p1 ),
+    ZRange( zrange, solayer_t::txt ),
+    0,
+    1,
+    1
+    );
 
-	bounds.p0.y = MIN( bounds.p0.y + line_h, bounds.p1.y );
+  bounds.p0.y = MIN( bounds.p0.y + line_h, bounds.p1.y );
 
-	// render current cursor.
-	if( so.opened_scroll_start <= so.opened_cursor  &&  so.opened_cursor < so.opened_scroll_end ) {
-		auto p0 = bounds.p0 + _vec2( 0.0f, line_h * ( so.opened_cursor - so.opened_scroll_start ) );
-		auto p1 = _vec2( bounds.p1.x, p0.y + line_h );
-		RenderQuad(
-			stream,
-			rgba_cursor_bkgd,
-			p0,
-			p1,
-			bounds,
-			GetZ( zrange, solayer_t::bkgd )
-			);
-	}
-	static const auto unsaved = Str( " unsaved " );
-	static const auto unsaved_len = CstrLength( unsaved );
-	auto unsaved_w = LayoutString( font, spaces_per_tab, unsaved, unsaved_len );
-	For( i, 0, so.nlines_screen ) {
-		idx_t rowidx = ( i + so.opened_scroll_start );
-		if( rowidx >= so.search_matches.len ) {
-			break;
-		}
+  // render current cursor.
+  if( so.opened_scroll_start <= so.opened_cursor  &&  so.opened_cursor < so.opened_scroll_end ) {
+    auto p0 = bounds.p0 + _vec2( 0.0f, line_h * ( so.opened_cursor - so.opened_scroll_start ) );
+    auto p1 = _vec2( bounds.p1.x, p0.y + line_h );
+    RenderQuad(
+      stream,
+      rgba_cursor_bkgd,
+      p0,
+      p1,
+      bounds,
+      GetZ( zrange, solayer_t::bkgd )
+      );
+  }
+  static const auto unsaved = Str( " unsaved " );
+  static const auto unsaved_len = CstrLength( unsaved );
+  auto unsaved_w = LayoutString( font, spaces_per_tab, unsaved, unsaved_len );
+  For( i, 0, so.nlines_screen ) {
+    idx_t rowidx = ( i + so.opened_scroll_start );
+    if( rowidx >= so.search_matches.len ) {
+      break;
+    }
 
-		auto open = so.search_matches.mem[rowidx];
-		auto row_origin = bounds.p0 + _vec2( 0.0f, line_h * i );
+    auto open = so.search_matches.mem[rowidx];
+    auto row_origin = bounds.p0 + _vec2( 0.0f, line_h * i );
 
-		if( open->unsaved ) {
-			DrawString(
-				stream,
-				font,
-				row_origin,
-				GetZ( zrange, solayer_t::txt ),
-				bounds,
-				rgba_text,
-				spaces_per_tab,
-				unsaved, unsaved_len
-				);
-		}
+    if( open->unsaved ) {
+      DrawString(
+        stream,
+        font,
+        row_origin,
+        GetZ( zrange, solayer_t::txt ),
+        bounds,
+        rgba_text,
+        spaces_per_tab,
+        unsaved, unsaved_len
+        );
+    }
 
-		row_origin.x += unsaved_w;
+    row_origin.x += unsaved_w;
 
-		DrawString(
-			stream,
-			font,
-			row_origin,
-			GetZ( zrange, solayer_t::txt ),
-			bounds,
-			rgba_text,
-			spaces_per_tab,
-			ML( open->txt.filename )
-			);
-	}
+    DrawString(
+      stream,
+      font,
+      row_origin,
+      GetZ( zrange, solayer_t::txt ),
+      bounds,
+      rgba_text,
+      spaces_per_tab,
+      ML( open->txt.filename )
+      );
+  }
 }
 
 void
@@ -482,56 +482,56 @@ SwitchopenedControlKeyboard(
 {
   ProfFunc();
 
-	if( kb_command ) {
-		switch( type ) {
-			case glwkeyevent_t::dn: {
-				// edit level commands
-				switchopened_cmdmap_t table[] = {
-					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_choose             ), CmdSwitchopenedChoose              ),
-				};
-				ExecuteCmdMap( edit, AL( table ), key, target_valid, ran_cmd );
-			} __fallthrough;
+  if( kb_command ) {
+    switch( type ) {
+      case glwkeyevent_t::dn: {
+        // edit level commands
+        switchopened_cmdmap_t table[] = {
+          _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_choose             ), CmdSwitchopenedChoose              ),
+        };
+        ExecuteCmdMap( edit, AL( table ), key, target_valid, ran_cmd );
+      } __fallthrough;
 
-			case glwkeyevent_t::repeat: {
-				// edit level commands
-				switchopened_cmdmap_t table[] = {
-					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_closefile           ), CmdSwitchopenedCloseFile         ),
-					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_u            ), CmdSwitchopenedCursorU           ),
-					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_d            ), CmdSwitchopenedCursorD           ),
-					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_page_u       ), CmdSwitchopenedCursorU           , so.nlines_screen ),
-					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_page_d       ), CmdSwitchopenedCursorD           , so.nlines_screen ),
-					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_u            ), CmdSwitchopenedScrollU           , Cast( idx_t, GetPropFromDb( f32, f32_lines_per_jump ) ) ),
-					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_d            ), CmdSwitchopenedScrollD           , Cast( idx_t, GetPropFromDb( f32, f32_lines_per_jump ) ) ),
-					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_page_u       ), CmdSwitchopenedScrollU           , so.nlines_screen ),
-					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_page_d       ), CmdSwitchopenedScrollD           , so.nlines_screen ),
-					_switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_make_cursor_present ), CmdSwitchopenedMakeCursorPresent ),
-				};
-				ExecuteCmdMap( edit, AL( table ), key, target_valid, ran_cmd );
-			} break;
+      case glwkeyevent_t::repeat: {
+        // edit level commands
+        switchopened_cmdmap_t table[] = {
+          _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_closefile           ), CmdSwitchopenedCloseFile         ),
+          _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_u            ), CmdSwitchopenedCursorU           ),
+          _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_d            ), CmdSwitchopenedCursorD           ),
+          _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_page_u       ), CmdSwitchopenedCursorU           , so.nlines_screen ),
+          _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_page_d       ), CmdSwitchopenedCursorD           , so.nlines_screen ),
+          _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_u            ), CmdSwitchopenedScrollU           , Cast( idx_t, GetPropFromDb( f32, f32_lines_per_jump ) ) ),
+          _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_d            ), CmdSwitchopenedScrollD           , Cast( idx_t, GetPropFromDb( f32, f32_lines_per_jump ) ) ),
+          _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_page_u       ), CmdSwitchopenedScrollU           , so.nlines_screen ),
+          _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_page_d       ), CmdSwitchopenedScrollD           , so.nlines_screen ),
+          _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_make_cursor_present ), CmdSwitchopenedMakeCursorPresent ),
+        };
+        ExecuteCmdMap( edit, AL( table ), key, target_valid, ran_cmd );
+      } break;
 
-			case glwkeyevent_t::up: {
-			} break;
+      case glwkeyevent_t::up: {
+      } break;
 
-			default: UnreachableCrash();
-		}
-	}
+      default: UnreachableCrash();
+    }
+  }
 
-	if( !ran_cmd ) {
-		bool content_changed = 0;
-		TxtControlKeyboardSingleLine(
-			so.opened_search,
-			kb_command,
-			target_valid,
-			content_changed,
-			ran_cmd,
-			type,
-			key,
-			keylocks
-			);
-		// auto-update the matches, since it's pretty fast.
-		if( content_changed ) {
-			CmdUpdateSearchMatches( edit );
-		}
-	}
+  if( !ran_cmd ) {
+    bool content_changed = 0;
+    TxtControlKeyboardSingleLine(
+      so.opened_search,
+      kb_command,
+      target_valid,
+      content_changed,
+      ran_cmd,
+      type,
+      key,
+      keylocks
+      );
+    // auto-update the matches, since it's pretty fast.
+    if( content_changed ) {
+      CmdUpdateSearchMatches( edit );
+    }
+  }
 }
 

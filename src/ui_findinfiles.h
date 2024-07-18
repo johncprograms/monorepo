@@ -552,8 +552,8 @@ __FindinfilesCmd( CmdSelectAllQueryText )
 Inl void
 _ActiveFoundinfile( findinfiles_t& fif, foundinfile_t** result, bool* found )
 {
-	if( !fif.matches.totallen ) {
-		*found = 0;
+  if( !fif.matches.totallen ) {
+    *found = 0;
     return;
   }
   
@@ -577,131 +577,131 @@ __FindinfilesCmd( CmdFindinfilesChoose )
   bool opened_existing;
   fnOpenFileForChoose( misc2, foundinfile->name, &loaded, &txt, &opened_existing );
   if( !loaded ) {
-		auto cstr = AllocCstr( foundinfile->name );
-		LogUI( "[EDIT] FifChoose couldn't load file: \"%s\"", cstr );
-		MemHeapFree( cstr );
-		return;
+    auto cstr = AllocCstr( foundinfile->name );
+    LogUI( "[EDIT] FifChoose couldn't load file: \"%s\"", cstr );
+    MemHeapFree( cstr );
+    return;
   }
   
 #if USE_BUF_FOR_FILECONTENTSEARCH
-	txt_setsel_t setsel;
-	setsel.x_start = foundinfile->l_x;
-	setsel.y_start = foundinfile->l_y;
-	setsel.x_end = foundinfile->r_x;
-	setsel.y_end = foundinfile->r_y;
-	// TODO: update the foundinfile positions when buf contents change.
-	// for now, just clamp them to inbounds so it puts you near.
-	ForceInbounds( &txt->buf, &setsel.x_start, &setsel.y_start );
-	ForceInbounds( &txt->buf, &setsel.x_end, &setsel.y_end );
-	CmdSetSelection( *txt, Cast( idx_t, &setsel ), 0 );
+  txt_setsel_t setsel;
+  setsel.x_start = foundinfile->l_x;
+  setsel.y_start = foundinfile->l_y;
+  setsel.x_end = foundinfile->r_x;
+  setsel.y_end = foundinfile->r_y;
+  // TODO: update the foundinfile positions when buf contents change.
+  // for now, just clamp them to inbounds so it puts you near.
+  ForceInbounds( &txt->buf, &setsel.x_start, &setsel.y_start );
+  ForceInbounds( &txt->buf, &setsel.x_end, &setsel.y_end );
+  CmdSetSelection( *txt, Cast( idx_t, &setsel ), 0 );
 #else
-	// note that it's useful to allow Choose to work for unsaved files.
-	// this is so that if you do a Replace of some kind, you can still use the findinfiles to
-	// navigate around. it won't be entirely accurate, but it's usually close enough for now.
+  // note that it's useful to allow Choose to work for unsaved files.
+  // this is so that if you do a Replace of some kind, you can still use the findinfiles to
+  // navigate around. it won't be entirely accurate, but it's usually close enough for now.
 
-	// at some point i'll think through how we want to solve line/char drift.
-	// maybe unique line ids, and we tie the search result to the line id?
-	// that would solve the line drift problem, but not the character drift.
-	// i guess since we have a unique id line system, we could add a listening system, and
-	// update the search result when that unique line id changes.
-	// i like this unique line id idea much better than the persistent ranges i had previously.
-	// now the only questions are:
-	// - what operations create a new unique line id?
-	// - what operations destroy the unique line id?
-	// - what operations preserve the unique line id?
-	// probably with enough effort, we could make buf_t do reasonable things here, since its line-based.
+  // at some point i'll think through how we want to solve line/char drift.
+  // maybe unique line ids, and we tie the search result to the line id?
+  // that would solve the line drift problem, but not the character drift.
+  // i guess since we have a unique id line system, we could add a listening system, and
+  // update the search result when that unique line id changes.
+  // i like this unique line id idea much better than the persistent ranges i had previously.
+  // now the only questions are:
+  // - what operations create a new unique line id?
+  // - what operations destroy the unique line id?
+  // - what operations preserve the unique line id?
+  // probably with enough effort, we could make buf_t do reasonable things here, since its line-based.
 
-	if( !opened_existing ) {
-		// WARNING!
-		// we're using the txt->buf.orig_file_contents, meaning we rely on
-		// that not changing after we open this file above! this is so that we can make
-		// a faster findinfiles that doesn't require opening a buf_t for everything.
-		// here is where we'll convert our linear file map into a 2d range.
-		//
-		auto file_contents = txt->buf.orig_file_contents;
-		auto match_l = foundinfile->pos_match_l;
-		auto match_len = foundinfile->match_len;
-		auto match_r = match_l + match_len;
-		AssertCrash( match_r <= file_contents.len );
-		auto lineno_before_match = CountNewlines( file_contents.mem, match_l );
-		auto lineno_in_match = CountNewlines( file_contents.mem + match_l, match_len );
-		auto bol_l = CursorStopAtNewlineL( ML( file_contents ), match_l );
-		auto bol_r = CursorStopAtNewlineL( ML( file_contents ), match_r );
-		txt_setsel_t setsel;
-		setsel.x_start = Cast( u32, match_l - bol_l );
-		setsel.y_start = lineno_before_match;
-		setsel.x_end = Cast( u32, match_r - bol_r );
-		setsel.y_end = lineno_before_match + lineno_in_match;
-		// TODO: update the foundinfile positions when buf contents change.
-		// for now, just clamp them to inbounds so it puts you near.
-		ForceInbounds( &txt->buf, &setsel.x_start, &setsel.y_start );
-		ForceInbounds( &txt->buf, &setsel.x_end, &setsel.y_end );
-		CmdSetSelection( *txt, Cast( idx_t, &setsel ), 0 );
-	}
-	else {
-		// we've got an open buf_t before this, so we'll use the eoltype to estimate
-		// our 1d -> 2d conversion.
-		// this can be inaccurate if the file has mixed eols on disk, which is rare enough
-		// for me to ignore this for now. we'll see how common this actually is in practice.
-		// once i've got ui to set eoltype, eliminating the mixing, this should be fine.
-		//
-		auto match_l = foundinfile->pos_match_l;
-		auto match_len = foundinfile->match_len;
-		auto match_r = match_l + match_len;
-		auto cmatch_l = match_l;
-		auto cmatch_r = match_r;
-		u32 match_l_x = 0;
-		u32 match_l_y = 0;
-		u32 match_r_x = 0;
-		u32 match_r_y = 0;
-		auto eol_len = EolString( txt->eoltype ).len;
-		bool converted_l = 0;
-		bool converted_r = 0;
-		FORALLLINES( &txt->buf, line, y )
-			if( converted_r ) break;
-			auto line_and_eol_len = line->len + eol_len;
-			if( !converted_l ) {
-				if( cmatch_l >= line_and_eol_len ) {
-					cmatch_l -= line_and_eol_len;
-				}
-				else { // cmatch_l < line_and_eol_len
-					converted_l = 1;
-					AssertCrash( cmatch_l <= MAX_u32 );
-					match_l_x = Cast( u32, cmatch_l );
-					match_l_y = y;
-				}
-			}
-			if( !converted_r ) {
-				if( cmatch_r >= line_and_eol_len ) {
-					cmatch_r -= line_and_eol_len;
-				}
-				else { // cmatch_r < line_and_eol_len
-					converted_r = 1;
-					AssertCrash( cmatch_r <= MAX_u32 );
-					match_r_x = Cast( u32, cmatch_r );
-					match_r_y = y;
-				}
-			}
-		}
-		if( !converted_l  ||  !converted_r ) {
-			auto slice = SliceFromArray( txt->filename );
-			auto cstr = AllocCstr( slice );
-			LogUI( "[EDIT] FifChoose couldn't find within: \"%s\"", cstr );
-			MemHeapFree( cstr );
-		}
-		else {
-			txt_setsel_t setsel;
-			setsel.x_start = match_l_x;
-			setsel.y_start = match_l_y;
-			setsel.x_end = match_r_x;
-			setsel.y_end = match_r_y;
-			// TODO: update the foundinfile positions when buf contents change.
-			// for now, just clamp them to inbounds so it puts you near.
-			ForceInbounds( &txt->buf, &setsel.x_start, &setsel.y_start );
-			ForceInbounds( &txt->buf, &setsel.x_end, &setsel.y_end );
-			CmdSetSelection( *txt, Cast( idx_t, &setsel ), 0 );
-		}
-	}
+  if( !opened_existing ) {
+    // WARNING!
+    // we're using the txt->buf.orig_file_contents, meaning we rely on
+    // that not changing after we open this file above! this is so that we can make
+    // a faster findinfiles that doesn't require opening a buf_t for everything.
+    // here is where we'll convert our linear file map into a 2d range.
+    //
+    auto file_contents = txt->buf.orig_file_contents;
+    auto match_l = foundinfile->pos_match_l;
+    auto match_len = foundinfile->match_len;
+    auto match_r = match_l + match_len;
+    AssertCrash( match_r <= file_contents.len );
+    auto lineno_before_match = CountNewlines( file_contents.mem, match_l );
+    auto lineno_in_match = CountNewlines( file_contents.mem + match_l, match_len );
+    auto bol_l = CursorStopAtNewlineL( ML( file_contents ), match_l );
+    auto bol_r = CursorStopAtNewlineL( ML( file_contents ), match_r );
+    txt_setsel_t setsel;
+    setsel.x_start = Cast( u32, match_l - bol_l );
+    setsel.y_start = lineno_before_match;
+    setsel.x_end = Cast( u32, match_r - bol_r );
+    setsel.y_end = lineno_before_match + lineno_in_match;
+    // TODO: update the foundinfile positions when buf contents change.
+    // for now, just clamp them to inbounds so it puts you near.
+    ForceInbounds( &txt->buf, &setsel.x_start, &setsel.y_start );
+    ForceInbounds( &txt->buf, &setsel.x_end, &setsel.y_end );
+    CmdSetSelection( *txt, Cast( idx_t, &setsel ), 0 );
+  }
+  else {
+    // we've got an open buf_t before this, so we'll use the eoltype to estimate
+    // our 1d -> 2d conversion.
+    // this can be inaccurate if the file has mixed eols on disk, which is rare enough
+    // for me to ignore this for now. we'll see how common this actually is in practice.
+    // once i've got ui to set eoltype, eliminating the mixing, this should be fine.
+    //
+    auto match_l = foundinfile->pos_match_l;
+    auto match_len = foundinfile->match_len;
+    auto match_r = match_l + match_len;
+    auto cmatch_l = match_l;
+    auto cmatch_r = match_r;
+    u32 match_l_x = 0;
+    u32 match_l_y = 0;
+    u32 match_r_x = 0;
+    u32 match_r_y = 0;
+    auto eol_len = EolString( txt->eoltype ).len;
+    bool converted_l = 0;
+    bool converted_r = 0;
+    FORALLLINES( &txt->buf, line, y )
+      if( converted_r ) break;
+      auto line_and_eol_len = line->len + eol_len;
+      if( !converted_l ) {
+        if( cmatch_l >= line_and_eol_len ) {
+          cmatch_l -= line_and_eol_len;
+        }
+        else { // cmatch_l < line_and_eol_len
+          converted_l = 1;
+          AssertCrash( cmatch_l <= MAX_u32 );
+          match_l_x = Cast( u32, cmatch_l );
+          match_l_y = y;
+        }
+      }
+      if( !converted_r ) {
+        if( cmatch_r >= line_and_eol_len ) {
+          cmatch_r -= line_and_eol_len;
+        }
+        else { // cmatch_r < line_and_eol_len
+          converted_r = 1;
+          AssertCrash( cmatch_r <= MAX_u32 );
+          match_r_x = Cast( u32, cmatch_r );
+          match_r_y = y;
+        }
+      }
+    }
+    if( !converted_l  ||  !converted_r ) {
+      auto slice = SliceFromArray( txt->filename );
+      auto cstr = AllocCstr( slice );
+      LogUI( "[EDIT] FifChoose couldn't find within: \"%s\"", cstr );
+      MemHeapFree( cstr );
+    }
+    else {
+      txt_setsel_t setsel;
+      setsel.x_start = match_l_x;
+      setsel.y_start = match_l_y;
+      setsel.x_end = match_r_x;
+      setsel.y_end = match_r_y;
+      // TODO: update the foundinfile positions when buf contents change.
+      // for now, just clamp them to inbounds so it puts you near.
+      ForceInbounds( &txt->buf, &setsel.x_start, &setsel.y_start );
+      ForceInbounds( &txt->buf, &setsel.x_end, &setsel.y_end );
+      CmdSetSelection( *txt, Cast( idx_t, &setsel ), 0 );
+    }
+  }
 #endif
 }
 
@@ -736,171 +736,171 @@ typedef __FindinfilesOpenFileForReplace( *FnOpenFileForReplace ); // TODO: renam
 // TODO: group foundinfile_t's by filename, so we don't emit the same message a bunch of times for the same file.
 Inl void
 _ReplaceInFile(
-	findinfiles_t& fif,
-	foundinfile_t* foundinfile,
-	slice_t query,
-	slice_t replacement,
-	FnOpenFileForReplace fnOpenFileForReplace,
-	idx_t misc
-	)
+  findinfiles_t& fif,
+  foundinfile_t* foundinfile,
+  slice_t query,
+  slice_t replacement,
+  FnOpenFileForReplace fnOpenFileForReplace,
+  idx_t misc
+  )
 {
-	bool loaded;
-	txt_t* txt;
-	bool* unsaved;
-	bool opened_existing;
-	fnOpenFileForReplace( misc, foundinfile->name, &loaded, &txt, &unsaved, &opened_existing );
-	if( !loaded ) {
-		auto cstr = AllocCstr( foundinfile->name );
-		LogUI( "[EDIT] ReplaceInFile failed to load file: \"%s\"", cstr );
-		MemHeapFree( cstr );
-		return;
-	}
+  bool loaded;
+  txt_t* txt;
+  bool* unsaved;
+  bool opened_existing;
+  fnOpenFileForReplace( misc, foundinfile->name, &loaded, &txt, &unsaved, &opened_existing );
+  if( !loaded ) {
+    auto cstr = AllocCstr( foundinfile->name );
+    LogUI( "[EDIT] ReplaceInFile failed to load file: \"%s\"", cstr );
+    MemHeapFree( cstr );
+    return;
+  }
 
 #if USE_BUF_FOR_FILECONTENTSEARCH
-	txt_setsel_t setsel;
-	setsel.x_start = foundinfile->l_x;
-	setsel.y_start = foundinfile->l_y;
-	setsel.x_end = foundinfile->r_x;
-	setsel.y_end = foundinfile->r_y;
-	CmdSetSelection( *txt, Cast( idx_t, &setsel ), 0 );
+  txt_setsel_t setsel;
+  setsel.x_start = foundinfile->l_x;
+  setsel.y_start = foundinfile->l_y;
+  setsel.x_end = foundinfile->r_x;
+  setsel.y_end = foundinfile->r_y;
+  CmdSetSelection( *txt, Cast( idx_t, &setsel ), 0 );
 
-	// WARNING! Duplicated below.
-	auto contents = AllocSelection( *txt, eoltype_t::crlf );
-	if( StringEquals( ML( contents ), ML( query ), 1 ) ) {
-		CmdAddString( *txt, Cast( idx_t, replacement.mem ), replacement.len );
-		*unsaved = 1;
-	} else {
-		auto cstr0 = AllocCstr( query );
-		auto cstr1 = AllocCstr( contents );
-		LogUI( "[EDIT] ReplaceInFile failed, query \"%s\" didn't match contents \"%s\"!", cstr0, cstr1 );
-		MemHeapFree( cstr0 );
-		MemHeapFree( cstr1 );
-	}
-	Free( contents );
+  // WARNING! Duplicated below.
+  auto contents = AllocSelection( *txt, eoltype_t::crlf );
+  if( StringEquals( ML( contents ), ML( query ), 1 ) ) {
+    CmdAddString( *txt, Cast( idx_t, replacement.mem ), replacement.len );
+    *unsaved = 1;
+  } else {
+    auto cstr0 = AllocCstr( query );
+    auto cstr1 = AllocCstr( contents );
+    LogUI( "[EDIT] ReplaceInFile failed, query \"%s\" didn't match contents \"%s\"!", cstr0, cstr1 );
+    MemHeapFree( cstr0 );
+    MemHeapFree( cstr1 );
+  }
+  Free( contents );
 #else
-	// note that it's useful to allow Replace to work for unsaved files.
-	// this is so that you can do replaces one by one, and still use the findinfiles to
-	// navigate around. it won't be entirely accurate, but it's usually close enough for now.
+  // note that it's useful to allow Replace to work for unsaved files.
+  // this is so that you can do replaces one by one, and still use the findinfiles to
+  // navigate around. it won't be entirely accurate, but it's usually close enough for now.
 
-	if( !opened_existing ) {
-		// WARNING!
-		// we're using the txt->buf.orig_file_contents, meaning we rely on
-		// that not changing after we open this file above! this is so that we can make
-		// a faster findinfiles that doesn't require opening a buf_t for everything.
-		// here is where we'll convert our linear file map into a 2d range.
-		//
-		auto file_contents = txt->buf.orig_file_contents;
-		auto match_l = foundinfile->pos_match_l;
-		auto match_len = foundinfile->match_len;
-		auto match_r = match_l + match_len;
-		AssertCrash( match_r <= file_contents.len );
-		auto lineno_before_match = CountNewlines( file_contents.mem, match_l );
-		auto lineno_in_match = CountNewlines( file_contents.mem + match_l, match_len );
-		auto bol_l = CursorStopAtNewlineL( ML( file_contents ), match_l );
-		auto bol_r = CursorStopAtNewlineL( ML( file_contents ), match_r );
-		txt_setsel_t setsel;
-		setsel.x_start = Cast( u32, match_l - bol_l );
-		setsel.y_start = lineno_before_match;
-		setsel.x_end = Cast( u32, match_r - bol_r );
-		setsel.y_end = lineno_before_match + lineno_in_match;
-		// TODO: update the foundinfile positions when buf contents change.
-		// for now, just clamp them to inbounds so it puts you near.
-		ForceInbounds( &txt->buf, &setsel.x_start, &setsel.y_start );
-		ForceInbounds( &txt->buf, &setsel.x_end, &setsel.y_end );
-		CmdSetSelection( *txt, Cast( idx_t, &setsel ), 0 );
+  if( !opened_existing ) {
+    // WARNING!
+    // we're using the txt->buf.orig_file_contents, meaning we rely on
+    // that not changing after we open this file above! this is so that we can make
+    // a faster findinfiles that doesn't require opening a buf_t for everything.
+    // here is where we'll convert our linear file map into a 2d range.
+    //
+    auto file_contents = txt->buf.orig_file_contents;
+    auto match_l = foundinfile->pos_match_l;
+    auto match_len = foundinfile->match_len;
+    auto match_r = match_l + match_len;
+    AssertCrash( match_r <= file_contents.len );
+    auto lineno_before_match = CountNewlines( file_contents.mem, match_l );
+    auto lineno_in_match = CountNewlines( file_contents.mem + match_l, match_len );
+    auto bol_l = CursorStopAtNewlineL( ML( file_contents ), match_l );
+    auto bol_r = CursorStopAtNewlineL( ML( file_contents ), match_r );
+    txt_setsel_t setsel;
+    setsel.x_start = Cast( u32, match_l - bol_l );
+    setsel.y_start = lineno_before_match;
+    setsel.x_end = Cast( u32, match_r - bol_r );
+    setsel.y_end = lineno_before_match + lineno_in_match;
+    // TODO: update the foundinfile positions when buf contents change.
+    // for now, just clamp them to inbounds so it puts you near.
+    ForceInbounds( &txt->buf, &setsel.x_start, &setsel.y_start );
+    ForceInbounds( &txt->buf, &setsel.x_end, &setsel.y_end );
+    CmdSetSelection( *txt, Cast( idx_t, &setsel ), 0 );
 
-		// WARNING! Duplicated above and below.
-		auto contents = AllocSelection( *txt, eoltype_t::crlf );
-		if( StringEquals( ML( contents ), ML( query ), 1 ) ) {
-			CmdAddString( *txt, Cast( idx_t, replacement.mem ), replacement.len );
-			*unsaved = 1;
-		} else {
-			auto cstr0 = AllocCstr( query );
-			auto cstr1 = AllocCstr( contents );
-			LogUI( "[EDIT] ReplaceInFile failed, query \"%s\" didn't match contents \"%s\"!", cstr0, cstr1 );
-			MemHeapFree( cstr0 );
-			MemHeapFree( cstr1 );
-		}
-		Free( contents );
-	}
-	else {
-		// we've got an open buf_t before this, so we'll use the eoltype to estimate
-		// our 1d -> 2d conversion.
-		// this can be inaccurate if the file has mixed eols on disk, which is rare enough
-		// for me to ignore this for now. we'll see how common this actually is in practice.
-		// once i've got ui to set eoltype, eliminating the mixing, this should be fine.
-		//
-		auto match_l = foundinfile->pos_match_l;
-		auto match_len = foundinfile->match_len;
-		auto match_r = match_l + match_len;
-		auto cmatch_l = match_l;
-		auto cmatch_r = match_r;
-		u32 match_l_x = 0;
-		u32 match_l_y = 0;
-		u32 match_r_x = 0;
-		u32 match_r_y = 0;
-		auto eol_len = EolString( txt->eoltype ).len;
-		bool converted_l = 0;
-		bool converted_r = 0;
-		FORALLLINES( &txt->buf, line, y )
-			if( converted_r ) break;
-			auto line_and_eol_len = line->len + eol_len;
-			if( !converted_l ) {
-				if( cmatch_l >= line_and_eol_len ) {
-					cmatch_l -= line_and_eol_len;
-				}
-				else { // cmatch_l < line_and_eol_len
-					converted_l = 1;
-					AssertCrash( cmatch_l <= MAX_u32 );
-					match_l_x = Cast( u32, cmatch_l );
-					match_l_y = y;
-				}
-			}
-			if( !converted_r ) {
-				if( cmatch_r >= line_and_eol_len ) {
-					cmatch_r -= line_and_eol_len;
-				}
-				else { // cmatch_r < line_and_eol_len
-					converted_r = 1;
-					AssertCrash( cmatch_r <= MAX_u32 );
-					match_r_x = Cast( u32, cmatch_r );
-					match_r_y = y;
-				}
-			}
-		}
-		if( !converted_l  ||  !converted_r ) {
-			auto slice = SliceFromArray( txt->filename );
-			auto cstr = AllocCstr( slice );
-			LogUI( "[EDIT] ReplaceInFile couldn't find within: \"%s\"", cstr );
-			MemHeapFree( cstr );
-		}
-		else {
-			txt_setsel_t setsel;
-			setsel.x_start = match_l_x;
-			setsel.y_start = match_l_y;
-			setsel.x_end = match_r_x;
-			setsel.y_end = match_r_y;
-			// TODO: update the foundinfile positions when buf contents change.
-			// for now, just clamp them to inbounds so it puts you near.
-			ForceInbounds( &txt->buf, &setsel.x_start, &setsel.y_start );
-			ForceInbounds( &txt->buf, &setsel.x_end, &setsel.y_end );
-			CmdSetSelection( *txt, Cast( idx_t, &setsel ), 0 );
+    // WARNING! Duplicated above and below.
+    auto contents = AllocSelection( *txt, eoltype_t::crlf );
+    if( StringEquals( ML( contents ), ML( query ), 1 ) ) {
+      CmdAddString( *txt, Cast( idx_t, replacement.mem ), replacement.len );
+      *unsaved = 1;
+    } else {
+      auto cstr0 = AllocCstr( query );
+      auto cstr1 = AllocCstr( contents );
+      LogUI( "[EDIT] ReplaceInFile failed, query \"%s\" didn't match contents \"%s\"!", cstr0, cstr1 );
+      MemHeapFree( cstr0 );
+      MemHeapFree( cstr1 );
+    }
+    Free( contents );
+  }
+  else {
+    // we've got an open buf_t before this, so we'll use the eoltype to estimate
+    // our 1d -> 2d conversion.
+    // this can be inaccurate if the file has mixed eols on disk, which is rare enough
+    // for me to ignore this for now. we'll see how common this actually is in practice.
+    // once i've got ui to set eoltype, eliminating the mixing, this should be fine.
+    //
+    auto match_l = foundinfile->pos_match_l;
+    auto match_len = foundinfile->match_len;
+    auto match_r = match_l + match_len;
+    auto cmatch_l = match_l;
+    auto cmatch_r = match_r;
+    u32 match_l_x = 0;
+    u32 match_l_y = 0;
+    u32 match_r_x = 0;
+    u32 match_r_y = 0;
+    auto eol_len = EolString( txt->eoltype ).len;
+    bool converted_l = 0;
+    bool converted_r = 0;
+    FORALLLINES( &txt->buf, line, y )
+      if( converted_r ) break;
+      auto line_and_eol_len = line->len + eol_len;
+      if( !converted_l ) {
+        if( cmatch_l >= line_and_eol_len ) {
+          cmatch_l -= line_and_eol_len;
+        }
+        else { // cmatch_l < line_and_eol_len
+          converted_l = 1;
+          AssertCrash( cmatch_l <= MAX_u32 );
+          match_l_x = Cast( u32, cmatch_l );
+          match_l_y = y;
+        }
+      }
+      if( !converted_r ) {
+        if( cmatch_r >= line_and_eol_len ) {
+          cmatch_r -= line_and_eol_len;
+        }
+        else { // cmatch_r < line_and_eol_len
+          converted_r = 1;
+          AssertCrash( cmatch_r <= MAX_u32 );
+          match_r_x = Cast( u32, cmatch_r );
+          match_r_y = y;
+        }
+      }
+    }
+    if( !converted_l  ||  !converted_r ) {
+      auto slice = SliceFromArray( txt->filename );
+      auto cstr = AllocCstr( slice );
+      LogUI( "[EDIT] ReplaceInFile couldn't find within: \"%s\"", cstr );
+      MemHeapFree( cstr );
+    }
+    else {
+      txt_setsel_t setsel;
+      setsel.x_start = match_l_x;
+      setsel.y_start = match_l_y;
+      setsel.x_end = match_r_x;
+      setsel.y_end = match_r_y;
+      // TODO: update the foundinfile positions when buf contents change.
+      // for now, just clamp them to inbounds so it puts you near.
+      ForceInbounds( &txt->buf, &setsel.x_start, &setsel.y_start );
+      ForceInbounds( &txt->buf, &setsel.x_end, &setsel.y_end );
+      CmdSetSelection( *txt, Cast( idx_t, &setsel ), 0 );
 
-			// WARNING! Duplicated above.
-			auto contents = AllocSelection( *txt, eoltype_t::crlf );
-			if( StringEquals( ML( contents ), ML( query ), 1 ) ) {
-				CmdAddString( *txt, Cast( idx_t, replacement.mem ), replacement.len );
-				*unsaved = 1;
-			} else {
-				auto cstr0 = AllocCstr( query );
-				auto cstr1 = AllocCstr( contents );
-				LogUI( "[EDIT] ReplaceInFile failed, query \"%s\" didn't match contents \"%s\"!", cstr0, cstr1 );
-				MemHeapFree( cstr0 );
-				MemHeapFree( cstr1 );
-			}
-			Free( contents );
-		}
-	}
+      // WARNING! Duplicated above.
+      auto contents = AllocSelection( *txt, eoltype_t::crlf );
+      if( StringEquals( ML( contents ), ML( query ), 1 ) ) {
+        CmdAddString( *txt, Cast( idx_t, replacement.mem ), replacement.len );
+        *unsaved = 1;
+      } else {
+        auto cstr0 = AllocCstr( query );
+        auto cstr1 = AllocCstr( contents );
+        LogUI( "[EDIT] ReplaceInFile failed, query \"%s\" didn't match contents \"%s\"!", cstr0, cstr1 );
+        MemHeapFree( cstr0 );
+        MemHeapFree( cstr1 );
+      }
+      Free( contents );
+    }
+  }
 #endif
 }
 
@@ -926,7 +926,7 @@ __FindinfilesCmd( CmdFindinfilesReplaceAll )
   ReverseForPrev( page, fif.matches.current_page ) {
     ReverseForLen( i, *page ) {
       auto match = Cast( foundinfile_t*, page->mem ) + i;
-			_ReplaceInFile( fif, match, SliceFromString( query ), SliceFromString( replacement ), fnOpenFileForReplace, misc2 );
+      _ReplaceInFile( fif, match, SliceFromString( query ), SliceFromString( replacement ), fnOpenFileForReplace, misc2 );
     }
   }
   Free( replacement );
@@ -1193,17 +1193,17 @@ FindinfilesRender(
 
   if( !lines.len ) {
     static const auto label_no_results = SliceFromCStr( "--- no results ---" );
-		auto label_w = LayoutString( font, spaces_per_tab, ML( label_no_results ) );
-		DrawString(
-			stream,
-			font,
-			AlignCenter( bounds, label_w, line_h ),
-			GetZ( zrange, fiflayer_t::txt ),
-			bounds,
-			rgba_text,
-			spaces_per_tab,
-			ML( label_no_results )
-			);
+    auto label_w = LayoutString( font, spaces_per_tab, ML( label_no_results ) );
+    DrawString(
+      stream,
+      font,
+      AlignCenter( bounds, label_w, line_h ),
+      GetZ( zrange, fiflayer_t::txt ),
+      bounds,
+      rgba_text,
+      spaces_per_tab,
+      ML( label_no_results )
+      );
     return;
   }
 
@@ -1413,123 +1413,123 @@ FindinfilesControlKeyboard(
 {
   ProfFunc();
 
-	if( kb_command ) {
-		switch( type ) {
-			case glwkeyevent_t::dn: {
-				findinfiles_cmdmap_t table[] = {
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_replace_at_cursor  ), CmdFindinfilesReplaceAtCursor , Cast( idx_t, fnOpenFileForReplace ), miscForReplace ),
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_replace_all        ), CmdFindinfilesReplaceAll      , Cast( idx_t, fnOpenFileForReplace ), miscForReplace ),
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_refresh            ), CmdFindinfilesRefresh         ),
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_choose             ), CmdFindinfilesChoose          , Cast( idx_t, fnOpenFileForChoose  ), miscForChoose  ),
-				};
-				ExecuteCmdMap( fif, AL( table ), key, target_valid, ran_cmd );
-			} __fallthrough;
+  if( kb_command ) {
+    switch( type ) {
+      case glwkeyevent_t::dn: {
+        findinfiles_cmdmap_t table[] = {
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_replace_at_cursor  ), CmdFindinfilesReplaceAtCursor , Cast( idx_t, fnOpenFileForReplace ), miscForReplace ),
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_replace_all        ), CmdFindinfilesReplaceAll      , Cast( idx_t, fnOpenFileForReplace ), miscForReplace ),
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_refresh            ), CmdFindinfilesRefresh         ),
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_choose             ), CmdFindinfilesChoose          , Cast( idx_t, fnOpenFileForChoose  ), miscForChoose  ),
+        };
+        ExecuteCmdMap( fif, AL( table ), key, target_valid, ran_cmd );
+      } __fallthrough;
 
-			case glwkeyevent_t::repeat: {
-				findinfiles_cmdmap_t table[] = {
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_focus_u               ), CmdFindinfilesFocusU             ),
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_focus_d               ), CmdFindinfilesFocusD             ),
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_cursor_u              ), CmdFindinfilesCursorU            ),
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_cursor_d              ), CmdFindinfilesCursorD            ),
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_cursor_page_u         ), CmdFindinfilesCursorU            , fif.listview.pageupdn_distance ),
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_cursor_page_d         ), CmdFindinfilesCursorD            , fif.listview.pageupdn_distance ),
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_scroll_u              ), CmdFindinfilesScrollU            , Cast( idx_t, GetPropFromDb( f32, f32_lines_per_jump ) ) ),
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_scroll_d              ), CmdFindinfilesScrollD            , Cast( idx_t, GetPropFromDb( f32, f32_lines_per_jump ) ) ),
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_scroll_page_u         ), CmdFindinfilesScrollU            , fif.listview.pageupdn_distance ),
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_scroll_page_d         ), CmdFindinfilesScrollD            , fif.listview.pageupdn_distance ),
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_toggle_case_sensitive ), CmdFindinfilesToggleCaseSens     ),
-					_fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_toggle_word_boundary  ), CmdFindinfilesToggleWordBoundary ),
-				};
-				ExecuteCmdMap( fif, AL( table ), key, target_valid, ran_cmd );
-			} break;
+      case glwkeyevent_t::repeat: {
+        findinfiles_cmdmap_t table[] = {
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_focus_u               ), CmdFindinfilesFocusU             ),
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_focus_d               ), CmdFindinfilesFocusD             ),
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_cursor_u              ), CmdFindinfilesCursorU            ),
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_cursor_d              ), CmdFindinfilesCursorD            ),
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_cursor_page_u         ), CmdFindinfilesCursorU            , fif.listview.pageupdn_distance ),
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_cursor_page_d         ), CmdFindinfilesCursorD            , fif.listview.pageupdn_distance ),
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_scroll_u              ), CmdFindinfilesScrollU            , Cast( idx_t, GetPropFromDb( f32, f32_lines_per_jump ) ) ),
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_scroll_d              ), CmdFindinfilesScrollD            , Cast( idx_t, GetPropFromDb( f32, f32_lines_per_jump ) ) ),
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_scroll_page_u         ), CmdFindinfilesScrollU            , fif.listview.pageupdn_distance ),
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_scroll_page_d         ), CmdFindinfilesScrollD            , fif.listview.pageupdn_distance ),
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_toggle_case_sensitive ), CmdFindinfilesToggleCaseSens     ),
+          _fifcmdmap( GetPropFromDb( glwkeybind_t, keybind_findinfiles_toggle_word_boundary  ), CmdFindinfilesToggleWordBoundary ),
+        };
+        ExecuteCmdMap( fif, AL( table ), key, target_valid, ran_cmd );
+      } break;
 
-			case glwkeyevent_t::up: {
-			} break;
+      case glwkeyevent_t::up: {
+      } break;
 
-			default: UnreachableCrash();
-		}
-	}
+      default: UnreachableCrash();
+    }
+  }
 
-	if( !ran_cmd ) {
-		switch( fif.focus ) {
-			case findinfilesfocus_t::dir: {
-				bool content_changed = 0;
-				TxtControlKeyboardSingleLine(
-					fif.dir,
-					kb_command,
-					target_valid,
-					content_changed,
-					ran_cmd,
-					type,
-					key,
-					keylocks
-					);
-				if( content_changed ) {
+  if( !ran_cmd ) {
+    switch( fif.focus ) {
+      case findinfilesfocus_t::dir: {
+        bool content_changed = 0;
+        TxtControlKeyboardSingleLine(
+          fif.dir,
+          kb_command,
+          target_valid,
+          content_changed,
+          ran_cmd,
+          type,
+          key,
+          keylocks
+          );
+        if( content_changed ) {
 //              CmdFindinfilesRefresh( edit );
-				}
-			} break;
-			case findinfilesfocus_t::ignored_filetypes: {
-				bool content_changed = 0;
-				TxtControlKeyboardSingleLine(
-					fif.ignored_filetypes,
-					kb_command,
-					target_valid,
-					content_changed,
-					ran_cmd,
-					type,
-					key,
-					keylocks
-					);
-				if( content_changed ) {
+        }
+      } break;
+      case findinfilesfocus_t::ignored_filetypes: {
+        bool content_changed = 0;
+        TxtControlKeyboardSingleLine(
+          fif.ignored_filetypes,
+          kb_command,
+          target_valid,
+          content_changed,
+          ran_cmd,
+          type,
+          key,
+          keylocks
+          );
+        if( content_changed ) {
 //              CmdFindinfilesUpdateMatches( edit );
-				}
-			} break;
-			case findinfilesfocus_t::included_filetypes: {
-				bool content_changed = 0;
-				TxtControlKeyboardSingleLine(
-					fif.included_filetypes,
-					kb_command,
-					target_valid,
-					content_changed,
-					ran_cmd,
-					type,
-					key,
-					keylocks
-					);
-				if( content_changed ) {
+        }
+      } break;
+      case findinfilesfocus_t::included_filetypes: {
+        bool content_changed = 0;
+        TxtControlKeyboardSingleLine(
+          fif.included_filetypes,
+          kb_command,
+          target_valid,
+          content_changed,
+          ran_cmd,
+          type,
+          key,
+          keylocks
+          );
+        if( content_changed ) {
 //              CmdFindinfilesUpdateMatches( edit );
-				}
-			} break;
-			case findinfilesfocus_t::query: {
-				bool content_changed = 0;
-				TxtControlKeyboardSingleLine(
-					fif.query,
-					kb_command,
-					target_valid,
-					content_changed,
-					ran_cmd,
-					type,
-					key,
-					keylocks
-					);
-				if( content_changed ) {
+        }
+      } break;
+      case findinfilesfocus_t::query: {
+        bool content_changed = 0;
+        TxtControlKeyboardSingleLine(
+          fif.query,
+          kb_command,
+          target_valid,
+          content_changed,
+          ran_cmd,
+          type,
+          key,
+          keylocks
+          );
+        if( content_changed ) {
 //              CmdFindinfilesUpdateMatches( edit );
-				}
-			} break;
-			case findinfilesfocus_t::replacement: {
-				bool content_changed = 0;
-				TxtControlKeyboardSingleLine(
-					fif.replacement,
-					kb_command,
-					target_valid,
-					content_changed,
-					ran_cmd,
-					type,
-					key,
-					keylocks
-					);
-			} break;
-			case findinfilesfocus_t::COUNT: UnreachableCrash(); break;
-		}
-	}
+        }
+      } break;
+      case findinfilesfocus_t::replacement: {
+        bool content_changed = 0;
+        TxtControlKeyboardSingleLine(
+          fif.replacement,
+          kb_command,
+          target_valid,
+          content_changed,
+          ran_cmd,
+          type,
+          key,
+          keylocks
+          );
+      } break;
+      case findinfilesfocus_t::COUNT: UnreachableCrash(); break;
+    }
+  }
 } 
