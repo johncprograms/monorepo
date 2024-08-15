@@ -25,7 +25,7 @@
 
 
 // size of the one prof_elem_t buffer, which stores all the records.
-#define PROF_STORE_MAX   1ULL*1024*1024*1024
+#define PROF_STORE_MAX   10ULL*1024*1024*1024
 
 
 
@@ -479,7 +479,8 @@ CompareZonestats( const void* a, const void* b )
 {
   auto zone0 = Cast( prof_zonestats_t*, a );
   auto zone1 = Cast( prof_zonestats_t*, b );
-  s32 r = ( zone0->time_total <= zone1->time_total )  ?  1  :  -1;
+//  s32 r = ( zone0->time_total <= zone1->time_total )  ?  1  :  -1;
+  s32 r = ( zone0->time_mean <= zone1->time_mean )  ?  1  :  -1;
   return r;
 }
 

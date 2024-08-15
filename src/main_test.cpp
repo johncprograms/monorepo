@@ -1,5 +1,5 @@
-// build:console_x64_debug
 // build:console_x64_optimized
+// build:console_x64_debug
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
 void
@@ -81,14 +81,8 @@ struct RegisterTestObject
 #include "ds_deque_resizeable_pagelist.h"
 #include "ds_stack_resizeable_pagestack.h"
 #include "ds_hashset_cstyle.h"
-#include "ds_hashset_complexkey.h"
-#include "ds_hashset_nonzeroptrs.h"
 #include "ds_minheap_extractable.h"
 #include "ds_minheap_decreaseable.h"
-#include "ds_minheap_generic.h"
-#include "compress_runlength.h"
-#include "compress_huffman.h"
-#include "compress_arithmetic.h"
 #include "allocator_fixedsize.h"
 #include "filesys.h"
 #include "cstr_integer.h"
@@ -112,7 +106,15 @@ struct RegisterTestObject
 #define PROF_ENABLED_AT_LAUNCH   1
 #include "profile.h"
 
+#include "ds_hashset_nonzeroptrs.h"
+#include "ds_hashset_complexkey.h"
+#include "ds_hashset_chain_complexkey.h"
+#include "ds_minheap_generic.h"
+#include "ds_minmaxheap_generic.h"
 #include "ds_graph.h"
+#include "compress_runlength.h"
+#include "compress_huffman.h"
+#include "compress_arithmetic.h"
 #include "text_parsing.h"
 #include "allocator_heap_findleaks.h"
 #include "mainthread.h"

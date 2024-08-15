@@ -80,6 +80,7 @@ Clear( HASHSET* set )
 TKCHE Inl void
 Init( HASHSET* set, idx_t initial_capacity )
 {
+  ProfFunc();
   // PERF: try one bulk allocation here.
   set->hashes = MemHeapAlloc( idx_t, initial_capacity );
   set->keys = MemHeapAlloc( Key, initial_capacity );
@@ -95,6 +96,7 @@ Init( HASHSET* set, idx_t initial_capacity )
 TKCHE Inl void
 Kill( HASHSET* set )
 {
+  ProfFunc();
   MemHeapFree( set->hashes );
   MemHeapFree( set->keys );
   if constexpr( !std::is_same_v<Val, void> ) {
@@ -106,6 +108,7 @@ Kill( HASHSET* set )
 TKCHE Inl void
 Resize( HASHSET* old_set, idx_t new_capacity )
 {
+  ProfFunc();
   AssertCrash( old_set->len <= new_capacity );
   HASHSET new_set;
   Init( &new_set, new_capacity );
@@ -151,6 +154,7 @@ Add(
   bool overwrite_val_if_already_there
   )
 {
+  ProfFunc();
   CompileAssert( sizeof( idx_t ) == sizeof( set->hashes[0] ) );
   if( set->len >= set->capacity ) {
     Resize( set, 2 * set->capacity );
@@ -247,8 +251,8 @@ LookupRaw(
           // find the contiguous chunk of filled slots that we need to consider for chaining.
           // note the bounds are: [ idx_contiguous_start, idx_contiguous_end ]
           //
-          auto idx_contiguous_start = idx;
-          Fori( idx_t, nprobed_chain, nprobed + 1, capacity ) {
+          auto idx_contiguous_start = ( idx - nprobed ) % capacity;
+          Fori( idx_t, nprobed_chain, 0, capacity - nprobed ) {
             auto idx_prev = ( idx_contiguous_start - 1 ) % capacity;
             auto slot_hash_prev = set->hashes[idx_prev];
             auto has_data_prev = slot_hash_prev & HIGHBIT_idx;
@@ -258,7 +262,7 @@ LookupRaw(
             idx_contiguous_start = idx_prev;
           }
           auto idx_contiguous_end = idx;
-          Fori( idx_t, nprobed_chain, nprobed + 1, capacity ) {
+          Fori( idx_t, nprobed_chain, 0, capacity - nprobed ) {
             auto idx_next = ( idx_contiguous_end + 1 ) % capacity;
             auto slot_hash_next = set->hashes[idx_next];
             auto has_data_next = slot_hash_next & HIGHBIT_idx;
@@ -279,7 +283,7 @@ LookupRaw(
           //     move j to idx_empty
           //     idx_empty = j
           //
-          if( idx_contiguous_start != idx_contiguous_end ) {
+          if( idx != idx_contiguous_end ) {
             auto idx_empty = idx;
             auto idx_probe = ( idx + 1 ) % capacity;
             Forever {
@@ -300,7 +304,7 @@ LookupRaw(
                 if constexpr( !std::is_same_v<Val, void> ) {
                   set->vals[idx_empty] = set->vals[idx_probe];
                 }
-                set->hashes[idx_empty] = set->hashes[idx_probe];
+                set->hashes[idx_empty] = slot_hash_probe;
                 set->hashes[idx_probe] = 0;
                 idx_empty = idx_probe;
               }
@@ -333,6 +337,7 @@ LookupAndCopyValue(
   Val* found_val
   )
 {
+  ProfFunc();
   Val* found_pointer = 0;
   LookupRaw( set, key, found, &found_pointer, (Val*)0, 0 );
   if( found_val  &&  *found ) {
@@ -347,6 +352,7 @@ Lookup(
   Val** found_ptr
   )
 {
+  ProfFunc();
   Val* found_pointer = 0;
   LookupRaw( set, key, found, &found_pointer, (Val*)0, 0 );
   if( found_ptr ) {
@@ -361,6 +367,7 @@ Remove(
   Val* found_val
   )
 {
+  ProfFunc();
   Val found_value = 0;
   LookupRaw( set, key, found, (Val**)0, &found_value, 1 );
   if( found_val ) {
@@ -375,6 +382,7 @@ Flatten(
   Val* dst_vals // length set.len
   )
 {
+  ProfFunc();
   idx_t ndst = 0;
   auto capacity = set->capacity;
   auto hashes = set->hashes;
@@ -441,3 +449,99 @@ template<typename Val> using hashset_f64_t =
     HashsetTraits_F64
     >;
 
+
+ForceInl
+HASHSET_COMPLEXKEY_EQUAL( u32*, EqualU32Pointer )
+{
+  return *a == *b;
+}
+ForceInl
+HASHSET_COMPLEXKEY_HASH( u32*, HashU32Pointer )
+{
+  return HashPointer( *a );
+}
+DEFINE_HASHSET_TRAITS( HashsetTraits_U32Pointer, u32*, EqualU32Pointer, HashU32Pointer );
+
+
+RegisterTest([]()
+{
+  constant idx_t count = 2560;
+
+  hashset_complexkey_t<u32*, idx_t, HashsetTraits_U32Pointer> set;
+  Init( &set, 2 * count );
+
+  idx_t tmp, tmp2;
+  bool found, already_there;
+
+  auto values = AllocString<u32*, allocator_heap_t, allocation_heap_t>( count );
+  For( i, 0, count ) {
+    values.mem[i] = (u32*)( i + 1 );
+  }
+
+  For( i, 0, count ) {
+
+    AssertCrash( set.len == i );
+
+    // verify all lookup mechanisms for all values already added.
+    For( j, 0, i ) {
+      LookupAndCopyValue( &set, &values.mem[j], &found, &tmp );
+      AssertCrash( found );
+      AssertCrash( tmp == j + 1 );
+
+      idx_t* c = &tmp;
+      Lookup( &set, &values.mem[j], &found, &c );
+      AssertCrash( found );
+      AssertCrash( *c == j + 1 );
+
+      Add( &set, &values.mem[j], &tmp, &already_there, &tmp2, 0 );
+
+      AssertCrash( already_there );
+    }
+
+    // add the actual new value.
+    tmp = i + 1;
+    Add( &set, &values.mem[i], &tmp, &already_there, &tmp2, 0 );
+    AssertCrash( !already_there );
+    AssertCrash( set.len == i + 1 );
+
+    // validate it's been added.
+    LookupAndCopyValue( &set, &values.mem[i], &found, &tmp );
+    AssertCrash( found );
+    AssertCrash( tmp == i + 1 );
+  }
+
+  // remove all the odd elements
+  For( i, 0, count ) {
+    if( i & 1 ) {
+      Remove( &set, &values.mem[i], &found, &tmp );
+      AssertCrash( found );
+      AssertCrash( tmp == i + 1 );
+    }
+  }
+  AssertCrash( set.len == count / 2 );
+
+  // verify all the odd elements are gone, and evens are still there.
+  For( i, 0, count ) {
+    if( i & 1 ) {
+      LookupAndCopyValue( &set, &values.mem[i], &found, &tmp );
+      AssertCrash( !found );
+    } else {
+      LookupAndCopyValue( &set, &values.mem[i], &found, &tmp );
+      AssertCrash( found );
+      AssertCrash( tmp == i + 1 );
+    }
+  }
+
+  Clear( &set );
+  AssertCrash( set.len == 0 );
+
+  LookupAndCopyValue( &set, &values.mem[0], &found, &tmp );
+  AssertCrash( !found );
+
+  idx_t* c = &tmp2;
+  Lookup( &set, &values.mem[0], &found, &c );
+  AssertCrash( !found );
+
+  Free( values );
+  Kill( &set );
+});

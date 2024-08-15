@@ -167,7 +167,7 @@ MainKill()
   Free( g_onmainkill_entries );
 
   ProfOutputZoneStats();
-  ProfOutputTimeline();
+//  ProfOutputTimeline();
   ProfKill();
   LoggerKill();
   TimeKill();

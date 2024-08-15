@@ -76,6 +76,7 @@ template< typename Data >
 Inl void
 InitMinHeapInPlace( Data* data, idx_t len )
 {
+  ProfFunc();
   auto one_past_last_idx = len / 2;
   ReverseFori( idx_t, i, 0, one_past_last_idx ) {
     _MinHeapifyDown( data, len, i );
@@ -86,6 +87,7 @@ template< typename Data >
 Inl void
 MinHeapExtract( stack_resizeable_cont_t<Data>* array, Data* dst )
 {
+  ProfFunc();
   auto data = array->mem;
   auto len = array->len;
   AssertCrash( len );
@@ -102,6 +104,7 @@ template< typename Data >
 Inl void
 MinHeapInsert( stack_resizeable_cont_t<Data>* array, Data* src )
 {
+  ProfFunc();
   auto idx_insert = array->len;
   *AddBack( *array ) = *src;
   _MinHeapifyUp( array->mem, array->len, idx_insert );

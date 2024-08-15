@@ -54,6 +54,7 @@ Clear( hashset_nonzeroptrs_t<Key, Val>* set )
 TKV Inl void
 Init( hashset_nonzeroptrs_t<Key, Val>* set, idx_t initial_capacity )
 {
+  ProfFunc();
   // PERF: try one bulk allocation here.
   set->keys = MemHeapAlloc( Key, initial_capacity );
   set->vals = MemHeapAlloc( Val, initial_capacity );
@@ -63,6 +64,7 @@ Init( hashset_nonzeroptrs_t<Key, Val>* set, idx_t initial_capacity )
 TKV Inl void
 Kill( hashset_nonzeroptrs_t<Key, Val>* set )
 {
+  ProfFunc();
   MemHeapFree( set->keys );
   MemHeapFree( set->vals );
   set->len = 0;
@@ -88,6 +90,7 @@ HashPointer( void* p )
 TKV Inl void
 Resize( hashset_nonzeroptrs_t<Key, Val>* old_set, idx_t new_capacity )
 {
+  ProfFunc();
   AssertCrash( old_set->len <= new_capacity );
   hashset_nonzeroptrs_t<Key, Val> new_set;
   Init( new_set, new_capacity );
@@ -124,6 +127,7 @@ Add(
   bool overwrite_val_if_already_there
   )
 {
+  ProfFunc();
   AssertCrash( set->len < set->capacity );
   AssertCrash( key );
   auto hash = HashPointer( (void*)key );
@@ -200,8 +204,8 @@ LookupRaw(
         // find the contiguous chunk of filled slots that we need to consider for chaining.
         // note the bounds are: [ idx_contiguous_start, idx_contiguous_end ]
         //
-        auto idx_contiguous_start = idx;
-        Fori( idx_t, nprobed_chain, nprobed + 1, capacity ) {
+        auto idx_contiguous_start = ( idx - nprobed ) % capacity;
+        Fori( idx_t, nprobed_chain, 0, capacity - nprobed ) {
           auto idx_prev = ( idx_contiguous_start - 1 ) % capacity;
           auto slot_prev = set->keys[idx_prev];
           if( !slot_prev ) {
@@ -210,7 +214,7 @@ LookupRaw(
           idx_contiguous_start = idx_prev;
         }
         auto idx_contiguous_end = idx;
-        Fori( idx_t, nprobed_chain, nprobed + 1, capacity ) {
+        Fori( idx_t, nprobed_chain, 0, capacity - nprobed ) {
           auto idx_next = ( idx_contiguous_end + 1 ) % capacity;
           auto slot_next = set->keys[idx_next];
           if( !slot_next ) {
@@ -230,7 +234,7 @@ LookupRaw(
         //     move j to idx_empty
         //     idx_empty = j
         //
-        if( idx_contiguous_start != idx_contiguous_end ) {
+        if( idx != idx_contiguous_end ) {
           auto idx_empty = idx;
           auto idx_probe = ( idx + 1 ) % capacity;
           Forever {
@@ -247,7 +251,7 @@ LookupRaw(
                 idx_contiguous_start <= idx_original_probe && idx_original_probe <= idx_empty :
                 idx_contiguous_start <= idx_original_probe || idx_original_probe <= idx_empty;
             if( probe_belongs_on_left ) {
-              set->keys[idx_empty] = set->keys[idx_probe];
+              set->keys[idx_empty] = slot_probe;
               set->keys[idx_probe] = 0;
               set->vals[idx_empty] = set->vals[idx_probe];
               idx_empty = idx_probe;
@@ -278,6 +282,7 @@ LookupAndCopyValue(
   Val* found_val
   )
 {
+  ProfFunc();
   Val* found_pointer = 0;
   LookupRaw( set, key, found, &found_pointer, (Val*)0, 0 );
   if( found_val  &&  *found ) {
@@ -292,6 +297,7 @@ Lookup(
   Val** found_ptr
   )
 {
+  ProfFunc();
   Val* found_pointer = 0;
   LookupRaw( set, key, found, &found_pointer, (Val*)0, 0 );
   if( found_ptr ) {
@@ -306,6 +312,7 @@ Remove(
   Val* found_val
   )
 {
+  ProfFunc();
   Val found_value;
   LookupRaw( set, key, found, (Val**)0, &found_value, 1 );
   if( found_val ) {
@@ -317,7 +324,7 @@ Remove(
 
 RegisterTest([]()
 {
-  constant idx_t count = 256;
+  constant idx_t count = 2560;
 
   hashset_nonzeroptrs_t<u32*, idx_t> set;
   Init( &set, 2 * count );
@@ -331,7 +338,6 @@ RegisterTest([]()
   }
 
   For( i, 0, count ) {
-
     AssertCrash( set.len == i );
 
     // verify all lookup mechanisms for all values already added.
@@ -346,7 +352,6 @@ RegisterTest([]()
       AssertCrash( *c == j + 1 );
 
       Add( &set, values.mem[j], &tmp, &already_there, &tmp2, 0 );
-
       AssertCrash( already_there );
     }
 
@@ -369,6 +374,36 @@ RegisterTest([]()
       AssertCrash( found );
       AssertCrash( tmp == i + 1 );
     }
+
+#if 0
+    // verify all lookup mechanisms for all values already added.
+    For( j, 0, count ) {
+      auto should_be_there = j > i || !( j & 1 );
+      LookupAndCopyValue( &set, values.mem[j], &found, &tmp );
+      if( should_be_there ) {
+        AssertCrash( found );
+        AssertCrash( tmp == j + 1 );
+      }
+      else {
+        AssertCrash( !found );
+      }
+
+      idx_t* c = &tmp;
+      Lookup( &set, values.mem[j], &found, &c );
+      if( should_be_there ) {
+        AssertCrash( found );
+        AssertCrash( *c == j + 1 );
+      }
+      else {
+        AssertCrash( !found );
+      }
+
+      if( should_be_there ) {
+        Add( &set, values.mem[j], &tmp, &already_there, &tmp2, 0 );
+        AssertCrash( already_there );
+      }
+    }
+#endif
   }
   AssertCrash( set.len == count / 2 );
 
