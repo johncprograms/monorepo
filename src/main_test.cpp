@@ -111,6 +111,7 @@ struct RegisterTestObject
 #include "ds_hashset_chain_complexkey.h"
 #include "ds_minheap_generic.h"
 #include "ds_minmaxheap_generic.h"
+#include "ds_binarysearchtree.h"
 #include "ds_graph.h"
 #include "compress_runlength.h"
 #include "compress_huffman.h"
@@ -687,5 +688,1249 @@ bool isRotation(string_view a, string_view b)
   aa += b;
   return isSubstring(aa, b);
 }
+
+
+write code to remove duplicates from an unsorted linked list
+follow up: how would you do this if a temporary buffer is not allowed?
+struct node { node* next; int value; };
+void removeDupes(node** phead)
+{
+  unordered_set<int> buffer;
+  for (auto iter = *phead; iter; iter = iter->next) {
+    buffer.insert(iter->value);
+  }
+  node* prev = 0;
+  auto piter = phead;
+  for (; *piter; ) {
+    auto iter = *piter;
+    auto value = iter->value;
+    if (buffer.contains(value)) {
+      // leave it in the list
+      // remove it from the set, so that subsequent duplicates will hit the else-clause below.
+      buffer.erase(value);
+    }
+    else {
+      // remove from the list
+      auto next = iter->next;
+      if (!prev) {
+        *phead = next;
+      }
+      else {
+        prev->next = next;
+      }
+      delete node;
+    }
+
+    prev = iter;
+    iter = iter->next;
+  }
+}
+
+void insertSorted(node** head, node* n)
+{
+  if (!*head) {
+    *head = n;
+    n->next = 0;
+    return;
+  }
+  if (n->value <= (*head)->value) {
+    n->next = *head;
+    *head = n;
+    return;
+  }
+  insertSorted(&(*head)->next, n);
+}
+void removeDupes(node* head)
+{
+  node* sorted = 0;
+  for (auto iter = head; iter; ) {
+    auto next = iter->next;
+    iter->next = 0;
+    if (sorted) {
+      insertSorted(&sorted, iter);
+    }
+    else {
+      sorted = iter;
+    }
+    iter = next;
+  }
+}
+
+
+return k-th to last
+implement an algorithm to find the k-th to last element of a singly linked list.
+struct node { node* next; int value; };
+node* kthToLast(node* head, size_t k)
+{
+  size_t len = 0;
+  for (auto iter = head; iter; iter = iter->next) {
+    len += 1;
+  }
+  if (k > len) return 0;
+  for (size_t i = 0; i <= len - k; ++i) {
+    head = head->next;
+  }
+  return head;
+}
+
+
+delete middle node
+implement an algorithm to delete a node in the middle (any node but the first and last, not the precise middle),
+given only access to that node.
+e.g. given a->b->c->d, remove(c), we should have: a->b->d
+struct node { node* next; int value; };
+void remove(node** pmiddle)
+{
+  if (!*pmiddle) return;
+  if ((*pmiddle)->next) {
+    (*pmiddle)->next = (*pmiddle)->next->next;
+    *pmiddle = (*pmiddle)->next;
+  }
+  else {
+    *pmiddle = 0;
+  }
+}
+
+
+partition
+partition a linked list around a value x, s.t. all nodes < x come before all nodes >= x.
+the partition element can appear anywhere in the resulting right partition.
+e.g. given 3,4,8,5,10,2,1; we should return something like: 3,1,2,10,5,5,8 where the partition happens at 10 in this result for instance.
+struct node { node* next; int value; };
+void partition(node** phead, int x)
+{
+  node* less = 0;
+  node* grea = 0;
+  node* last_less = 0;
+  for (auto iter = *phead; iter; ) {
+    auto next = iter->next;
+    // remove the iter from the list, and then insert to the appropriate partition list.
+    iter->next = 0;
+    if (iter->value < x) {
+      if (less) {
+        iter->next = less;
+      }
+      else {
+        last_less = iter;
+      }
+      less = iter;
+    }
+    else {
+      if (grea) {
+        iter->next = grea;
+      }
+      grea = iter;
+    }
+
+    iter = next;
+  }
+
+  // Join the less,grea lists.
+  if (!less) {
+    *phead = grea;
+    return;
+  }
+  *phead = less;
+  if (last_less) {
+    last_less->next = grea;
+  }
+}
+
+
+sum lists
+two numbers are represented by a linked list.
+each node contains a single digit
+the digits are in reverse order; last digit is at the list head.
+write a function to add two such list numbers and return the sum as a linked list.
+e.g.
+given (7,1,6) and (5,9,2), aka 617+295, return (2,1,9) aka 912.
+struct node { node* next; int value; };
+int evaluate(node* a)
+{
+  assert(a);
+  size_t factor = 1;
+  int r = 0;
+  for (auto iter = a; iter; iter = iter->next) {
+    r += factor * iter->value;
+    factor *= 10;
+  }
+  return r;
+}
+node* sum(node* a, node* b)
+{
+  assert(a);
+  assert(b);
+  int av = evaluate(a);
+  int bv = evaluate(b);
+  int r = av + bv;
+  node* result = 0;
+  do {
+    auto digit = r % 10;
+    r /= 10;
+    auto n = new node;
+    n->next = 0;
+    n->value = digit;
+    if (result) {
+      n->next = result;
+    }
+    else {
+      result = n;
+    }
+  } while (r);
+  return result;
+}
+
+
+palindrome
+check if a linked list is a palindrome
+e.g. (1,2,3,2,1) or (a,b,b,a)
+struct node { node* next; int value; };
+node* reverse(node* head)
+{
+  if (!head) return 0;
+  node* r = 0;
+  while(head) {
+    auto n = new node;
+    n->value = head->value;
+    n->next = r;
+    r = n;
+    head = head->next;
+  }
+  return r;
+}
+void free(node* head)
+{
+  while (head) {
+    auto next = head->next;
+    delete head;
+    head = next;
+  }
+}
+bool isPalindrome(node* head)
+{
+  node* reversed = reverse(head);
+  auto iterf = head;
+  auto iterr = reversed;
+  bool palindrome = true;
+  while (iterf && iterr) {
+    if (iterf->value != iterr->value) {
+      palindrome = false;
+      break;
+    }
+    iterf = iterf->next;
+    iterr = iterr->next;
+  }
+  free(reversed);
+  return palindrome;
+}
+
+
+intersection
+given two singly linked lists, check if any nodes are shared (by reference) among the two lists.
+we mean the node itself, not the value stored in the node.
+struct node { node* next; int value; };
+bool intersectingReferences(node** a, node** b)
+{
+  unordered_set<node*> set;
+  for (auto piter = a; *piter; *piter = (*piter)->next) {
+    set.insert(piter);
+  }
+  for (auto piter = b; *piter; *piter = (*piter)->next) {
+    if (set.contains(piter)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+
+loop detect
+given a linked list that loops, return the node at the beginning of the loop.
+e.g. given (a,b,c,d,e,c), return c
+struct node { node* next; int value; };
+node* loop(node* head)
+{
+  unordered_set<node*> set;
+  for (auto iter = head; iter; iter = iter->next) {
+    auto inserted = set.insert(iter);
+    if (!inserted.second) return iter;
+  }
+  return 0;
+}
+
+
+
+use a single array to implement three stacks
+  index % 3, interleaving the stacks into the array.
+  or contiguous sections, where we'd have to reposition the middle one (or more) to ensure space for contiguous expansion.
+struct threestack {
+private:
+  vector<int> mem;
+  size_t cA = 0;
+  size_t cB = 0;
+  size_t cC = 0;
+  size_t maxCapacity() { return max(max(cA, cB), cC); }
+  template<size_t offset> void pushX(int v) {
+    cA += 1;
+    mem.reserve(maxCapacity());
+    mem[3 * cA + 0] = v;
+  }
+  template<size_t offset> int popX() {
+    assert(cA);
+    auto result = mem[3 * cA + 0];
+    cA -= 1;
+    return result;
+  }
+public:
+  void pushA(int v) { return pushX<0>(v); }
+  int popA() { return popX<0>(); }
+  void pushB(int v) { return pushX<1>(v); }
+  int popB() { return popX<1>(); }
+  void pushC(int v) { return pushX<2>(v); }
+  int popC() { return popX<2>(); }
+};
+
+
+implement a min stack: push(x), pop(&x), min(&x)
+each is O(1), and min returns the minimum value in the container.
+struct minstack {
+  stack<int> mins;
+  stack<int> s;
+
+  void push(int v) {
+    if (mins.size()) {
+      auto nextmin = min(mins.top(), v);
+      mins.push(nextmin);
+    }
+    else {
+      mins.push(v);
+    }
+    s.push(v);
+  }
+  int pop() {
+    assert(mins.size());
+    mins.pop();
+    auto result = s.top();
+    s.pop();
+    return result;
+  }
+  int min() {
+    assert(mins.size());
+    return mins.top();
+  }
+};
+
+
+implement a set of stacks, where push/pop behaves as if there's just one stack.
+yet, each individual stack is limited to a maximum capacity.
+template<size_t cMax>
+struct setofstacks {
+  vector<stack<int>> set;
+
+  void push(int v) {
+    if (!set.size()) {
+      stack<int> s;
+      s.push(v);
+      set.emplace_back(move(s));
+    }
+    else {
+      auto& s = set[set.size() - 1];
+      if (s.size() >= cMax) {
+        stack<int> s;
+        s.push(v);
+        set.emplace_back(move(s));
+      }
+      else {
+        s.push(v);
+      }
+    }
+  }
+  int pop() {
+    assert(set.size() > 0);
+    auto& s = set[set.size() - 1];
+    int result = s.top();
+    if (s.size() == 1) {
+      set.pop_back();
+      return result;
+    }
+    else {
+      s.pop();
+      return result;
+    }
+  }
+};
+
+
+implement a queue using 2 stacks
+struct queue {
+  stack<int> left;
+  stack<int> right;
+  bool isright = true;
+
+  void enqueue(int v) {
+    if (!isright) {
+      while (!left.empty()) {
+        right.push(left.top());
+        left.pop();
+      }
+      isright = true;
+    }
+    right.push(v);
+  }
+  int dequeue() {
+    if (isright) {
+      while (!right.empty()) {
+        left.push(right.top());
+        right.pop();
+      }
+      isright = false;
+    }
+    assert(left.size() > 0);
+    int result = left.top();
+    left.pop();
+    return result;
+  }
+};
+
+
+sort a stack, using only push/pop operations and one temporary additional stack.
+void sort(stack<int>& a)
+{
+  if (a.empty()) return;
+  stack<int> b;
+
+  auto helper = [](stack<int>& a, stack<int>& b, size_t cA) -> size_t {
+    int maxv = a.top();
+    size_t cMaxes = 0;
+    for (size_t i = 0; i < cA; ++i) {
+      assert(!a.empty());
+      int v = a.top();
+      a.pop();
+      b.push(v);
+      if (v > maxv) {
+        cMaxes = 1;
+        maxv = v;
+      }
+      else if (v == maxv) {
+        cMaxes += 1;
+      }
+    }
+
+    for (size_t i = 0; i < cMaxes; ++i) {
+      a.push(maxv);
+    }
+    for (size_t i = 0; i < cA - cMaxes; ++i) {
+      assert(!b.empty());
+      int v = b.top();
+      b.pop();
+      if (v == maxv) continue;
+      a.push(v);
+    }
+
+    // Now A looks like: top{ ... unsorted ..., ... cMaxes sorted }.
+    return cMaxes;
+  };
+
+  // Get the initial cA, since we're pretending stack doesn't maintain a count.
+  size_t cA = 0;
+  while (!a.empty()) {
+    int v = a.top();
+    a.pop();
+    cA += 1;
+    b.push(v);
+  }
+
+  // Iteratively move the maximums to the bottom of the stack.
+  size_t cMaxes = 0;
+  while (cA - cMaxes > 0) {
+    cA -= cMaxes;
+    cMaxes = helper(b, a, cA);
+  }
+
+  // Move back to A.
+  while (!b.empty()) {
+    int v = b.top();
+    b.pop();
+    a.push(v);
+  }
+}
+
+
+implement a doubly-FIFO system that allows for dequeueing according to a total order, and two disjoint orders (which depends on the type of the element)
+  enqueue
+  dequeueEither
+  dequeueA
+  dequeueB
+
+struct twofifosystem {
+  // using integer 0 and non-zero to mean the two different kinds.
+  // A = 0
+  // B = some value that's not 0
+
+  struct timed_value { int time; int value; };
+  stack<timed_value> a;
+  stack<timed_value> b;
+  int time = 0;
+
+  void enqueue(int kind, int value) {
+    stack<timed_value>& s = kind ? b : a;
+    timed_value v;
+    assert(time <= numeric_limits<decltype(time)>::max() - 1);
+    v.time = time++;
+    v.value = value;
+    s.emplace(move(value));
+  }
+  void dequeueEither(int* kind, int* value) {
+    assert(a.size() > 0 || b.size() > 0);
+    if (a.empty()) { dequeueB(kind, value); return; }
+    if (b.empty()) { dequeueA(kind, value); return; }
+    const auto& at = a.top();
+    const auto& bt = b.top();
+    if (at.time > bt.time) {
+      *kind = 0;
+      *value = at.value;
+      a.pop();
+    }
+    else {
+      *kind = 1;
+      *value = bt.value;
+      b.pop();
+    }
+  }
+  void dequeueA(int* kind, int* value) {
+    assert(a.size() > 0);
+    const auto& top = a.top();
+    *kind = 0;
+    *value = top.value;
+    a.pop();
+  }
+  void dequeueB(int* kind, int* value) {
+    assert(b.size() > 0);
+    const auto& top = b.top();
+    *kind = 1;
+    *value = top.value;
+    b.pop();
+  }
+};
+
+
+given a directed graph, write an algorithm to decide whether there exists a route between two given nodes
+struct node {
+  vector<node*> nexts;
+};
+bool routeExists(node* a, node* b)
+{
+  if (a == b) return true;
+  unordered_set<node*> visited;
+  stack<node*> queue;
+  queue.push(a);
+  while (!queue.empty()) {
+    auto n = queue.top();
+    queue.pop();
+    auto inserted = visited.insert(n);
+    if (!inserted.second) continue; // already visited.
+    for (auto next : n->nexts) {
+      if (next == b) return true;
+      queue.push(next);
+    }
+  }
+  return false;
+}
+
+
+given a sorted ascending array of unique integers, create a binary search tree with minimal height.
+struct node {
+  node* left;
+  node* right;
+  int value;
+};
+// unique binary search tree invariant is:
+//   all nodes n in subtree(A.left) have n.value < A.value
+//   all nodes n in subtree(A.right) have n.value > A.value
+// ex:
+//   2
+//  1 3
+//
+//     4
+//   2   6
+//  1 3 5 7
+//
+//         8
+//     4        12
+//   2   6   10    14
+//  1 3 5 7 9 11 13 15
+//
+// level binary tree encoding is:
+//     0
+//   1   2
+//  3 4 5 6
+// left(i) = 2i+1
+// right(i) = 2i+2
+// parent(i) = (i-1)/2
+// level(i) = 64 - countl_zero(i+1) - 1
+// level-start(level) = (1 << level) - 1
+//
+// obviously the odd nodes are sequential in the last level.
+// what's the structure of the even nodes?
+// every 4th starting at i=2 is at last level - 1   i = 2 + 4*k lives on last_level-1
+// every 8th starting at i=4 is at last level - 2   i = 4 + 8*k lives on last_level-2
+// every 16th starting at i=8 is at last level - 3  i = 8 + 16*k lives on last_level-3
+// generic structure:   i = 2^e + 2^(e+1)*k lives on level = last_level - e
+// then we can iterate the e values, since we know the given size, rounded-up to a power of two. (i.e. iterate levels)
+// and then at each level, we can iterate k to generate the index i.
+// and then span[i], we can write into the level binary tree encoding.
+
+vector<int> makeBst(span<int> values)
+{
+  size_t V = values.size();
+  if (!V) return {};
+  vector<int> r(V);
+
+  size_t cLevels = sizeof(size_t)*8 - countl_zero(V - 1) + 1;
+  for (size_t level = 0; level < cLevels; ++level) {
+    e = cLevels - 1 - level;
+    uint64_t two_e = 1ull << e;
+    uint64_t two_ep1 = 1ull << (e+1);
+    uint64_t cNodesOnLevel = 1ull << (level+1);
+    for (uint64_t k = 0; k < cNodesOnLevel; ++k) {
+      uint64_t i = two_e + two_ep1*k;
+      assert(i < V);
+      // values[i] belongs at the k'th index in level 'level'
+      auto level_start = (1 << level) - 1;
+      auto level_encoding_i = level_start + k;
+      r[level_encoding_i] = values[i];
+    }
+  }
+
+  return r;
+}
+
+
+given a binary tree, create a linked list of all the nodes at each depth. (one list per level of the tree)
+struct node {
+  node* left;
+  node* right;
+};
+struct lnode { lnode* next; node* value; };
+vector<lnode*> makeLevelLists(node* tree)
+{
+  auto helper = [](vector<lnode*>& result, node* subtree, size_t depth)
+  {
+    if (!subtree) return;
+    if (result.size() <= depth) {
+      result.resize(depth + 1);
+    }
+    lnode** list = &result[depth];
+    auto n = new lnode;
+    n->next = *list;
+    n->value = subtree;
+    *list = n;
+    helper(result, subtree->left, depth + 1);
+    helper(result, subtree->right, depth + 1);
+  };
+  vector<lnode*> result;
+  helper(result, tree, 0);
+  return result;
+}
+
+
+given a binary tree, decide if it is balanced.
+  balanced means: for every node, the two subtrees have +/-1 the same heights.
+struct node {
+  node* left;
+  node* right;
+};
+size_t cNodes(node* tree)
+{
+  if (!tree) return 0;
+  return cNodes(tree->left) + cNodes(tree->right);
+}
+bool isbalanced(node* tree)
+{
+  if (!tree) return true;
+  auto cLeft = cNodes(tree->left);
+  auto cRight = cNodes(tree->right);
+  return ((cLeft < cRight) ? (cRight - cLeft) : (cLeft - cRight)) < 1;
+}
+
+
+given a binary tree, decide if it is a binary search tree.
+struct node {
+  node* left;
+  node* right;
+  int value;
+}
+bool isBst(node* tree)
+{
+  auto treeLessThan = [](node* tree, int value)
+  {
+    if (tree->value >= value) return false;
+    if (tree->left && !treeLessThan(tree->left, value)) return false;
+    if (tree->right && !treeLessThan(tree->right, value)) return false;
+    return true;
+  };
+  auto treeGeThan = [](node* tree, int value)
+  {
+    if (tree->value < value) return false;
+    if (tree->left && !treeGeThan(tree->left, value)) return false;
+    if (tree->right && !treeGeThan(tree->right, value)) return false;
+    return true;
+  };
+  if (tree->left && !treeLessThan(tree->left, tree->value)) return false;
+  if (tree->right && !treeGeThan(tree->right, tree->value)) return false;
+  return true;
+}
+
+
+given a binary search tree (with parent links), return the next node in the in-order traversal order.
+struct node {
+  node* left;
+  node* right;
+  node* parent;
+};
+node* bstNextInOrder(node* cur)
+{
+  //         8
+  //     4        12
+  //   2   6   10    14
+  //  1 3 5 7 9 11 13 15
+  if (cur->right) {
+    // Follow the left chain down.
+    auto next = cur->right;
+    while (next->left) {
+      next = next->left;
+    }
+    return next;
+  }
+  while (cur->parent) {
+    if (cur == cur->parent->left) {
+      // was the left child of the parent
+      return cur->parent;
+    }
+    // was the right child of the parent
+    // move up and check again for left/right child of the parent's parent.
+    cur = cur->parent;
+  }
+  return 0;
+}
+
+
+given a list of projects and (a,b) pairs where b depends on a, return a project sequence that satisfies all dependencies.
+  if it doesn't exist, return an error.
+this is just topological sort.
+
+
+given two nodes in a binary tree, return the first common ancestor.
+  avoid storing additional nodes.
+  you're not given a binary search tree.
+struct node {
+  node* left;
+  node* right;
+  node* parent;
+}
+node* commonAncestor(node* a, node* b)
+{
+  // Two linked lists, the parent chains of A and B.
+  // We want to find the first common node.
+  // It's dynamic how far up the parent chains we'll have to iterate. So just do it.
+  vector<node*> a_parents;
+  vector<node*> b_parents;
+
+  auto helper = [](vector<node*>& result, node* n)
+  {
+    for (auto iter = n; iter; iter = iter->parent) {
+      result.push_back(iter);
+    }
+  };
+  helper(a_parents, a);
+  helper(b_parents, b);
+  // Right-align the parent chains, since the root should be common, and then we can ignore the jagged prefix.
+  // e.g.
+  //   { a, b, c, d, root }
+  //            { e, root }
+  size_t cToCheck = min(a_parents.size(), b_parents.size());
+  size_t a_start = a_parents.size() - cToCheck;
+  size_t b_start = b_parents.size() - cToCheck;
+  for (size_t i = 0; i < cToCheck; ++i) {
+    const auto& a_parent = a_parents[a_start + i];
+    const auto& b_parent = b_parents[b_start + i];
+    if (a_parent == b_parent) return a_parent;
+  }
+  // unreachable. The root should always be common.
+  assert(false);
+  return 0;
+}
+
+
+a binary search tree was created by reading an array left-to-right and inserting the elements.
+there are no duplicate elements.
+given such a BST, print all possible arrays that could have led to this tree.
+e.g. given
+  2
+ 1 3
+prints
+  (2 1 3) and (2 3 1)
+classical BSTs are constructed without rebalancing, new elements always getting added as leaves.
+so by definition, parents must come before children in the possible arrays.
+but the left/right subtrees can be totally independent. i.e. there's a doubling of possibilities for each node with left+right.
+  //         8
+  //     4        12
+  //   2   6   10    14
+  //  1 3 5 7 9 11 13 15
+
+  //     4
+  //   2  6
+  //  1 3
+  // (4 2 1 3 6), (4 2 3 1 6), (4 6 2 1 3), (4 6 2 3 1), (4 2 6 1 3), (4 2 6 3 1), (4 2 1 6 3), (4 2 3 6 1)
+  // note 6 can be interleaved at any place after 4
+  // this is effectively preorder traversal plus reverse preorder (right before left).
+  // and we need to make all possible choices of those two orders.
+struct node {
+  node* left;
+  node* right;
+  node* parent;
+  int value;
+};
+void printPossibilities(node* tree)
+{
+  if (!tree) return;
+  auto leaf = !tree->left && !tree->right;
+  if (leaf) {
+    deque<int> chain;
+    for (auto iter = tree; iter; iter = iter->parent) {
+      chain.push_back(iter->value);
+    }
+    cout << "(";
+    while (!chain.empty()) {
+      cout << to_string(chain.pop_front());
+      if (!chain.empty()) cout << " ";
+    }
+    cout << ")\n";
+  }
+  else {
+    printPossibilities(tree->
+  }
+}
+
+
+given two binary trees, A.size() >> B.size(), return if B is a subtree of A.
+  B is a subtree of A iff:
+    there exists a node n in A which forms a tree identical to B.
+struct node {
+  node* left;
+  node* right;
+  int value;
+};
+bool isSubtree(node* b, node* a)
+{
+  auto treesEqual = [](node* a, node* b)
+  {
+    if (a == b) return true;
+    if (!a ^ !b) return false;
+    if (a->value != b->value) return false;
+    if (!a->left ^ !b->left) return false;
+    if (!a->right ^ !b->right) return false;
+    if (a->left && b->left) {
+      if (!treesEqual(a->left, b->left)) return false;
+      if (!treesEqual(a->right, b->right)) return false;
+    }
+    return true;
+  };
+  assert(a);
+  if (treesEqual(a, b)) return true;
+  if (a->left && treesEqual(a->left, b)) return true;
+  if (a->right && treesEqual(a->right, b)) return true;
+  return false;
+}
+
+
+implement getRandomNode() for a binary tree. Uniformly random pdf.
+// level order encoding makes this trivial: uniform random variable in { 0, 1, ..., # nodes - 1 }, return the node at that index.
+// external indexing also makes this trivial.
+// if it was leaves only, and complete, you could flip a coin at every node and decide whether to go left/right until hitting a leaf.
+//   but, we also need to include the internal nodes. can we just say Pr(internal node is chosen) = 1 / # of nodes?
+//   and if that doesn't hit, we do the 0.5 left/right?
+// or we could do the leaf traversal, and then a separate parent-chain walk up. Walk up probability would be... what. 1 / some power of 2?
+
+
+
+given a binary tree, where each node contains an arbitrary integer (could be +/-)
+count the number of parent sub-chains that sum to a given value.
+the terminals of the sub-chains don't have to be the root, nor leaves of the tree.
+but it has to be a parent sub-chain.
+struct node {
+  node* left;
+  node* right;
+  node* parent;
+  int value;
+};
+size_t cParentSubChainsThatSumToX(node* tree, int x)
+{
+  vector<node*> nodes;
+  auto helper = [](vector<node*>& result, node* tree)
+  {
+    if (!tree) return;
+    result.push_back(tree);
+    helper(result, tree->left);
+    helper(result, tree->right);
+  };
+
+  // All parent chains starts at all nodes.
+  // For each starting node, we walk all parent sub-chains. Which means, every step until we hit the root.
+  size_t r = 0;
+  for (auto node : nodes) {
+    int sum = 0;
+    for (auto iter = node; iter; iter = iter->parent) {
+      sum += iter->value;
+      if (sum == x) {
+        r += 1;
+      }
+    }
+  }
+}
+// If we instead start top-down, then:
+size_t cParentSubChainsThatSumToX(node* tree, int x)
+{
+  auto helper = [](size_t& result, node* tree, int x)
+  {
+    if (!tree) return;
+    auto sum = x - tree->value;
+    if (sum == 0) {
+      result += 1;
+    }
+    helper(result, tree->left, sum);
+    helper(result, tree->right, sum);
+  };
+  size_t result = 0;
+  helper(result, tree, x);
+  return result;
+}
+
+
+
+given u32 n,m; two bit positions i,j.
+insert m into n s.t. m starts at bit j of n, and ends at bit i.
+assume i,j are wide enough to fit m.
+e.g.
+n = 0000_1000_0000_0000
+m = 0000_0000_0001_0011
+i = 2
+j = 6
+r = 0000_1000_0100_1100
+u32 f(u32 n, u32 m, u32 i, u32 j)
+{
+  assert(i <= j);
+  auto nbits_m = j - i;
+  auto nbits_hiclear_m = 32 - nbits_m;
+  auto cleared_m = (m << nbits_hiclear_m) >> nbits_hiclear_m;
+  auto r = n | (cleared_m << i);
+  return r;
+}
+
+
+given f64, print binary representation.
+void f(f64 vf)
+{
+  u64 v = *(u64*)(&vf);
+  for (size_t i = 0; i < 64; ++i) {
+    auto ri = 64 - i - 1;
+    auto bit = (v >> ri) & 1u;
+    cout << to_string(bit);
+  }
+}
+
+
+given an integer. you're allowed to flip one 0 bit to a 1.
+find the length of the longest sequence of 1 bits you could possibly make.
+e.g.
+0000_0000 -> 1 by flipping any bit
+0000_0001 -> 2 by flipping bit 1.
+0000_0011 -> 3
+0000_0101 -> 3
+there's only so many bits, so just set and check?
+bool bit(u64 v, size_t i)
+{
+  return (v >> 63 - i) & 1;
+}
+size_t cMaxContiguousOneBits(u64 v)
+{
+  size_t max_c = 0;
+  size_t c = 0;
+  bool one = false;
+  for (size_t i = 0; i < 64; ++i) {
+    if (bit(v,i)) {
+      if (!one) {
+        one = true;
+        c = 1;
+      }
+      else {
+        c += 1;
+        max_c = max(max_c, c);
+      }
+    }
+    else {
+      one = false;
+      max_c = max(max_c, c);
+      c = 0;
+    }
+  }
+}
+size_t f(u64 v)
+{
+  size_t c = 0;
+  for (size_t i = 0; i < 64; ++i) {
+    auto possibility_i = v | (1ull << i);
+    c = max(c, cMaxContiguousOneBits(possibility_i));
+  }
+  return c;
+}
+
+
+given an integer. print the next smallest and next largest that have the same number of 1 bits.
+e.g.
+0011 ->
+  0100
+  0101 next largest
+0110 ->
+  0111
+  1000
+  1001 next largest
+void f(u64 v)
+{
+  auto cOnesV = popcount(v);
+  u64 larger = v + 1;
+  for (; popcount(larger) != cOnesV; ++larger) {}
+  u64 smaller = v - 1;
+  for (; popcount(smaller) != cOnesV; --smaller) {}
+  cout << smaller << "," << larger;
+}
+
+
+determine the number of bits you have to flip to convert given integer a to given b.
+size_t f(u64 a, u64 b)
+{
+  u64 x = a ^ b;
+  return popcount(x);
+}
+
+
+swap odd and even bits in an integer with as few instructions as possible.
+u64 swapEvenOddBits(u64 v)
+{
+  auto odds  = v & 0b1010'1010'1010'1010ull;
+  auto evens = v & 0b0101'0101'0101'0101ull;
+  return (odds >> 1) | (evens << 1);
+}
+
+
+given a bitarray representing a 2d grid. each bit is a pixel.
+assume the width of the grid is a multiple of 8.
+given width.
+draw a horizontal line from x0,y to x1,y.
+void drawLine(u8* array, size_t array_len, size_t w, size_t x0, size_t x1, size_t y)
+{
+  assert(w % 8 == 0);
+  assert(y < array_len);
+  auto x0_byte = x0 / 8;
+  auto x0_bit = x0 % 8;
+  auto x1_byte = x1 / 8;
+  auto x1_bit = x1 % 8;
+  auto line_stride = w * 8;
+  auto line = array + line_stride * y;
+  line[x0_byte] |= 0b1111'1111u >> x0_bit;
+  for (auto mid = x0_byte + 1; mid < x1_byte; ++mid) {
+    line[mid] = 0b1111'1111u;
+  }
+  line[x1_byte] |= 0b1111'1111u << (8 - x1_bit);
+}
+0b____'____'____'____'____'____
+  byte0    |byte1    |byte2
+fill(2,17) ->
+0b__11'1111'1111'1111'1___'____
+
+
+given 20 bottles of pills.
+19 bottles have 1 gram pills.
+1 bottle has 1.1 gram pills.
+given a scale, how would you find the heavy bottle?
+scale can only be used once.
+
+
+game 1: one shot success
+game 2: 3 shots to make 2 success.
+probability p to make 1 shot.
+for which values of p should you choose game 1 or 2?
+000 q^3
+001 q^2 p
+010 q^2 p
+100 q^2 p
+011 q p^2
+101 q p^2
+110 q p^2
+111 p^3
+
+g1: Pr(win) = p
+g2: Pr(win) = p^3 + 3 (1-p) p^2
+
+when g1 is favorable, choose g1.
+that decision point is:
+  p < p^3 + 3 (1-p) p^2
+  1 < p^2 + 3 (1-p) p
+  0 < p^2 + 3 p - 3 p^2 - 1
+  0 < -2 p^2 + 3p - 1
+quadratic fmla to solve for p.
+  0 > p^2 - 1.5 p + 0.5
+
+-b/2 +- sqrt((b/2)^2-c)
+b=-1.5
+c=0.5
+
+
+staircase of n steps
+can hop 1,2, or 3 steps at a time.
+count how many possible ways to climb the stairs.
+one step to go:
+  1 step
+two steps to go:
+  1 step and recurse
+  2 steps
+three steps to go:
+  1 step and recurse
+  2 steps and recurse
+  3 steps
+size_t cWays(size_t n)
+{
+  if (n == 0) return 0;
+  if (n == 1) return 1;
+  if (n == 2) {
+    // 2-step or 1-step.
+    // return 1 + cWays(n-1);
+    return 2;
+  }
+  if (n == 3) {
+    // 3-step or 2-step or 1-step.
+    // return 1 + cWays(n-2) + cWays(n-1);
+    // return 1 + 1 + 2;
+    return 4;
+  }
+  return cWays(n-3) + cWays(n-2) + cWays(n-1);
+}
+size_t cWays(size_t n)
+{
+  static constexpr N = 100;
+  assert(n < N);
+  size_t cWays[N];
+  cWays[0] = 0;
+  cWays[1] = 1;
+  cWays[2] = 2;
+  cWays[3] = 4;
+  for (size_t i = 4; i < n; ++i) {
+    cWays[i] = cWays[i-3] + cWays[i-2] + cWays[i-1];
+  }
+  return cWays[n];
+}
+
+
+turtle can move R and D, on a grid of R rows, C cols.
+starts at top left.
+some cells are non-traversible.
+find a path from the top left to the bottom right, avoiding non-traversible cells.
+e.g.
+[s    ]
+[ xxxx]
+[ x   ]
+[    f]
+the path has to go down first, then right.
+
+enum Move { R, D };
+struct Path {
+  deque<Move> v;
+  void append(Move m) { v.push_back(m); }
+  void prepend(Move m) { v.push_front(m); }
+};
+optional<Path> f(Path p, uint tx, uint ty)
+{
+  if (tx + 1 == fx && ty == fy) { // move R would finish
+    auto r = p;
+    r.append(R);
+    return r;
+  }
+  else if (ty + 1 == fy && tx == fx) { // move D would finish
+    auto r = p;
+    r.append(D);
+    return r;
+  }
+  if (tx + 1 < dim_x && is_traversible(tx+1, ty)) {
+    auto pathR = f(p, tx + 1, ty);
+    if (pathR.has_value()) {
+      auto r = p;
+      r.prepend(*pathR);
+      return r;
+    }
+  }
+  if (ty + 1 < dim_y && is_traversible(tx, ty+1)) {
+    auto pathD = f(p, tx, ty + 1);
+    if (pathD.has_value()) {
+      auto r = p;
+      r.prepend(*pathD);
+      return r;
+    }
+  }
+  return nullopt;
+}
+
+vector<pair<size_t,size_t>> f(
+  bool* traversible, // 2d array of dim_x,dim_y
+  size_t dim_x,
+  size_t dim_y
+  )
+{
+  auto is_traversible = [](bool* traversible, size_t x, size_t y) {
+    return traversible[x + y * dim_x];
+  };
+  graph g;
+  size_t cNodes = dim_x * dim_y;
+  g.reserve_nodes(cNodes);
+  for (size_t n = 0; n < cNodes; ++n) {
+    g.add_node(n);
+  }
+  g.reserve_edges(cNodes * 2);
+  for (size_t y = 0; y < dim_y; ++y) {
+    for (size_t x = 0; x < dim_x; ++x) {
+      auto n = x + y * dim_x;
+      if (x+1 < dim_x && is_traversible(traversible, x+1, y)) {
+        auto nR = (x+1) + y * dim_x;
+        g.add_edge(n, nR);
+      }
+      if (y+1 < dim_y && is_traversible(traversible, x, y+1)) {
+        auto nD = x + (y+1) * dim_x;
+        g.add_edge(n, nD);
+      }
+    }
+  }
+  auto n_start = 0;
+  auto n_finish = (dim_x-1) + (dim_y-1)*dim_x;
+  vector<size_t> nodes = g.anyPathBetween(n_start, n_finish);
+  if (nodes.empty()) {
+    // error, no path.
+    return {};
+  }
+  vector<Move> r;
+  r.reserve(nodes.size());
+  for (const auto& n : nodes) {
+    size_t x = n % dim_x;
+    size_t y = n / dim_x;
+    r.emplace_back(x,y);
+  }
+  return r;
+}
+
+
+
+
+
+
+
+
 
 #endif

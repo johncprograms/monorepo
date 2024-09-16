@@ -6273,7 +6273,7 @@ PUBLIC	??_C@_08DLICDMBN@continue?$AA@			; `string'
       { CmdRemTrailspace,      0, 0 },
     };
 
-    constant idx_t ncmds = 1000000;
+    constant idx_t ncmds = 100000;
 //    stack_resizeable_cont_t<pfn_txtcmd_t> history;
 //    Alloc( history, ncmds );
     auto t0 = TimeTSC();

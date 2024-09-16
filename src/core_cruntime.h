@@ -14,4 +14,5 @@
 #include <algorithm>
 #include <atomic>
 #include <functional>
+#include <unordered_set>
 //#include <stdatomic.h>

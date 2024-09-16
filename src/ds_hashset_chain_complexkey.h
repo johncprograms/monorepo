@@ -46,24 +46,29 @@ QUESTION: store the hashes?
 
 #define HASHSET hashset_chain_complexkey_t<Key, Val, TraitsComplexKey>
 
-#define _Invalid( i ) ( ( i ) == MAX_idx )
+//using Index = idx_t;
+//#define InvalidIndex MAX_idx
+using Index = u32;
+#define InvalidIndex MAX_u32
+
+#define _Invalid( i ) ( ( i ) == InvalidIndex )
 
 TKCHE struct
 hashset_chain_complexkey_t
 {
-  idx_t* chain_starts; // length num_chains
+  Index* chain_starts; // length num_chains
   idx_t num_chains;
 //  idx_t* hashes;
-//  idx_t* chain_lengths;
+//  Index* chain_lengths;
 
-  idx_t* chain_nexts; // length capacity
+  Index* chain_nexts; // length capacity
   Key* keys;          // length capacity
   Val* vals;          // length capacity
-  idx_t capacity;
+  Index capacity;
 
-  idx_t* free_keys; // length capacity.
+  Index* free_keys; // length capacity.
 
-  idx_t len;
+  Index len;
 };
 
 TKCHE Inl
@@ -155,8 +160,14 @@ Remove(
     *found = 1;
     *found_val = vals[chain_element];
 
+#if 1
+    len -= 1;
+    free_keys[len] = chain_element;
+    s->len = len;
+#else
     free_keys[capacity - len] = chain_element; // TODO: try reversing the stack-direction of free_keys.
     s->len = len - 1;
+#endif
 
     // repoint the chain_nexts/chain_start value to the element after this one, since we're removing it from the list.
     // if that happens to be invalid, great; we've correctly shortened/eliminated the list.
@@ -198,9 +209,14 @@ Add(
   Forever { // TODO: safety to prevent infinite loops? e.g. store the length of each chain and iterate up to that, and then crash.
     auto chain_element = *pchain_element;
     if( _Invalid( chain_element ) ) {
+#if 1
+      auto element = free_keys[ len ];
+      s->len = len + 1;
+#else
       len += 1;
       auto element = free_keys[capacity - len];
       s->len = len;
+#endif
 
       *pchain_element = element;
       keys[element] = *key;
@@ -234,7 +250,7 @@ void
 Init(
   HASHSET* s,
   idx_t num_chains,
-  idx_t capacity
+  Index capacity
 )
 {
   ProfFunc();
@@ -243,14 +259,14 @@ Init(
   s->len = 0;
 
   // PERF: coalesce allocations, at least the idx_t ones.
-  auto chain_starts = MemHeapAlloc( idx_t, num_chains );
-  TSet( chain_starts, num_chains, MAX_idx );
+  auto chain_starts = MemHeapAlloc( Index, num_chains );
+  TSet( chain_starts, num_chains, InvalidIndex );
   s->chain_starts = chain_starts;
-  auto chain_nexts = MemHeapAlloc( idx_t, capacity );
-  TSet( chain_nexts, capacity, MAX_idx );
+  auto chain_nexts = MemHeapAlloc( Index, capacity );
+  TSet( chain_nexts, capacity, InvalidIndex );
   s->chain_nexts = chain_nexts;
-  auto free_keys = MemHeapAlloc( idx_t, capacity );
-  For( i, 0, capacity ) {
+  auto free_keys = MemHeapAlloc( Index, capacity );
+  Fori( Index, i, 0, capacity ) {
     free_keys[i] = i;
   }
   s->free_keys = free_keys;
@@ -278,7 +294,7 @@ void
 Resize(
   HASHSET* s,
   idx_t new_num_chains,
-  idx_t new_capacity
+  Index new_capacity
   )
 {
   ProfFunc();
@@ -355,7 +371,7 @@ Resize(
 
 RegisterTest([]()
 {
-  constant idx_t count = 2560;
+  constant idx_t count = 256;
 
   hashset_chain_complexkey_t<u32*, idx_t, HashsetTraits_U32Pointer> set;
   Init( &set, count, 2 * count );

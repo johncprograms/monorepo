@@ -18,6 +18,13 @@
       } \
     } while( 0 ) \
 
+  #define AssertDebug( break_if_false )   \
+    do{ \
+      if( !( break_if_false ) ) {  \
+        __debugbreak(); \
+      } \
+    } while( 0 ) \
+
 #else
 
   NoInl void
@@ -38,6 +45,11 @@
       if( !( break_if_false ) ) {  \
         _CrashTriggered( #break_if_false, __FILE__, __LINE__, __FUNCTION__ ); \
       } \
+    } \
+
+  #define AssertDebug( break_if_false )   \
+    { \
+      ( break_if_false ); \
     } \
 
 #endif

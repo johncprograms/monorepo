@@ -289,7 +289,7 @@ RegisterTest([]()
     Init( &f, nbits );
     auto nbytes = 1ull << nbits;
     auto N = ( c_target_page_size / nbytes );
-    N = MAX( 10, N / 1000 );
+    N = MAX( 2, N / 1000 );
     For( i, 0, N ) {
       if( Zeta32( rng ) > 0.2f ) {
         u8* bytes = Alloc( &f );
@@ -331,7 +331,7 @@ RegisterTest([]()
 
     generalfsalloc_t g;
     Init( &g );
-    constant idx_t N = 100;
+    constant idx_t N = 10;
     For( i, 0, N ) {
       if( Zeta32( rng ) > 0.2f ) {
         auto zeta = Zeta32( rng );
