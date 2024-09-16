@@ -1,5 +1,5 @@
-// build:console_x64_optimized
 // build:console_x64_debug
+// build:console_x64_optimized
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
 void

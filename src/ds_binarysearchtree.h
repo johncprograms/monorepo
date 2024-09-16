@@ -38,56 +38,88 @@ avl* find(avl* tree, int val) {
 }
 constant idx_t cMaxDepth = 32;
 avl* emplace(avl** tree, avl* item) {
-  if (!*tree) {
-    *tree = item;
-    AssertCrash(!Child(item)[0]);
-    AssertCrash(!Child(item)[1]);
-    AssertCrash(Balance(item) == 0);
-    return item;
-  }
+  AssertCrash(!Child(item)[0]);
+  AssertCrash(!Child(item)[1]);
+  AssertCrash(Balance(item) == 0);
 
-  bool da[cMaxDepth]; // FUTURE: can be uint32_t
+  // FUTURE: can be uint32_t
+  bool da[cMaxDepth]; //
   uint8_t k = 0;
 
-  static_assert(offsetof(avl, child) == 0);
-  avl* z = (avl*)tree;
-  avl* y = *tree;
-  bool dir = 0;
-  avl* q = z;
-  for (auto p = y; p; p = Child(p)[dir]) {
-    auto cmp = Val(item) <=> Val(p);
-    if (cmp == 0) return p;
-    if (Balance(p)) {
-      z = q;
-      y = p;
-      k = 0;
-    }
+  // Interesting technique to eliminate a branch, by pre-setting z to a garbage location, BUT the offset to which we write to z is valid.
+  // This is not a technique I like.
+  //  static_assert(offsetof(avl, child) == 0);
+  //  avl* z = (avl*)tree;
 
-    dir = (cmp > 0);
-    da[k++] = dir;
-    q = p;
+  avl* z = 0; // Parent of subtree which requires balance rewrites.
+  avl* y = *tree; // Root of subtree which requires balance rewrites.
+  {
+    // Regular BST insert.
+    // BUT, with the following additional calculations:
+    //   1. Return the parent of, and the root of the subtree that needs rebalancing
+    //   2. Return the parent chain from the root of the subtree requiring rebalancing down to the parent of the new node.
+    // The subtree which needs rebalancing is defined as:
+    //   Take the new node, iterate up the parent chain until you hit a BF(parent) != 0, or parent doesn't exist.
+    //   The subtree starting at parent is the one requiring rebalancing.
+    //   We may just be updating BF values, or we may have to actually rotate the tree.
+    //
+    avl* q = z; // Parent of the new node.
+    bool dir = 0; // Which child branch the new node belongs to.
+    for (auto p = y; p;) {
+      auto cmp = Val(item) <=> Val(p);
+      if (cmp == 0) return p;
+      if (Balance(p)) {
+        z = q;
+        y = p;
+        k = 0;
+      }
+      dir = (cmp > 0);
+      da[k++] = dir;
+      q = p;
+      p = Child(p)[dir];
+    }
+    if (!q) {
+      *tree = item;
+      return item;
+    }
+    Child(q)[dir] = item;
   }
 
-  Child(q)[dir] = item;
-  auto n = item;
-
-  Child(n)[0] = 0;
-  Child(n)[1] = 0;
-  Balance(n) = 0;
-  if (!y) return n;
-
+  // Update the BF values along the parent chain of the subtree requiring rebalancing.
+  // Note we may be temporarily violating the AVL invariant, and have BF == 2 or -2.
+  // We'll rotate the tree below if/when that's the case.
   k = 0;
-  for (auto p = y; p != n;) {
+  for (auto p = y; p != item;) {
     if (!da[k]) Balance(p) -= 1;
     else Balance(p) += 1;
     p = Child(p)[da[k]];
     k += 1;
   }
 
-  avl* w = 0;
+  // Perform tree rotations to restore the AVL invariant.
+  avl* w = 0; // Root of the rebalanced subtree.
   if (Balance(y) == -2) {
+    // y is left-leaning by 2, meaning h(x) == 2+h(g)
+    //         z
+    //         y
+    //     x       g
+    //   b   e
+    //  a c d f
+    //
     auto x = Child(y)[0];
     if (Balance(x) == -1) {
+      // x is left-leaning by 1, meaning h(b) == 1+h(e)
+      //         z
+      //         y
+      //     x       g
+      //   b   e
+      //  a c
+      //
+      //         z
+      //         x
+      //     b       y
+      //   a   c   e   g
+      //
       w = x;
       Child(y)[0] = Child(x)[1];
       Child(x)[1] = y;
@@ -96,6 +128,18 @@ avl* emplace(avl** tree, avl* item) {
     }
     else {
       AssertDebug(Balance(x) == 1);
+      // x is right-leaning by 1, meaning h(b)+1 == h(e)
+      //         z
+      //         y
+      //     x       g
+      //   b   e
+      //      d f
+      //
+      //         z
+      //         e
+      //     x       y
+      //   b   d   f   g
+      //
       w = Child(x)[1];
       Child(x)[1] = Child(w)[0];
       Child(w)[0] = x;
@@ -110,7 +154,7 @@ avl* emplace(avl** tree, avl* item) {
         Balance(y) = 0;
       }
       else {
-        AssertDebug(Balance(x) == 1);
+        AssertDebug(Balance(w) == 1);
         Balance(x) = -1;
         Balance(y) = 0;
       }
@@ -127,6 +171,7 @@ avl* emplace(avl** tree, avl* item) {
       Balance(y) = 0;
     }
     else {
+      AssertDebug(Balance(x) == -1);
       w = Child(x)[0];
       Child(x)[0] = Child(w)[1];
       Child(w)[1] = x;
@@ -149,11 +194,16 @@ avl* emplace(avl** tree, avl* item) {
     }
   }
   else {
-    return n;
+    return item;
   }
 
-  Child(z)[y != Child(z)[0]] = w;
-  return n;
+  if (z) {
+    Child(z)[y != Child(z)[0]] = w;
+  }
+  else {
+    *tree = w;
+  }
+  return item;
 }
 avl* erase(avl** tree, avl* item) {
   avl* pa[cMaxDepth];
@@ -297,6 +347,20 @@ avl* erase(avl** tree, avl* item) {
   return item;
 }
 
+struct PrintTiming {
+  uint64_t t0;
+  idx_t denom;
+  ForceInl PrintTiming(idx_t denominator = 1) {
+    denom = denominator;
+    t0 = __rdtsc();
+  }
+  ForceInl ~PrintTiming() {
+    auto t1 = __rdtsc();
+    auto fsec = TimeSecFromTSC32(t1 - t0) / denom;
+    printf("%e\n", fsec);
+  }
+};
+
 #pragma warning(disable:4530)
 RegisterTest([]()
 {
@@ -311,29 +375,87 @@ RegisterTest([]()
     r.balance = 0;
     return r;
   };
-  constant idx_t cNodes = 1000;
+  constant idx_t cNodes = 10000;
   std::vector<avl> nodes;
   nodes.resize(cNodes);
   for (idx_t i = 0; i < cNodes; ++i) {
     nodes[i] = makenode(Rand32(lcg));
   }
   avl* root = 0;
-  for (idx_t i = 0; i < cNodes; ++i) {
-    assertAvlBalanced(root);
-    emplace(&root, &nodes[i]);
-    assertAvlBalanced(root);
+
+  //INSERT:
+  //7.813863e-08
+  //1.594058e-07
+  //LOOKUP:
+  //6.857143e-13
+  //9.615749e-08
+  //ERASE:
+  //7.056531e-08
+  //4.631028e-09
+
+  printf("INSERT:\n");
+  {
+    PrintTiming pt(cNodes);
+    for (idx_t i = 0; i < cNodes; ++i) {
+      emplace(&root, &nodes[i]);
+    }
   }
 
+  {
+    std::set<int> foo;
+//    foo.reserve(cNodes);
+    PrintTiming pt(cNodes);
+    for (idx_t i = 0; i < cNodes; ++i) {
+      foo.insert(nodes[i].val);
+    }
+  }
+
+  printf("LOOKUP:\n");
+  {
+    idx_t rp = 0;
+    PrintTiming pt(cNodes);
+    for (idx_t i = 0; i < cNodes; ++i) {
+      auto r = find(root, nodes[i].val);
+      rp ^= Cast(idx_t, r);
+    }
+  }
+
+  {
+    std::set<int> foo;
+//    foo.reserve(cNodes);
+    for (idx_t i = 0; i < cNodes; ++i) {
+      foo.insert(nodes[i].val);
+    }
+    idx_t rp = 0;
+    PrintTiming pt(cNodes);
+    for (idx_t i = 0; i < cNodes; ++i) {
+      auto r = foo.find(nodes[i].val);
+      rp ^= Cast(idx_t, *r);
+    }
+  }
+
+  printf("ERASE:\n");
   // FUTURE: random order erase, not the same as insert.
-  for (idx_t i = 0; i < cNodes; ++i) {
-    assertAvlBalanced(root);
-    erase(&root, &nodes[i]);
-    assertAvlBalanced(root);
+  // ~74 - 77 ns per node, ship.
+  {
+    PrintTiming pt(cNodes);
+    for (idx_t i = 0; i < cNodes; ++i) {
+      erase(&root, &nodes[i]);
+    }
+  }
+
+  {
+    std::set<int> foo;
+//    foo.reserve(cNodes);
+    PrintTiming pt(cNodes);
+    for (idx_t i = 0; i < cNodes; ++i) {
+      foo.erase(nodes[i].val);
+    }
   }
 
   AssertCrash(root == 0);
 
-  constant idx_t cIters = 100000;
+  constant idx_t cIters = 10000;
   std::unordered_set<int> set;
   nodes.resize(0);
   nodes.reserve(cIters);
@@ -355,7 +477,7 @@ RegisterTest([]()
     }
     assertAvlBalanced(root);
   }
-  
+
   assertAvlBalanced(root);
 });
 
