@@ -1926,9 +1926,540 @@ vector<pair<size_t,size_t>> f(
 }
 
 
+flood fill u8[dx][dy]
+void flood(
+  u8* img,
+  size_t dx,
+  size_t dy,
+  size_t x,
+  size_t y,
+  u8 value)
+{
+  vector<bool> visited{dx*dy, false};
+  queue<size_t> q;
+  q.emplace(dx * y + x);
+  while (!q.empty()) {
+    size_t i = q.pop();
+    if (visited[i]) continue;
+    visited[i] = true;
+    auto ix = i / dx;
+    auto iy = i % dx;
+    img[dx * iy + ix] = value;
+    if (ix > 0) q.emplace(dx * iy + (ix - 1));
+    if (ix + 1 < dx) q.emplace(dx * iy + (ix + 1));
+    if (iy > 0) q.emplace(dx * (iy - 1) + ix);
+    if (iy + 1 < dy) q.emplace(dx * (iy + 1) + ix);
+  }
+}
 
 
 
+define 'magic index' as the 'i' where
+  a[i] = i
+given a sorted array 'a', return a magic index if it exists.
+p1.
+// [-1, 0, 2, 4] -> 2
+// a[i]-i
+// [-1, -1, 0, 1]
+// so by using i-a[i], that gives us the natural direction to search.
+// positive is to the right, negative to the left.
+bool findMagic(int32_t* a, size_t len, size_t* result) {
+  size_t L = 0;
+  size_t R = len - 1;
+  while (L != R) {
+    const size_t i = L + (R+1-L)/2;
+    int64_t diff = i - (int64_t)a[i];
+    if (diff > 0) {
+      L = i + 1;
+    }
+    else if (diff < 0) {
+      R = (i > 0) ? i-1 : 0;
+    }
+    else {
+      *result = i;
+      return true;
+    }
+  }
+  return false;
+}
+
+p2.
+what if the array contains duplicates?
+same solution.
+
+
+return all subsets of a set. aka power set.
+
+
+recursive fn to multiply two positive integers w/o using multiplication operator.
+add/sub/shifts are allowed.
+minimize the number of those ops.
+u64 mul(u32 a, u32 b) {
+  auto A = min(a,b);
+  auto B = max(a,b);
+  u64 r = 0;
+  while (A--) r += B;
+  return r;
+}
+// By adding r to itself we could get { 0, B, 2B, 4B, 8B, ... }
+// With shifts we can do multiplication by powers of 2. Even better, since we can jump straight to 8B, 4ex.
+// So we want to find the largest power of 2 that's <= A.
+// And then recurse on the remainder.
+// E.g. if A=11, then P1=8, P2=2, P3=1, and we're done.
+u32 CShiftLargestSmallerPowerOf2(u32 A) {
+  // E.g.
+  // (A, lzcnt(A))
+  // (0b0, 32)
+  // (0b1, 31)
+  // (0b11, 30)
+  // ...
+  // (0xFFFFFFFF, 0)
+  assert(A);
+  u32 lzcnt = countl_zero(A);
+  u32 cShift = 32 - lzcnt - 1;
+  return cShift;
+}
+u64 mul(u32 a, u32 b) {
+  auto A = min(a,b);
+  auto B = max(a,b);
+  u64 r = 0;
+  while (A) {
+    u32 cShift = CShiftLargestSmallerPowerOf2(A);
+    A -= 1 << cShift;
+    r += (u64)B << cShift;
+  }
+  return r;
+}
+
+
+towers of hanoi
+3 towers, n ordered discs on the towers.
+constraints:
+1. only one disc can be moved at a time
+2. LIFO towers
+3. larger discs cannot be placed over smaller discs.
+implement the solution to move a full stack from the first tower to the third.
+
+
+return all permutations of a string.
+assume the string contains no duplicate characters within it.
+// n! permutations, since we can pick any character as the first, then any other char as the second, etc.
+// e.g. abc ->
+//   abc
+//   acb
+//   bac
+//   bca
+//   cab
+//   cba
+// Recursively, perm("", abc) =
+//   perm(a, bc)
+//   perm(b, ac)
+//   perm(c, ab)
+// i.e. all choices of prefix chars from the right param.
+// Base case,
+//   perm(f, "") = f
+void perm(string_view pre, string_view s, vector<string>& result) {
+  if (!s.length()) {
+    result.emplace_back(pre);
+    return;
+  }
+  for (size_t i = 0; i < s.length(); ++i) {
+    string_view prefix { &s[i], 1 };
+    string_view before = s.substr(0, i);
+    string_view after = s.substr(i+1, s.length() - (i+1));
+    string remainder = before;
+    remainder += after;
+    perm(prefix, remainder, result);
+  }
+}
+bool allPerms(string_view s, vector<string>& result) {
+  result.clear();
+  bool overflow = false;
+  size_t cPerms = factorial(s.length(), &overflow);
+  if (overflow) return false;
+  result.reserve(cPerms);
+  perm("", s, result);
+  return true;
+}
+
+
+p2. same as above, but duplicates are allowed in the string. the result shouldn't contain duplicate perms.
+same solution, just replace vector<string> with set<string> or unordered_set<string>
+.emplace_back turns into .insert or .emplace
+
+print all valid combinations of n paren-pairs.
+e.g.
+given 1, print ()
+               01
+given 2, print (()), ()()
+               0011, 0101
+given 3, print ((())), (()()), ()(()), (())(), ()()()
+               000111  001011  010011  001101  010101
+one option is:
+  for all results at n-1, we can either:
+  1. wrap the result entirely, (<old-result>)
+  2. prefix, ()<old-result>
+  3. postfix, <old-result>()
+  and then we need to de-dupe. E.g. prefix, postfix of the 0101 case are identical.
+void recurStep(const set<string>& old, set<string>& n) {
+  assert(n.empty());
+  for (const auto& s : old) {
+    string wrap = "(";
+    wrap += s;
+    wrap += ")";
+    n.emplace(move(wrap));
+
+    string prefix = "()";
+    prefix += s;
+    n.emplace(move(prefix));
+
+    string postfix = s;
+    postfix + "()";
+    n.emplace(move(postfix));
+  }
+}
+void printParenCombos(size_t n) {
+  if (!n) return;
+  set<string> sets[2];
+  sets[0].emplace("()");
+  for (size_t i = 1; i < n; ++i) {
+    size_t iOld = (i+1) % 2;
+    size_t iNew = i % 2;
+    recurStep(sets[iOld], sets[iNew]);
+  }
+  auto psetPrint = &sets[(n-1)%2];
+  for (const auto& s : *psetPrint) {
+    cout << s << endl;
+  }
+}
+
+
+
+given infinite 25c, 10c, 5c, 1c coins, return the number of ways of representing n cents.
+f1(n) = 1
+  always just use n 1c coins.
+f5_1(n) =
+  can choose 0..n/5 5c coins, and then the remainder f1 each time.
+so for 7c, I can choose either:
+  1. 5c, f1(2)
+  2. f1(7)
+12c would have one more option with 2 5c coins. And so on.
+Since f1(n)=1, that means we have 1+n/5 ways. That many choices of 5c coins, basically.
+f5_1(n) = 1+n/5
+
+for f10_5_1(n) we can do the same, we have all possible choices of 10c coins up to n/10.
+e.g. for 33c,
+  1. f5_1(33)
+  2. 10c, f5_1(23)
+  3. 2*10c, f5_1(13)
+  4. 3*10c, f5_1(3)
+size_t f10_5_1(size_t n) {
+  size_t r = 0;
+  for (size_t i10 = 0; i10 <= n/10; ++i10) {
+    const auto remainder10 = n - 10*i10;
+    if (remainder10 > 0) {
+      r += 1 + remainder10 / 5;
+    }
+  }
+  return r;
+}
+
+by symmetry, 25c is going to be basically the same as 10c.
+size_t f25_10_5_1(size_t n) {
+  size_t r = 0;
+  for (size_t i25 = 0; i25 <= n/25; ++i25) {
+    const auto remainder25 = n - 25*i25;
+    if (remainder25 > 0) {
+      r += f10_5_1(remainder25);
+    }
+  }
+  return r;
+}
+
+
+struct box { float dim[3]; };
+given n boxes.
+boxes can be stacked, but only if all 3 dims are smaller than the box beneath.
+return the height of the tallest possible stack.
+
+
+
+given a bool expression of 1, 0, &, |, ^, and a desired result,
+return the number of ways of parenthesizing the expr s.t. it evaluates to the given result.
+
+
+given a,b both sorted arrays.
+a has space for b concat'ed onto it.
+merge b into a, maintaining the sort.
+void zipper(
+  uint32_t* a,
+  size_t a_len,
+  uint32_t* b,
+  size_t b_len
+  )
+{
+  if (!a_len || !b_len) return;
+  if (!a_len) {
+    memmove(a, b, sizeof(*b)*b_len);
+    return;
+  }
+  // we have to merge into the end, and advance towards the beginning, so as not to stomp on a.
+  // e.g. if the first value of b belongs in the first slot, we don't want to have to shift
+  // all of a over just so we can do that insertion.
+  // by merging at the end, we're guaranteed to have moved the last element of a by the time we
+  // reach that slot. worst case is we've placed all of b, and then a can be left in place.
+  auto dst = a + a_len + b_len - 1;
+  auto readA = a + a_len - 1;
+  auto readB = b + b_len - 1;
+  while (readA != a && readB != b) {
+    auto cmp = *readA <=> *readB;
+    if (cmp < 0) {
+      *dst = *readB;
+      --dst;
+      --readB;
+    }
+    else /*(cmp >= 0)*/ { // arbitrarily take from A in the =0 case.
+      *dst = *readA;
+      --dst;
+      --readA;
+    }
+  }
+  while (readA != a) {
+    *dst = *readA;
+    --dst;
+    --readA;
+  }
+  while (readB != b) {
+    *dst = *readB;
+    --dst;
+    --readB;
+  }
+  assert(dst == a);
+  assert(readA == a);
+  assert(readB == b);
+}
+
+
+implement binary search (traditional decreasing steps)
+
+
+implement binary search (increasing from 0 and then decreasing steps)
+
+
+implement array packing (re-contiguoize), based on valid[i].
+void packContiguous(
+  uint32_t* arr,
+  size_t len,
+  const vector<bool>& valid,
+  size_t* newlen
+  )
+{
+  *newlen = 0;
+  if (!len) {
+    return;
+  }
+  // Invariant:
+  //   write is the first invalid element.
+  //   read is the first valid element following write.
+  // terminate when read or write falls off the end.
+  size_t write = 0;
+  while (;;) {
+    while (write < len && valid[write]) ++write;
+    if (write == len) {
+      return;
+    }
+    size_t read = write + 1;
+    while (read < len && !valid[read]) ++read;
+    if (read == len) {
+      return;
+    }
+    arr[write] = arr[read];
+    ++(*newlen);
+    write = read + 1;
+  }
+}
+
+
+given a file with <4 billion u32 values, generate a u32 not present in the file.
+p1. assume you can use 1GB of memory.
+idea: total sort, and then look for a gap.
+could do filtering to value intervals, and then sort within each.
+the initial filtering passes can load just <1GB chunks at a time.
+u32 is 4B, so to stay under 1GB we can only look at 256M u32s at a time.
+that means k*[0,256M) are our intervals, where k is [0,16).
+16 files in total.
+file_t fopen(string_view filename, string_view mode);
+// clips iOffset,cRead to the actual file size, and returns the clipped results.
+void fread(file_t file, size_t iOffset, size_t cRead, vector<uint32_t>& result);
+void fappend(file_t file, uint32_t* data, size_t len);
+void fclose(file_t file);
+bool main(string_view bigfile_name, uint32_t* result) {
+  constexpr size_t cF = 16;
+  constexpr size_t cElements = 256*1024*1024;
+  vector<string> filenameG;
+  filenameG.reserve(cF);
+  for (size_t f = 0; f < cF; ++f) {
+    string name {"tempfile"};
+    name += to_string(f);
+    filenameG.emplace_back(move(name));
+  }
+  auto bigfile = fopen(bigfile_name, "r");
+  auto cleanup = Defer([&]() { fclose(bigfile); });
+  vector<uint32_t> buffer{cElements};
+  for (size_t f = 0; f < cF; ++f) {
+    fread(bigfile, cElements * f, cElements, buffer);
+    sort(begin(buffer), end(buffer));
+    for (size_t g = 0; g < cF; ++g) {
+      size_t valueL = cElements * g;
+      size_t valueR = cElements * (g+1);
+      auto itL = lower_bound(begin(buffer), end(buffer), valueL);
+      auto itR = lower_bound(itL, end(buffer), valueR);
+      auto fileG = fopen(filenameG[g], "w+");
+      auto cleanupG = Defer([&]() { fclose(fileG); });
+      fappend(fileG, itL, itR - itL);
+    }
+  }
+  for (size_t g = 0; g < cF; ++g) {
+    auto fileG = fopen(filenameG[g], "r");
+    auto cleanupG = Defer([&]() { fclose(fileG); });
+    fread(fileG, 0, cElements, buffer);
+    sort(begin(buffer), end(buffer));
+    size_t valueL = cElements * g;
+    size_t valueR = cElements * (g+1);
+    const size_t cBuffer = buffer.size();
+    if (cBuffer > 0) {
+      if (valueL != buffer[0]) {
+        *result = valueL;
+        return true;
+      }
+      if (valueR != buffer[cBuffer-1]) {
+        *result = valueR;
+        return true;
+      }
+    }
+    else {
+      *result = valueL;
+      return true;
+    }
+    for (size_t i = 1; i < cBuffer; ++i) {
+      if (buffer[i-1] + 1 != buffer[i]) {
+        *result = buffer[i-1]+1;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+p2. you can use <10MB of memory. but you can assume <1 billion u32 values.
+same as above, but lower the limits.
+10MB means 2.5M u32s, and roughly 1600 temporary files.
+
+
+print duplicates + rep-counts in a sorted array. RLE style.
+void printDupes(uint32_t* arr, size_t len) {
+  if (len <= 1) return;
+  auto prev = arr[0];
+  size_t rep = 1;
+  for (size_t i = 1; i < len; ++i) {
+    auto cur = arr[i];
+    if (prev == cur) {
+      ++rep;
+    }
+    else {
+      if (rep > 1) {
+        cout << to_string(prev) << "," << to_string(rep) << endl;
+      }
+      rep = 1;
+      prev = cur;
+    }
+  }
+  if (rep > 1) {
+    cout << to_string(prev) << "," << to_string(rep) << endl;
+  }
+}
+
+
+given a 2d matrix of u32s, where each row and col is sorted ascending
+given a value, return true if it's in the matrix.
+
+
+there's a stream of u32s, given you at various points in time.
+  push(u32 x)
+implement ds+alg to support a getRank(u32 x) method.
+it returns the number of pushed elements <= the given x.
+there may be duplicates in the stream, and those count towards the rank.
+// rank(x) is defined as the number of items that have been pushed with a value <= x.
+struct foo {
+  vector<u32> v;
+
+  // Push is O(lgN + N) = O(N)
+  // Rank is O(lgN)
+  void push(u32 x) {
+    auto it = lower_bound(begin(v), end(v), x);
+    v.insert(it, x);
+  }
+  size_t rank(u32 x) {
+    auto it = lower_bound(begin(v), end(v), x+1);
+    auto r = it - begin(v);
+    return r;
+  }
+
+  // Push is O(1) amortized
+  // Rank is O(N lgN + lgN) = O(N lgN). We could make it O(N + lgN) = O(N) with radix sort.
+  void push(u32 x) {
+    v.emplace_back(x);
+  }
+  size_t rank(u32 x) {
+    sort(begin(v), end(v));
+    return lower_bound(begin(v), end(v), x+1) - begin(v);
+  }
+};
+// you can do better with a balanced tree that has the size of the subtree stored in each node.
+// aka an 'order statistic tree'.
+struct node {
+  node* children[2];
+  size_t cSubtree;
+  u32 balanceData; // For AVL bits, or red-black bit, etc.
+  u32 value;
+};
+// Balanced insert. May rewrite the root during rebalancing.
+void insert(node** root, u32 value);
+// Finds the lowest-value node where node.value >= the given value.
+// It may be equal in the case of an exact match.
+void lower_bound(node* root, u32 value, vector<node*>& parents);
+size_t CSubtree(node* root) {
+  if (!root) return 0;
+  return root->cSubtree;
+}
+
+struct foo {
+  node* root = nullptr;
+  void push(u32 x) {
+    insert(&root, x);
+  }
+  size_t rank(u32 x) {
+    vector<node*> parents;
+    parents.reserve(32);
+    lower_bound(root, x, parents);
+    // parent->children[0] is guaranteed to be < x. Due to the defn of lower_bound.
+    // parent->children[1] is guaranteed to be > x. Same reason.
+    if (parents.empty()) return 0;
+    size_t r = CSubtree(parents[0]->children[0]);
+    if (parents[0]->value == x) r += 1;
+    // As we walk up the parent chain; we only want to count the other side of the tree we haven't
+    // considered yet. And the parent itself.
+    auto lastP = parents[0];
+    for (size_t i = 1; i < parents.size(); ++i) {
+      auto p = parents[i];
+      if (lastP == p->children[0]) {
+        auto notConsidered = p->children[1];
+        ...
+        if (notConsidered->value <= x) r += CSubtree(notConsidered);
+      }
+    }
+  }
+};
 
 
 
