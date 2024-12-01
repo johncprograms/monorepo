@@ -7,36 +7,11 @@ LogUI( const void* cstr ... )
 {
 }
 
-#define TEST 1
-
-// NOTE: we may have to move this RegisterTest defn and such to a separate header, for other binaries to opt out with TEST=0.
-using FnTest = void(*)();
-constexpr size_t g_ctests = 100;
-FnTest g_tests[g_ctests];
-size_t g_ntests = 0;
-
-struct RegisterTestObject
-{
-  RegisterTestObject( FnTest fn )
-  {
-    if( g_ntests >= g_ctests ) __debugbreak();
-    g_tests[g_ntests++] = fn;
-  }
-};
-#define ___JOIN( a, b ) a ## b
-#define __JOIN( a, b ) ___JOIN( a, b )
-
-#if defined(TEST)
-  #define RegisterTest \
-    static RegisterTestObject __JOIN( g_register_test_obj, __COUNTER__ ) = RegisterTestObject
-#else
-  #define RegisterTest
-#endif
-
 
 #include "os_mac.h"
 #include "os_windows.h"
 
+#define TEST 1
 #define FINDLEAKS 1 // make it a test failure to leak memory.
 #define DEBUGSLOW 0 // enable some slower debug checks.
 #define WEAKINLINING 1
@@ -149,6 +124,822 @@ struct RegisterTestObject
 #include "sparse2d_compressedsparserow.h"
 #include "statistics.h"
 
+#include <cassert>
+#include <map>
+#include <span>
+using namespace std;
+
+string longestPalindrome(string s) {
+    auto L = s.size();
+    size_t cmaxO = 0;
+    size_t maxIL, maxIR;
+    for (size_t i = 0; i < L; ++i) {
+        // find the largest palindrome centered at i.
+        // [1 2 3 4]
+        //    ^
+        // cL = 1
+        // cR = 2
+        // we can search min(cL,cR) and find the max palin.
+        // BUGFIX:
+        // case like "abccba". there is no central i.
+        // in fact the central part is {i}=[2,3].
+        // we can just extend i into an interval, and we'll only need to look for repeats to the right.
+        // since we're maxing over all possible starting i.
+        size_t j = i + 1;
+        while (j < L && s[i] == s[j]) ++j;
+        --j;
+        // Now [i,j] is the central part.
+        // [a b c c b a]
+        //      i j
+        // i=2
+        // j=3
+        // cL = 2;
+        // cR = 2;
+        auto cL = i;
+        auto cR = L-j-1;
+        auto c = min<size_t>(cL,cR);
+        size_t k = 1;
+        for (; k <= c; ++k) {
+            auto iL = i - k;
+            auto iR = j + k;
+            if (s[iL] != s[iR]) break;
+        }
+        --k;
+
+        size_t cmax = j-i+1 + 2*k;
+        if (cmax > cmaxO) {
+            cmaxO = cmax;
+            maxIL = i - k;
+            maxIR = j + k;
+        }
+    }
+    if (!cmaxO) return "";
+    auto sv = string_view{s.c_str()+maxIL, maxIR-maxIL+1};
+    return string{sv};
+}
+
+string convert(string s, int n) {
+    if (n == 1) return s;
+    map<uint64_t,char> map;
+    uint32_t y = 0;
+    uint32_t x = 0;
+    bool diag = false;
+    for (auto c : s) {
+        map[((uint64_t)y << 32u) | x] = c;
+        if (diag) {
+            assert(y > 0);
+            --y;
+            ++x;
+            diag = (y > 0);
+        }
+        else {
+            ++y;
+            if (y == n) {
+                y -= 2;
+                x += 1;
+                diag = (y > 0);
+            }
+        }
+    }
+    string r;
+    for (const auto& it : map) {
+        r += it.second;
+    }
+    return r;
+}
+constexpr bool isnum(char c) { return '0' <= c && c <= '9'; }
+int myAtoi(string s) {
+    auto it = begin(s);
+    auto itend = end(s);
+    while (it != itend && *it == ' ') ++it;
+    if (it == itend) return 0;
+
+    bool neg = false;
+    if (*it == '-') { 
+        neg = true;
+        ++it;
+    }
+    else if (*it == '+') ++it;
+
+    if (it == itend) return 0;
+
+    vector<char> digits;
+    for (; it != itend && isnum(*it); ++it) {
+        digits.push_back(*it);
+    }
+    int64_t v = 0;
+    int64_t place = 1;
+    // once we start adding 10B and above, we're definitely saturating.
+    const int64_t maxplace = 10000000000; // 10B
+    const size_t D = digits.size();
+    const int64_t L = numeric_limits<int>::min();
+    const int64_t R = numeric_limits<int>::max();
+    for (size_t i = 0; i < D && place <= maxplace; ++i) {
+        auto ri = D-i-1;
+        v += place * digits[ri];
+        place *= 10;
+        if (v < L) { v = L; break; }
+        if (v > R) { v = R; break; }
+    }
+    if (neg) v = -v;
+    return (int)v;
+}
+namespace n1 {
+bool match(string_view s, string_view p) {
+    const size_t P = p.size();
+    const size_t S = s.size();
+    // S   P    result
+    // ""  ".*" true
+    // ""  "p"  false
+    // "a" ""   false
+    // ""  ""   true
+    if (!P) return !S;
+    // s: 012345
+    // p: 0*12.*
+    // s0
+    auto p0 = p[0];
+    auto m0 = p0 == '.' || p0 == s[0];
+    if (P > 1 && p[1] == '*') {
+        // either we: 
+        // 1. use the * 0 times, OR,
+        // 2. advance and keep trying to use the *
+        return match(s, p.substr(2)) || (m0 && match(s.substr(1), p));
+    }
+    if (!m0) return false;
+    return match(s.substr(1), p.substr(1));
+}
+bool isMatch(string s, string p) {
+    return match(s, p);
+}
+} // n1
+vector<vector<int>> threeSum2(vector<int>& n) {
+    const auto N = n.size();
+    unordered_map<int,size_t> map;
+    for (size_t i = 0; i < N; ++i) {
+        map.emplace(n[i], i);
+    }
+    vector<vector<int>> ss;
+    for (size_t j = 0; j < N; ++j) {
+        auto target = 0 - n[j];
+        for (size_t i = 0; i < N; ++i) {
+            if (i == j) continue;
+            auto it = map.find(target - n[i]);
+            if (it == end(map) || i == it->second || j == it->second) continue;
+            vector<int> r;
+            r.push_back(n[i]);
+            r.push_back(n[j]);
+            r.push_back(n[it->second]);
+            ss.emplace_back(move(r));
+        }
+    }
+    set<vector<int>> sv;
+    for (auto& s : ss) {
+        sort(begin(s), end(s));
+        sv.insert(s);
+    }
+
+    vector<vector<int>> r;
+    for (const auto& s : sv) {
+        r.emplace_back(move(s));
+    }
+    return r;
+    // n[i]+n[j]+n[k] == 0
+    // n[i] = -(n[j]+n[k])
+}
+vector<vector<int>> threeSum(vector<int>& n) {
+    unordered_map<int,int> map;
+    const size_t N = n.size();
+    for (size_t i = 0; i < N; ++i) {
+        auto it = map.find(n[i]);
+        if (it == end(map)) map[n[i]] = 1;
+        else it->second = min(it->second+1, 3);
+    }
+    n.clear();
+    for (const auto& it : map) {
+        auto c = it.second;
+        while (c--) { n.push_back(it.first); }
+    }
+    sort(begin(n), end(n));
+    return threeSum2(n);
+}
+struct ListNode {
+  int val;
+  ListNode *next;
+  ListNode() : val(0), next(nullptr) {}
+  ListNode(int x) : val(x), next(nullptr) {}
+  ListNode(int x, ListNode *next) : val(x), next(next) {}
+};
+ListNode* create(const vector<int>& s) {
+  ListNode* head = 0;
+  ListNode* prev = 0;
+  for (auto c : s) {
+    auto n = new ListNode;
+    n->val = c;
+    n->next = 0;
+    if (prev) prev->next = n;
+    prev = n;
+    if (!head) head = n;
+  }
+  return head;
+}
+ListNode* mergeTwoLists(ListNode* a, ListNode* b) {
+    if (!a && !b) return 0;
+    if (!a) return b;
+    if (!b) return a;
+    ListNode* head = 0;
+    ListNode* prev = 0;
+    while (a && b) {
+        auto& m = (a->val < b->val) ? a : b;
+        if (!head) head = m;
+        if (prev) prev->next = m;
+        prev = m;
+        m = m->next;
+    }
+    while (a) {
+        prev->next = a;
+        prev = a;
+        a = a->next;
+    }
+    while (b) {
+        prev->next = b;
+        prev = b;
+        b = b->next;
+    }
+    return head;
+}
+int searchInsert(vector<int>& n, int target) {
+    auto N = n.size();
+    // [L,i,R)
+    size_t L = 0;
+    auto R = N;
+    auto i = N/2;
+    while (L != R) {
+        if (n[i] == target) return i;
+        if (n[i] < target) {
+            L = i+1;
+        }
+        else {
+            R = i;
+        }
+        i = L+(R-L)/2;
+    }
+    return i;
+}
+
+string addBinary(string a, string b) {
+    string r;
+    auto ita = rbegin(a);
+    auto ea = rend(a);
+    auto itb = rbegin(b);
+    auto eb = rend(b);
+    auto A = a.size();
+    auto B = b.size();
+    auto M = max(A,B);
+    char carry = 0;
+    for (size_t i = 0; i < M; ++i) {
+        auto sum = carry;
+        if (ita != ea) sum += *ita++ - '0';
+        if (itb != eb) sum += *itb++ - '0';
+        r += '0' + (sum & 1);
+        carry = sum >> 1;
+    }
+    if (carry) r += '0' + carry;
+    return r;
+}
+int threeSumClosest(vector<int>& n, int target) {
+    const auto N = n.size();
+    #if 0
+    int64_t minsum = numeric_limits<int64_t>::max();
+    int64_t mindiff = numeric_limits<int64_t>::max();
+    for (size_t i = 0; i < N-2; ++i) {
+        for (size_t j = i+1; j < N-1; ++j) {
+            for (size_t k = j+1; k < N; ++k) {
+                auto sum = (int64_t)n[i]+n[j]+n[k];
+                auto diff = (target-sum);
+                diff = (diff < 0) ? -diff : diff;
+                if (diff < mindiff) {
+                    mindiff = diff;
+                    minsum = sum;
+                }
+            }
+        }
+    }
+    return minsum;
+    #else
+    // n^2 lg n
+    //map<int,size_t> m;
+    //for (auto c : n) ++m[c];
+    sort(begin(n),end(n));
+
+    int64_t minsum = numeric_limits<int64_t>::max();
+    int64_t mindiff = numeric_limits<int64_t>::max();
+    for (size_t i = 0; i < N-1; ++i) {
+        for (size_t j = i+1; j < N; ++j) {
+            auto two = (int64_t)n[i]+n[j];
+            // find closest to two in n, s.t. k is not i or j.
+            auto it = lower_bound(begin(n),end(n), target-two);
+            auto k = (it - begin(n));
+            if (k == i || k == j || k == N) {
+                // try both sides, moving k left and right.
+                // each might be not valid (hitting end of buffer)
+                auto R = k;
+                while (R == i || R == k) ++R;
+                auto L = k;
+                while (L == i || L == k || L == N) --L;
+                if (R < N) {
+                    auto sum = two+n[R];
+                    auto diff = abs(target - sum);
+                    if (diff < mindiff) {
+                        mindiff = diff;
+                        minsum = sum;
+                    }
+                }
+                if (L >= 0) {
+                    auto sum = two+n[L];
+                    auto diff = abs(target - sum);
+                    if (diff < mindiff) {
+                        mindiff = diff;
+                        minsum = sum;
+                    }
+                }
+            }
+            else {
+                auto sum = two+n[k];
+                auto diff = abs(target - sum);
+                if (diff < mindiff) {
+                    mindiff = diff;
+                    minsum = sum;
+                }
+
+            }
+        }
+    }
+    return minsum;
+    #endif
+}
+
+vector<vector<int>> fourSum(vector<int>& n, int target) {
+
+    {
+        vector<int> s;
+        unordered_map<int,char> h;
+        for (auto c : n) {
+            h[c] = min(4,h[c]+1);
+        }
+        for (const auto& it : h) {
+            for (char i = 0; i < it.second; ++i) {
+                s.push_back(it.first);
+            }
+        }
+        n = s;
+    }
+
+    const size_t N = n.size();
+    if (N < 4) return vector<vector<int>>{};
+
+    unordered_map<int,set<size_t>> map; // value -> list of indices where that value appears in n.
+    for (size_t i = 0; i < N; ++i) {
+        auto it = map.find(n[i]);
+        if (it == end(map)) map[n[i]] = set<size_t>{{i}};
+        else it->second.insert(i);
+    }
+
+    set<vector<int>> rs;
+    for (size_t a = 0; a < N-3; ++a) {
+    for (size_t b = a+1; b < N-2; ++b) {
+    for (size_t c = b+1; c < N-1; ++c) {
+        auto three = (int64_t)n[a]+(int64_t)n[b]+(int64_t)n[c];
+        auto it = map.find((int)((int64_t)target-three));
+        if (it == end(map)) continue;
+        set<size_t> s = it->second;
+        s.erase(a);
+        s.erase(b);
+        s.erase(c);
+        if (s.empty()) continue;   
+        vector<int> rv; rv.resize(4);
+        rv[0] = n[a];
+        rv[1] = n[b];
+        rv[2] = n[c];
+        rv[3] = n[*begin(s)];
+        sort(begin(rv),end(rv));
+        rs.emplace(move(rv));
+    }
+    }
+    }
+
+    vector<vector<int>> r;
+    for (const auto& v : rs) {
+        r.push_back(v);
+    }
+    return r;
+}
+void fn(set<string>& r, int n, string_view sofar, int copen) {
+    if (!n) {
+        string c{sofar};
+        while (copen--) c += ")";
+        r.emplace(move(c));
+        return;
+    }
+    if (copen) {
+        string c{sofar};
+        c += ")";
+        fn(r, n-1, c, copen-1);
+    }
+    string s{sofar};
+    s += "(";
+    fn(r, n-1, s, copen+1);
+}
+vector<string> generateParenthesis(int n) {
+    // cases:
+    // ()-prefix
+    // suffix-()
+    // (surround)
+    // we can do any of those for any of the previous set of results.
+    // and there will be dupes, e.g. () -> ()() is generated by suffix and prefix rules.
+    // BUGBUG: (())(()) won't be generated by these rules.
+    // alternate:
+    // stack<> opens;
+    // for each i up to n, we can either open a new pair, or close an existing one.
+    set<string> s;
+    fn(s, n, "", 0);
+    vector<string> r;
+    for (const auto& c : s) { r.push_back(c); }
+    return r;
+
+    #if 0
+    set<string> s;
+    s.insert("");
+    for (int i = 0; i < n; ++i) {
+        set<string> t;
+        for (const auto& c : s) {
+            string t0 = "()"+c;
+            string t1 = c+"()";
+            string t2 = "("+c+")";
+            t.insert(t0);
+            t.insert(t1);
+            t.insert(t2);
+        }
+        s = move(t);
+    }
+    vector<string> r;
+    for (const auto& c : s) { r.push_back(c); }
+    return r;
+    #endif
+}
+int search(vector<int>& n, int target) {
+    const auto N = n.size();
+    size_t L = 0;
+    size_t R = N-1;
+    while (L+1 != R) {
+        auto i = L+(R-L)/2;
+        if (n[L] < n[i]) L = i;
+        else R = i;
+    }
+    const bool foundPivot = n[L] > n[R];
+    auto linear = [=](size_t i) {
+        // 3 4 5 0 1 2 
+        //     L R
+        // L=2
+        // R=3
+        // to linearize / wrap around, 
+        // 0 1 2 3 4 5
+        // shift by +R, mod by N.
+        return foundPivot ? (i+R)%N : i; 
+    };
+    L = 0;
+    R = N-1;
+    while (L < R) {
+        auto i = L+(R-L)/2;
+        if (n[linear(i)] == target) return i;
+        if (n[linear(i)] < target) L = i+1;
+        else R = i;
+    }
+    return -1;
+}
+
+vector<int> spiralOrder(vector<vector<int>>& m) {
+    const auto Y = m.size();
+    const auto X = m[0].size();
+
+    vector<int> r;
+    int yl = 0;
+    int yr = Y-1;
+    int xl = 0;
+    int xr = X-1;
+    int x = xl;
+    int y = yl;
+    if (xl <= x && x <= xr && yl <= y && y <= yr) {
+        for (;;) {
+            for (; x <= xr; ++x) r.push_back(m[y][x]);
+            ++yl;
+            ++y;
+            if (y > yr) break;
+            for (; y <= yr; ++y) r.push_back(m[y][x]);
+            --x;
+            --xr;
+            if (x < xl) break;
+            for (; x >= xl; --x) r.push_back(m[y][x]);
+            --yr;
+            --y;
+            if (y < yl) break;
+            for (; y >= yl; --y) r.push_back(m[y][x]);
+            ++x;
+            ++xl;
+            if (x > xr) break;
+        }
+    }
+    return r;
+}
+namespace n2 {
+bool less00(const vector<int>& a, const vector<int>& b){ return a[0] < b[0]; }
+bool less01(const vector<int>& a, const vector<int>& b){ return a[0] < b[1]; }
+bool less10(const vector<int>& a, const vector<int>& b){ return a[1] < b[0]; }
+bool less11(const vector<int>& a, const vector<int>& b){ return a[1] < b[1]; }
+bool overlap(const vector<int>& a, const vector<int>& b){ 
+    return !((a[0] > b[1]) || (b[0] > a[1]));
+}
+vector<int> mergeoverlapping(const vector<int>& a, const vector<int>& b){ 
+    vector<int> r; r.resize(2);
+    r[0] = min(a[0],b[0]);
+    r[1] = max(a[1],b[1]);
+    return r;
+}
+vector<vector<int>> insert(vector<vector<int>>& intervals, vector<int>& n) {
+    if (intervals.empty()) {
+        intervals.push_back(n);
+        return intervals;
+    }
+    // bsearch for new.l in ints.l
+    // bsearch for new.r in ints.r
+    //auto L00 = lower_bound(begin(intervals),end(intervals), n, less00);
+    auto L01 = lower_bound(begin(intervals),end(intervals), n, less10);
+    //auto L10 = lower_bound(begin(intervals),end(intervals), n, less10);
+    auto L11 = lower_bound(begin(intervals),end(intervals), n, less11);
+    // we know n[0] belongs between L0,L1.
+    if (L01 == end(intervals)) {
+        intervals.push_back(n);
+        return intervals;
+    }
+    // [[1,3],[5,6],[7,7],[8,10],[12,16]]
+    // e.g. n=[3,10]
+    //        L00
+    // L01
+    //                           L10
+    //                    L11
+    // We want L01 and L11 to determine proper overlap.
+    // 
+    // [[1,3],[5,6],[7,7],[8,10],[12,16]]
+    // e.g. n=[4,11]
+    //        L01                L11
+    //
+    // [[1,3],[50,60]]
+    // e.g. n=[4,11]
+    //        L01
+    //        L11
+    if (L11 == end(intervals)) {
+        auto last = L11-1;
+        if (overlap(*last, n)) {
+            *last = mergeoverlapping(*last, n);
+        }
+        else {
+            intervals.push_back(n);
+        }
+        return intervals;
+    }
+    assert(overlap(*L01, n));
+
+    if (!overlap(*L11, n)) {
+        --L11;
+    }
+    assert(overlap(*L11, n));
+
+    if (L01==L11) {
+        *L01 = mergeoverlapping(*L01, n);
+        return intervals;
+    }
+    else {
+        *L01 = mergeoverlapping(*L01, n);
+        *L01 = mergeoverlapping(*L01, *L11);
+        intervals.erase(L01+1, L11);
+    }
+    return intervals;
+}
+
+string minWindow(string s, string t) {
+    unordered_map<char,int> mref;
+    for (char c : t) ++mref[c];
+    string_view sv(s);
+    const auto S = sv.size();
+    const auto T = t.size();
+    if (T > S) return "";
+    size_t L = 0;
+    size_t R = 0;
+    auto m = mref;
+    for (; R<S; ++R) {
+        auto it = m.find(s[R]);
+        if (it == end(m)) continue;
+        if (it->second == 1) { m.erase(it); if (m.empty()) break; }
+        else --it->second;
+    }
+    if (!m.empty()) return "";
+    while (L < S && !mref.contains(s[L])) ++L;
+
+    // [L,R] is the first window.
+    string_view smin = sv.substr(L,R-L+1);
+
+    for (;;) {
+        char c = sv[L];
+        ++L;
+        while (L<S && !mref.contains(s[L])) ++L;
+        ++R;
+        while (R<S && s[R] != c) {
+            if (mref.contains(s[R])) ++m[s[R]];
+            ++R;
+        }
+        if (!m.empty()) {
+            ++L;
+            for (; L<S && !m.empty(); ++L) {
+                auto it = m.find(sv[L]);
+                if (it == end(m)) continue;
+                if (it->second == 1) { m.erase(it); if (m.empty()) break; }
+                else --it->second;
+            }
+        }
+        if (L == S || R == S || !m.empty()) break;
+
+        string_view win = sv.substr(L,R-L+1);
+        if (win.size() < smin.size()) smin = win;
+    }
+    return string(smin);
+}
+
+enum ext { num, unaryparen, unaryneg, binadd, binsub };
+struct ex { 
+    ext type;
+    union {
+        int num;
+        ex* unary;
+        ex* binary[2];
+    };
+};
+int eval(ex* t) {
+    switch (t->type) {
+        case num: return t->num;
+        case unaryparen: return eval(t->unary);
+        case unaryneg: return -eval(t->unary);
+        case binadd: return eval(t->binary[0]) + eval(t->binary[1]);
+        case binsub: return eval(t->binary[0]) - eval(t->binary[1]);
+    }
+    assert(false);
+    return 0;
+}
+constexpr bool isnum(char c) { return '0' <= c && c <= '9'; }
+
+ex* parseex(string_view s, size_t& p) {
+    auto r = new ex;
+    switch (s[p]) {
+        case '-': {
+            ++p;
+            r->type = unaryneg;
+            r->unary = parseex(s, p);
+        } break;
+        case '(': {
+            ++p;
+            r->type = unaryparen;
+            r->unary = parseex(s,p);
+            assert(s[p] == ')');
+            ++p;
+        } break;
+        default: {
+            if (isnum(s[p])) {
+                auto q = p+1;
+                while (q < s.size() && isnum(s[q])) ++q;
+                // [p,q) is the number.
+                string snum(s.substr(p,q-p));
+                r->type = num;
+                r->num = atoi(snum.c_str());
+                p = q;
+            }
+        } break;
+    }
+
+    // look for binop
+    bool loop = true;
+    while (loop && p < s.size()) {
+        switch (s[p]) {
+            case '+': {
+                ++p;
+                auto b = new ex;
+                b->type = binadd;
+                b->binary[0] = r;
+                b->binary[1] = parseex(s,p);
+                r = b;
+            } break;
+            case '-': {
+                ++p;
+                auto b = new ex;
+                b->type = binsub;
+                b->binary[0] = r;
+                b->binary[1] = parseex(s,p);
+                r = b;
+            } break;
+            default: loop = false; break;
+        }
+    }
+
+    return r;
+}
+int calculate(string s) {
+    string t;
+    for (char c : s) {
+        if (c == ' ') continue;
+        t += c;
+    }
+    size_t p = 0;
+    string_view sv(t);
+    ex* e = parseex(sv, p);
+    return eval(e);
+}
+int numIslands(vector<vector<char>>& g) {
+    const auto X = g[0].size();
+    const auto Y = g.size();
+    #define lin(c,d) ((d)*X+(c))
+    vector<bool> visited(X*Y, false);
+    int r = 0;
+    struct pt { size_t x; size_t y; };
+    for (size_t y = 0; y < Y; ++y) {
+        for (size_t x = 0; x < X; ++x) {
+            if (visited[lin(x,y)]) continue;
+            if (g[y][x]=='0') continue;
+            r += 1;
+            vector<pt> q;
+            q.push_back(pt{x,y});
+            while (!q.empty()) {
+                pt p = q.back();
+                auto a = p.x;
+                auto b = p.y;
+                q.pop_back();
+                visited[lin(a,b)] = true;
+                if (a     && g[b][a-1]=='1' && !visited[lin(a-1,b)]) q.push_back(pt{a-1,b});
+                if (a<X-1 && g[b][a+1]=='1' && !visited[lin(a+1,b)]) q.push_back(pt{a+1,b});
+                if (b     && g[b-1][a]=='1' && !visited[lin(a,b-1)]) q.push_back(pt{a,b-1});
+                if (b<Y-1 && g[b+1][a]=='1' && !visited[lin(a,b+1)]) q.push_back(pt{a,b+1});
+            }
+        }
+    }
+    return r;
+}
+}
+void Junk() {
+  vector<vector<char>> g;
+  g.push_back(vector<char>{{'1','1','0','0','0'}});
+  g.push_back(vector<char>{{'1','1','0','0','0'}});
+  g.push_back(vector<char>{{'0','0','1','0','0'}});
+  g.push_back(vector<char>{{'0','0','0','1','1'}});
+  n2::numIslands(g);
+
+
+  n2::calculate(" 2-1 + 2 ");
+
+  n2::minWindow("ADOBECODEBANC", "ABC");
+
+  vector<vector<int>> vv;
+  vv.push_back(vector<int>{{1,2}});
+  vv.push_back(vector<int>{{3,5}});
+  vv.push_back(vector<int>{{6,7}});
+  vv.push_back(vector<int>{{8,10}});
+  vv.push_back(vector<int>{{12,16}});
+  vector<int> v{{4,8}};
+  n2::insert(vv, v);
+
+  vv.clear();
+  vv.push_back(vector<int>{{1,2,3}});
+  vv.push_back(vector<int>{{4,5,6}});
+  vv.push_back(vector<int>{{7,8,9}});
+  spiralOrder(vv);
+  longestPalindrome("cbbd");
+  convert("abc",2);
+  myAtoi("42");
+  //n1::isMatch("ab", ".*c");
+//  vector<int> v{{-1,0,1,2,-1,-4}};
+//  threeSum(v);
+  //auto l1 = create(vector<int>{{1,2,4}});
+  //auto l2 = create(vector<int>{{1,3,4}});
+  //mergeTwoLists(l1,l2);
+  //vector<int> v{{1,3,5,6,7}};
+  //searchInsert(v,1);
+  //addBinary("11","1");
+  //vector<int> tsc{{-1,2,1,-4}};
+  //threeSumClosest(tsc,1);
+  vector<int> t{{4,5,6,7,0,1,2}};
+  //fourSum(t,-294967296);
+  //generateParenthesis(3);
+  search(t,0);
+}
+
+
+
+
 int
 Main( u8* cmdline, idx_t cmdline_len )
 {
@@ -161,16 +952,17 @@ Main( u8* cmdline, idx_t cmdline_len )
   #endif
   g_client = &client;
 
-  For( i, 0, g_ntests ) {
-    g_tests[i]();
-  }
+//  For( i, 0, g_ntests ) {
+//    g_tests[i]();
+//  }
+//
+//  CalcJunk();
+//
+//#if defined(WIN)
+//  ExeJunk();
+//#endif
 
-  CalcJunk();
-
-#if defined(WIN)
-  ExeJunk();
-#endif
-
+  Junk();
 
 // Fast DFT:
 //   F[n] = sum( k=0..N-1, f[k] * exp( i * -2pi * n * k / N ) )
@@ -1989,6 +2781,23 @@ same solution.
 
 
 return all subsets of a set. aka power set.
+// for each character, we can include it or exclude it.
+// we can bite the first char off 's', and recurse into the two possibilities.
+void subsets_(string_view s, string_view result, vector<string>& v) {
+  if (!s.length()) {
+    v.emplace_back(result);
+    return;
+  }
+  string t0 = result;
+  string t1 = result;
+  t1 += s[0];
+  auto sn = string_view{s.data()+1, s.length()-1};
+  subsets_(sn, t0, v);
+  subsets_(sn, t1, v);
+}
+void subsets(string_view s, vector<string>& v) {
+  subsets_(s, string_view{}, v);
+}
 
 
 recursive fn to multiply two positive integers w/o using multiplication operator.
@@ -2177,15 +2986,88 @@ size_t f25_10_5_1(size_t n) {
 }
 
 
-struct box { float dim[3]; };
 given n boxes.
 boxes can be stacked, but only if all 3 dims are smaller than the box beneath.
 return the height of the tallest possible stack.
+//
+struct box { float dim[3]; };
+float height(const box& a) { return dim[1]; }
+bool canStack(const box& a, const box& b) {
+  auto ad = a.dim;
+  auto bd = b.dim;
+  return ad[0] < bd[0] && ad[1] < bd[1] && ad[2] < bd[2];
+}
+float height(span<box> boxes, span<size_t> included) {
+  float r = 0;
+  for (auto i : included) r += height(boxes[i]);
+  return r;
+}
+bool is_contained(span<size_t> s, size_t i) {
+  auto it = lower_bound(begin(s), end(s), i);
+  return (it != end(s) && *it == s);
+}
+void f(
+  span<box> boxes,
+  size_t choice,
+  span<size_t> included_so_far,
+  float& highest)
+{
+  bool fFound = false;
+  for (size_t i = 0; i < boxes.length(); ++i) {
+    if (is_contained(included_so_far, i)) continue;
+    bool canStack = included_so_far.length() && canStack(boxes[i], included_so_far.back());
+    if (!canStack) continue;
+    found = true;
+    vector<size_t> next = included_so_far;
+    next.push_back(i);
+    f(boxes, choice+1, next, highest);
+  }
+  if (!fFound) {
+    highest = max(highest, height(boxes, included_so_far));
+    return;
+  }
+}
 
 
 
 given a bool expression of 1, 0, &, |, ^, and a desired result,
 return the number of ways of parenthesizing the expr s.t. it evaluates to the given result.
+enum ex { b0, b1, A, O, X };
+ex eval(ex lhs, ex op, ex rhs) {
+  switch (op) {
+    case A: return lhs & rhs;
+    case O: return lhs | rhs;
+    case X: return lhs ^ rhs;
+  }
+  assert(false);
+  return 0;
+}
+void fn(span<ex> e, ex desired, size_t& num) {
+  // even indexes are 0/1
+  // odd indexes are the operators.
+  // the length is always odd.
+  assert(e.length() & 1);
+  //
+  if (e.length() == 1) {
+    if (e[0] == desired) ++num;
+    return;
+  }
+  auto nOperators = e.length() / 2;
+  for (size_t i = 0; i < nOperators; ++i) {
+    auto lhs = e[2*i];
+    auto op  = e[2*i+1];
+    auto rhs = e[2*i+2];
+    auto r = eval(lhs, op, rhs);
+    vector<ex> v;
+    span<ex> prefix { &e[0], 2*i };
+    span<ex> suffix { &e[2*i+3], e.length() - 2*i+3 };
+    v.append_range(prefix);
+    v.emplace_back(r);
+    v.append_range(suffix);
+    fn(v, desired, num);
+  }
+}
+
 
 
 given a,b both sorted arrays.
@@ -2213,7 +3095,7 @@ void zipper(
   auto readB = b + b_len - 1;
   while (readA != a && readB != b) {
     auto cmp = *readA <=> *readB;
-    if (cmp < 0) {
+    i
       *dst = *readB;
       --dst;
       --readB;
@@ -2460,6 +3342,1851 @@ struct foo {
     }
   }
 };
+
+
+
+given two arrays of ints, find the pair with the smallest abs diff. return the diff.
+bool diff(span<int> A, span<int> B, int& result) {
+  bool found = false;
+  int smallest = numeric_limits<int>::max();
+  for (auto a : A) {
+    for (auto b : B) {
+      if (!found) {
+        smallest = abs(a-b);
+        found = true;
+      }
+      else {
+        smallest = min(smallest, abs(a-b));
+      }
+    }
+  }
+  if (found) result = smallest;
+  return found;
+}
+
+
+
+struct person { int b; int d; };
+struct node { int x; bool b_else_d; };
+bool operator<(const node& a, const node& b) { return a.x < b.x; }
+size_t maxPopSize(span<person> s) {
+  vector<node> v;
+  v.reserve(s.length() * 2);
+  for (const auto& p : s) {
+    v.emplace_back(node{p.b, true});
+    v.emplace_back(node{p.d, false});
+  }
+  sort(begin(v), end(v));
+  size_t c = 0;
+  size_t maxp = 0;
+  for (const auto& n : v) {
+    if (n.b_else_d) ++c;
+    else --c;
+    maxp = max(maxp, c);
+  }
+  return maxp;
+}
+
+
+
+2 int choices: short, long.
+make k choices, and note the sum of your choices.
+generate all possible sums, given k.
+void fn(int k, int short, int long, unordered_set<int>& result) {
+  struct node { int sum; int c; };
+  // PERF: could be unordered_set<uint64_t>, since we're finding only unique sums.
+  stack<node> s;
+  s.emplace(node{0,0});
+  while (!s.empty()) {
+    auto n = s.pop();
+    if (n.c == k) {
+      result.insert(n.sum);
+    }
+    else {
+      s.emplace(node{n.sum + short, n.c+1});
+      s.emplace(node{n.sum + long, n.c+1});
+    }
+  }
+}
+
+
+
+given a set of 2d points, find a line that passes thru the most points.
+
+struct pt { float p[2]; };
+bool intersects(pt x, pt L, pt R) {
+  // line(t) = L + t(R-L)
+  // x intersects when
+  // x = L + t(R-L)
+  // if that holds,
+  // x[0] = L[0] + t(R[0]-L[0])
+  // x[1] = L[1] + t(R[1]-L[1])
+  auto t0 = (x[0]-L[0]) / (R[0]-L[0]);
+  auto t1 = (x[1]-L[1]) / (R[1]-L[1]);
+  return abs(t0-t1) < 1e-5;
+}
+size_t cIntersections(span<pt> s, pt L, pt R) {
+  size_t r = 0;
+  for (auto p : s) r += intersects(p, L, R);
+  return r;
+}
+bool fn(span<pt> s, size_t& resultL, size_t& resultR) {
+  if (s.empty()) return false;
+  // (s.length() == 1) is handled by writing (0,0) and returning true below.
+  size_t maxc = 0;
+  size_t maxi = 0;
+  size_t maxj = 0;
+  // NOTE: we're guaranteed that every line passes through two points.
+  // So maxc = 0 initially acts as our 'not found' sentinel, and we don't need
+  // to check for a separate 'are we on the first match' bool.
+  for (size_t i = 0; i < s.length(); ++i) {
+    for (size_t j = i + 1; j < s.length(); ++j) {
+      auto L = s[i];
+      auto R = s[j];
+      size_t c = 0;
+      for (const auto& x : s) {
+        c += intersects(x, L, R);
+      }
+      if (c > maxc) {
+        maxc = c;
+        maxi = i;
+        maxj = j;
+      }
+    }
+  }
+  resultL = maxi;
+  resultR = maxj;
+  return true;
+}
+
+
+
+mastermind:
+4 independent options in 4 slots, repeats allowed.
+a hit is an exact slot match.
+a pseudo hit is a missed slot, same option match.
+hits don't count as pseudo hits.
+given a solution and a guess, return cHits and cPsuedoHits
+
+void mastermind(span<u8> soln, span<u8> guess, u8& cHits, u8& cPseudoHits) {
+  assert(soln.length() == 4);
+  assert(guess.length() == 4);
+  cHits = 0;
+  cPseudoHits = 0;
+  for (u8 i = 0; i < 4; ++i) {
+    cHits += (soln[i] == guess[i])
+  }
+
+  u8 histogramS[4];
+  u8 histogramG[4];
+  for (u8 i = 0; i < 4; ++i) {
+    ++histogramS[soln[i]];
+    ++histogramG[guess[i]];
+  }
+  for (u8 i = 0; i < 4; ++i) {
+    cPseudoHits += min(histogramS[i], histogramG[i]);
+  }
+  cPseudoHits -= cHits;
+}
+
+
+
+given span<int>, find indices m,n s.t. if you sorted [m,n], the whole span would be sorted.
+bool findSort(span<int> s, size_t& m, size_t& n) {
+  if (s.empty()) return false;
+  // can skip the prefix p, as long as p <= s[m..]
+  // b[i] = s[i] is <= all subsequent values in s.
+  // b[last] = true, by defn.
+  // And then m is the first index where b[m]==false.
+  vector<bool> b{s.length(), false};
+  auto minsuffix = s.back();
+  b[s.length()-1] = true;
+  for (size_t i = 1; i < s.length(); ++i) {
+    auto ri = s.length() - 1 - i;
+    if (s[ri] <= minsuffix) {
+      minsuffix = s[ri];
+      b[ri] = true;
+    }
+  }
+  m = s.length();
+  for (size_t i = 0; i < s.length(); ++i) {
+    if (!b[i]) {
+      m = i;
+      break;
+    }
+  }
+  if (m == s.length()) return false;
+
+  // Same thing in reverse, for n.
+  // Reset b to reuse it.
+  for (size_t i = 0; i < s.length(); ++i) b[i] = false;
+
+  // b[i] = s[i] is >= all previous values in s.
+  // b[first] = true, by defn.
+  // And then n is the last index where b[n]==false.
+  auto maxprefix = s.front();
+  b[0] = true;
+  for (size_t i = 1; i < s.length(); ++i) {
+    if (s[i] >= maxprefix) {
+      maxprefix = s[i];
+      b[i] = true;
+    }
+  }
+  n = s.length();
+  for (size_t i = 0; i < s.length(); ++i) {
+    auto ri = s.length() - 1 - i;
+    if (!b[ri]) {
+      n = i;
+      break;
+    }
+  }
+  if (n == s.length()) return false;
+
+  return true;
+}
+
+
+
+contig sequence.
+given span<int>, find the sub-span with the largest sum. return the sum.
+mathematically,
+sum(i,j) = s[i] + ... + s[j]
+find the max over all i,j.
+
+trivial answer is all pairs:
+int64_t sum(span<int> s, size_t i, size_t j) {
+  int64_t r = 0;
+  for (size_t k = i; k <= j; ++k) {
+    r += s[k];
+  }
+  return r;
+}
+bool maxsum(span<int> s, int64_t& maxs) {
+  const auto L = s.length();
+  if (!L) return false;
+  maxs = 0;
+  for (size_t i = 0; i < L; ++i) {
+    for (size_t j = i; j < L; ++j) {
+      maxs = max(maxs, sum(s, i, j));
+    }
+  }
+  return true;
+}
+
+terrible perf, N^3.
+other ideas?
+if there's adjacent positives, it's always worth expanding the span.
+so the solution always has negatives adjacent, or the end of the given span adjacent.
+so we don't have to test all pairs, just all pairs that have negatives / boundaries adjacent to them.
+
+can we do even better?
+there's got to be something with cumulative sums.
+precompute
+prefix(i) = sum(0,i)   = s[0] + ... + s[i]
+suffix(i) = sum(i,L-1) = s[i] + ... + s[L-1]
+can we just optimize the simple approach with these?
+
+  maxs = 0;
+  for (size_t i = 0; i < L; ++i) {
+    for (size_t j = i; j < L; ++j) {
+      maxs = max(maxs, sum(s, i, j));
+    }
+  }
+
+can we write sum(i,j) in terms of suffix,prefix?
+s[i] + ... + s[j]
+= (s[0] + ... + s[j]) - (s[0] + ... + s[i-1])
+= prefix(j) - prefix(i-1)
+then we need to be careful about i=0 case.
+in i=0, we just want prefix(j).
+so,
+sum(i,j) = prefix(j) - (i==0 ? 0 : prefix(i-1))
+N^2 algorithm:
+
+bool maxsum(span<int> s, int64_t& maxs) {
+  const auto L = s.length();
+  if (!L) return false;
+  vector<int64_t> prefix{L};
+  int64_t sum = 0;
+  for (size_t i = 0; i < L; ++i) {
+    sum += s[i];
+    prefix[i] = sum;
+  }
+  maxs = 0;
+  for (size_t i = 0; i < L; ++i) {
+    for (size_t j = i; j < L; ++j) {
+      auto sum_ij = prefix[j] - (i == 0 ? 0 : prefix[i-1]);
+      maxs = max(maxs, sum_ij);
+    }
+  }
+  return true;
+}
+
+garbage below:
+
+we can trivially compute sum(s,i,j) in the j loop.
+  maxs = 0;
+  for (size_t i = 0; i < L; ++i) {
+    int64_t sum_ij = 0;
+    for (size_t j = i; j < L; ++j) {
+      sum_ij += s[j];
+      maxs = max(maxs, sum_ij);
+    }
+  }
+better, N^2.
+
+then note sum_ij(i) is just suffix(i).
+
+bool maxsum(span<int> s, int64_t& maxs) {
+  const auto L = s.length();
+  if (!L) return false;
+  vector<int64_t> suffix{L};
+  vector<int64_t> suffixS{L};
+  // suffix(i) = sum(i,L-1) = s[i] + ... + s[L-1].
+  // aka the cumulative sum from the end back to i.
+  // And,
+  // suffixS(i) = max of suffix(i..L-1).
+  suffix.back() = s.back();
+  suffixS.back() = s.back();
+  for (size_t i = 1; i < L; ++i) {
+    auto ri = L - 1 - i;
+    suffix[ri] = suffix[ri+1] + s[ri];
+    suffixS[ri] = max(suffixS[ri+1], suffix[ri]);
+  }
+  maxs = 0;
+  for (size_t i = 0; i < L; ++i) {
+    int64_t sum_ij = suffixS[j];
+    maxs = max(maxs, sum_ij);
+  }
+  return true;
+}
+
+
+
+patmatch
+given pattern, string consisting of only a and b. E.g. "aabab"
+given value, string arbitrary.
+value matches pattern iff there exist string assignments to a,b s.t. when the pattern is assigned those values
+in place of a,b, you get the value.
+E.g.
+pattern = "aabab"
+value = "catcatdogcatdog"
+matches, with a=cat, b=dog
+return if there's a match.
+bool all(string_view s, char t) {
+  for (char c : s) {
+    if (c != t) return false;
+  }
+  return true;
+}
+bool matching(string_view pattern, string_view aValue, string_view bValue, string_view value) {
+  assert(aValue.length() > 0);
+  assert(bValue.length() > 0);
+  for (char c : pattern) {
+    const auto& prefix = (c == 'a') ? aValue : bValue;
+    if (!value.starts_with(prefix)) return false;
+    value = value.substring(prefix.length());
+  }
+  return true;
+}
+bool match(string_view pattern, string_view value) {
+  // if pattern is all a or all b, trivial match true.
+  // This covers empty pattern as well.
+  if (all(pattern, 'a') || all(pattern, 'b')) return true;
+
+  // "" doesn't match any mixed a/b pattern.
+  // Same for a single character value.
+  const size_t L = value.length();
+  if (L <= 1) return false;
+  // So we know value has to have >=2 chars.
+
+  // 'a' is an arbitrary contig. subset of value.
+  // same for 'b'.
+  // we know the first a/b in the pattern has to match the front of value.
+  // WLOG, we can flip a/b and just say it's 'a' for a moment.
+  // we may have to implement said flip.
+  // then 'a' is some prefix of value, and 'b' is some contig. subset starting after it.
+  // possible a: [0..i], for i=0..L-2
+  // note we have to leave space at the end for b, since we know we have a mixed pattern of length>=2.
+  // possible b: [i+1 .. L-1] given the a's i.
+  for (size_t i = 0; i < L-1; ++i) {
+    // a is defined as value[0..i]
+    string_view aValue { value.data(), i+1 };
+    for (size_t j = i+1; j < L; ++j) {
+      // b is defined as value[i+1,j]
+      string_view bValue { value.data()+i+1, j+1-(i+1) };
+      if (matching(pattern, aValue, bValue, value)) return true;
+    }
+  }
+  return false;
+}
+
+
+
+given 2d heightmap, integer.
+0 is sea level.
+>0 is land, <0 is water.
+in any order, print the size of each pond.
+SCCs with <0 condition, and then print the size of each SCC.
+implicit 2d graph, diagonals aren't connected.
+
+void print(int* grid, size_t dx, size_t dy) {
+  unordered_map<size_t, size_t> sccFromGrid; // PERF: could be a union-find.
+  vector<size_t> sccs;
+  vector<bool> visited{dx*dy, false};
+  stack<size_t> s;
+  for (size_t y = 0; y < dy; ++y) {
+  for (size_t x = 0; x < dx; ++x) {
+    s.push(x+dx*y);
+    while (!s.empty()) {
+      auto i = s.pop();
+      if (visited[i]) continue;
+      visited[i] = true;
+      if (grid[i] > 0) continue;
+      // unvisited water.
+      // either:
+      // - one of the neighbors has already been visited, is also water, and is part of a SCC. Or,
+      // - we're the first water in an undiscovered pond.
+      bool first = true;
+      auto helper = [&](size_t iN) {
+        if (!visited[iN]) s.push(iN);
+        if (visited[iN] && grid[iN] <= 0) {
+          auto it = sccFromGrid.find(iN);
+          assert(it != sccFromGrid.end());
+          auto iscc = it->second;
+          ++sccs[iscc];
+          sccFromGrid[i] = iscc;
+          first = false;
+        }
+      };
+      if (x > 0) helper((x-1)+dx*y);
+      if (x < dx-1) helper((x+1)+dx*y);
+      if (y > 0) helper(x+dx*(y-1));
+      if (y < dy-1) helper(x+dx*(y+1));
+      if (!first) continue;
+      // we're the first water in an undiscovered pond.
+      auto iscc = sccs.size();
+      sccs.push_back(1);
+      sccFromGrid.emplace(make_pair<size_t, size_t>(i, iscc));
+    }
+  }
+  }
+  for (size_t c : sccs) {
+    cout << c << endl;
+  }
+}
+
+
+
+
+given set<string_view> validWords;
+given a digit sequence, e.g. "8733"
+assume this mapping of digits to possible chars
+2 -> abc
+3 -> def
+4 -> ghi
+5 -> jkl
+6 -> mno
+7 -> pqrs
+8 -> tuv
+9 -> wxyz
+return the list of valid words that match the mapped digit sequence.
+string_view mapping(int digit) {
+  switch (digit) {
+    case 2: return "abc";
+    case 3: return "def";
+    case 4: return "ghi";
+    case 5: return "jkl";
+    case 6: return "mno";
+    case 7: return "pqrs";
+    case 8: return "tuv";
+    case 9: return "wxyz";
+  }
+  return string_view{};
+}
+void helper(const set<string_view>& validWords, string_view prefix, span<int> digits, vector<string_view>& result) {
+  if (digits.empty()) {
+    // base case.
+    // prefix is the test string.
+    if (validWords.contains(prefix)) result.push_back(prefix);
+    return;
+  }
+  auto map = mapping(digits[0]);
+  if (map.empty()) return; // TODO: error?
+  digits = digits.subspan(1);
+  for (char c : map) {
+    string s = prefix;
+    s += c;
+    helper(validWords, s, digits, result);
+  }
+}
+void foo(const set<string_view>& validWords, span<int> digits, vector<string_view>& result) {
+  result.clear();
+  if (digits.empty()) return;
+  helper(validWords, "", digits, result);
+}
+
+
+
+sum swap
+given two span<int>, find a pair, one from each, you can swap to make the two spans sum to the same value.
+// diff = sum(a) - sum(b)
+// we want diff == 0
+// given i,j, the effect of swapping on the sums is:
+// sum(a') = sum(a) - a[i] + b[j]
+// sum(b') = sum(b) + a[i] - b[j]
+// diff' = sum(a') - sum(b')
+//   = sum(a) - a[i] + b[j] - (sum(b) + a[i] - b[j])
+//   = sum(a) - a[i] + b[j] - sum(b) - a[i] + b[j]
+//   = sum(a) - sum(b) - 2 a[i] + 2 b[j]
+//   = diff - 2 a[i] + 2 b[j]
+// So we want to check for diff'(i,j) == 0, for all i,j.
+int64_t sum(span<int> s) {
+  int64_t r = 0;
+  for (int c : s) r += c;
+  return r;
+}
+bool sumswap(span<int> a, span<int> b, size_t& rA, size_t& rB) {
+  if (a.empty() || b.empty()) return false;
+  auto diff = sum(a) - sum(b);
+  auto aL = a.length();
+  auto bL = b.length();
+  for (size_t i = 0; i < aL; ++i) {
+    for (size_t j = 0; j < bL; ++j) {
+      auto diffp = diff - 2ll * a[i] + 2ll * b[j];
+      if (diffp == 0) {
+        rA = i;
+        rB = j;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+
+
+
+ant grid:
+infinite grid of white/black squares. starts all black.
+initially faces right.
+at each step:
+- flip the current square color
+- turn to the (was white square before flip ? right : left)
+- move forward one
+simulate K moves, and print the state of the grid.
+struct pt { int32_t x; int32_t y; };
+pt operator+(const pt& a, const pt& b) {
+  return pt { a.x + b.x, a.y + b.y };
+}
+pt Min(const pt& a, const pt& b) {
+  return pt { min(a.x, b.x), min(a.y, b.y) };
+}
+pt Max(const pt& a, const pt& b) {
+  return pt { max(a.x, b.x), max(a.y, b.y) };
+}
+struct grid {
+  unordered_map<uint64_t, bool> m_map;
+  pt m_min;
+  pt m_max;
+
+  // TODO: combine getAndFlip, to reduce redundancy.
+  bool get(pt x) {
+    uint64_t i = iMap(x);
+    auto it = m_map.find(i);
+    if (it == end(m_map)) return false;
+    return it->second;
+  }
+  void flip(pt x) {
+    m_min = Min(m_min, x);
+    m_max = Max(m_max, x);
+    auto i = iMap(x);
+    auto it = m_map.find(i);
+    if (it == end(m_map)) {
+      m_map.insert(it, true);
+    }
+    else {
+      it->second = !it->second;
+    }
+  }
+  void print() {
+    for (int32_t y = m_min.y; y <= m_max.y; ++y) {
+      for (int32_t x = m_min.x; x <= m_max.x; ++x) {
+        pt p { x, y };
+        auto value = get(p);
+        cout << value ? '_' : 'W';
+      }
+      cout << endl;
+    }
+  }
+
+private:
+  uint64_t iMap(pt x) {
+    return ((uint64_t)x.x << 32) | ((uint64_t)x.y);
+  }
+};
+void print(size_t K) {
+  const pt dirs[4] = {
+    { 1, 0 },
+    { 0, -1 },
+    { -1, 0 },
+    { 0, 1 },
+  };
+  pt r = { 0, 0 };
+  uint8_t dir = 0;
+  for (size_t i = 0; i < K; ++i) {
+    auto value = grid.get(r);
+    grid.flip(r);
+    dir = (value ? dir + 1 : dir + 3) % 4;
+    r = r + dirs[dir];
+  }
+  grid.print();
+}
+
+TODO: chunking, so we're doing fewer map lookups.
+
+
+
+given rand5, implement rand7
+int rand5(); returns [0..4]
+int rand7() { // returns [0..6]
+
+}
+
+
+
+find all pairs of ints within a span which sum to a given value.
+void find(span<int> s, int64_t given, vector<pair<int,int>>& result) {
+  const auto L = s.length();
+  for (size_t i = 0; i < L; ++i) {
+    const auto si = s[i];
+    for (size_t j = i + 1; j < L; ++j) {
+      const auto sj = s[j];
+      if (si + (int64_t)sj == given) {
+        result.emplace_back(si,sj);
+      }
+    }
+  }
+}
+
+
+LRU cache:
+map from keys to values
+struct lru {
+  constexpr size_t INVALID = numeric_limits<size_t>::max();
+  struct node {
+    node* next;
+    node* prev;
+    int value;
+  };
+  unordered_map<int, node*> map; // key -> node
+  node* head = nullptr;
+  node* tail = nullptr;
+  size_t cCapacity;
+
+  lru(size_t cCapacity_) {
+    assert(cCapacity_ > 0);
+    cCapacity = cCapacity_;
+  }
+  ~lru() {
+    for (auto& [key, node] : map) {
+      delete node;
+    }
+  }
+  void LLRemove(node* n) {
+    // Remove from linked list
+    if (head == n) head = n->next;
+    if (tail == n) tail = n->prev;
+    if (n->prev) n->prev->next = n->next;
+    if (n->next) n->next->prev = n->prev;
+    n->prev = nullptr;
+    n->next = nullptr;
+  }
+  void LLInsert(node* n) {
+    // Insert into linked list.
+    n->next = head;
+    if (head) head->prev = n;
+    if (!tail) tail = n;
+  }
+  void insert(int key, int value) {
+    auto it = map.find(key);
+    if (it == end(map)) {
+      if (map.size() == cCapacity) {
+        // cache full, we have to evict.
+        auto evict = head;
+        LLRemove(evict);
+        map.erase(map.find(evict->value));
+        delete evict;
+      }
+      node* n = new node;
+      n->value = value;
+      LLInsert(n);
+      map.emplace(make_pair<int, node*>(value, n));
+    }
+    else {
+      node* n = it->second;
+      n->value = value;
+      LLRemove(n);
+      LLInsert(n);
+    }
+  }
+  bool get(int key, int& value) {
+    auto it = map.find(key);
+    if (it == end(map)) return false;
+    auto n = it->second;
+    value = n->value;
+    LLRemove(n);
+    LLInsert(n);
+    return true;
+  }
+};
+
+
+
+given an arithmetic expression, compute the result.
+enum extype : int { add, sub, mul, div };
+struct node {
+  node* lhs = nullptr;
+  node* rhs = nullptr;
+  extype ex;
+};
+int Precedence(extype op) {
+  switch (op) {
+    case add:
+    case sub: return 1;
+    case mul:
+    case div: return 2;
+  }
+  assert(false);
+  return 0;
+}
+int64_t eval(node* tree) {
+  if (tree->lhs && tree->rhs) {
+    auto lhs = eval(tree->lhs);
+    auto rhs = eval(tree->rhs);
+    int64_t v = 0;
+    switch (tree->ex) {
+      case add: v = lhs + rhs; break;
+      case sub: v = lhs - rhs; break;
+      case mul: v = lhs * rhs; break;
+      case div: v = lhs / rhs; break;
+      default: assert(false);
+    }
+    return v;
+  }
+  return ex;
+}
+// 2+3*4
+//
+//    *
+//  +   4
+// 2 3
+//
+//   +
+// 2   *
+//    3 4
+void reordertree(node** pparent) {
+  auto parent = *pparent;
+  if (!(parent->lhs && parent->rhs)) return;
+  reordertree(&parent->lhs);
+  reordertree(&parent->rhs);
+
+  // higher precedence ops should be farther from the root.
+  // lower precedence ops should be closer to the root.
+  // i.e.
+  // parent should be lower precedence.
+  // if they're not, we swap.
+  auto lhs = parent->lhs;
+  if (Precedence(parent) >= Precedence(lhs)) {
+    // rotate as above.
+    *pparent = lhs;
+    parent->lhs = lhs->rhs;
+    lhs->rhs = parent;
+  }
+}
+void freeTree(node* t) {
+  if (!(parent->lhs && parent->rhs)) return;
+  freeTree(t->lhs);
+  freeTree(t->rhs);
+  delete t;
+}
+int64_t eval(span<extype> eq) {
+  // even indices are integer numbers
+  // odd  indices are extype operators
+  auto L = eq.length();
+  assert(L & 1);
+  if (L == 1) return eq[0];
+  node* last = new node;
+  last->ex = eq[0];
+  for (size_t i = 0; i < L/2; ++i) {
+    node* rhs = new node;
+    rhs->ex = eq[2*i+2];
+    node* op = new node;
+    op->ex = eq[2*i+1];
+    op->lhs = last;
+    op->rhs = rhs;
+    last = nop;
+  }
+  reordertree(&last, last->lhs);
+  eval(last);
+  freeTree(last);
+}
+
+
+
+add two numbers without using arithmetic ops.
+uint8_t add(uint8_t A, uint8_t B) {
+  uint8_t r = 0;
+  auto getcarry = [](uint8_t a, uint8_t b, uint8_t c, uint8_t i) {
+    return
+      ((((a>>i)&1)<<1) | ((b>>i)&1)) == 3 ||
+      ((((a>>i)&1)<<1) | ((c>>i)&1)) == 3 ||
+      ((((b>>i)&1)<<1) | ((c>>i)&1)) == 3;
+  };
+  // 000         -> 0
+  // 001/010/100 -> 1
+  // 011/101/110 -> 0
+  // 111         -> 1
+  //
+  //   0 1
+  // 0 0 1
+  // 1 1 0c
+  auto getsum = [](uint8_t a, uint8_t b, uint8_t c, uint8_t i) {
+    return ((a>>i)&1)^((b>>i)&1)^((c>>i)&1);
+  };
+  uint8_t c = 0;
+  for (size_t i = 0; i < 8; ++i) {
+    r |= getsum( ((a>>i)&1), ((b>>i)&1), ((c>>i)&1), 0 ) << i;
+    c = getcarry( ((a>>i)&1), ((b>>i)&1), ((c>>i)&1), 0 );
+  }
+  return r;
+}
+
+
+
+perfect shuffle, assuming a perfect rng
+void shuffle(span<int> d, rng_t& rng) {
+  const auto D = d.length();
+  size_t top = D;
+  while (top--) {
+    size_t select = rng.uniform_uint(0, top); // [0,top]
+    auto tmp = d[select];
+    d[select] = d[top];
+    d[top] = tmp;
+  }
+}
+
+
+
+random set of m integers from an array of size n.
+uniformly random prob per elem.
+unordered_set<int> subset(span<int> a, size_t m) {
+  const auto L = a.length();
+  unordered_set<int> r;
+  if (!L) return r;
+
+  rng_t rng;
+  for (size_t i = 0; i < m; ++i) {
+    size_t select = rng.uniform_uint(0, L); // [0,L]
+    r.insert(a[select]);
+  }
+  return r;
+}
+
+
+
+A contains all integers from 0 to n, except one number.
+only operation we have is:
+bool getbit(size_t jBit, size_t iElem);
+
+if A is sorted, we can binary search on the LSB matching even/odd index.
+we can count parity of a single j bit across all elements, and repeat across bits to reconstruct.
+error correcting code idea.
+// LSB is at index 0 of the result.
+// MSB is at the end of the result vector.
+vector<bool> reconstruct(size_t AL, size_t B) {
+  vector<bool> r;
+  const auto n = AL + 1;
+  // if n is even,
+  //   parity of the j'th bit across all i elements should be 0.
+  // e.g. n=4
+  // 00
+  // 01
+  // 10
+  // 11
+  //
+  // if 00 is missing, we'll see more 1s than 0s in each place, so we can reconstruct it should be 00.
+  // we can +1 for 1s, and -1 for 0s, to keep track of which is more common.
+  // can we do it even simpler with bit op reductions?
+  // I think it's just an xor reduction.
+  // TODO: with register-sized chunking, we could do this reduction in bulk much faster.
+  for (size_t i = 0; i < AL; ++i) {
+    uint8_t b;
+    for (size_t j = 0; j < B; ++j) {
+      auto A_ij = getbit(j, i);
+      b ^= A_ij;
+    }
+    r.push_back(b);
+  }
+  return r;
+}
+
+
+
+given a string of letters and numbers, find the longest span with an equal number of each.
+bool longest(string_view s, size_t& rL, size_t& rR) {
+  const auto L = s.length();
+  if (!L) return false;
+  // we could just iterate all spans... N^3
+  // for (size_t i = 0; i < L - 1; ++i) {
+  //   for (size_t j = i + 1; j < L; ++j) {
+  //     ...
+  //   }
+  // }
+  //
+  // aaa000
+  //   --
+  // the pair of a0 is interesting, since we know that's part of any potential span.
+  // and then we can look at expanding it / merging it with adjacent potential spans.
+  // a0a0a0a0
+  // --__--__
+  // a0aa00
+  // -- --
+  // So we could find all the a0 pairs first.
+  // Then try to maximally expand them left/right as long as left/right are opposite.
+  // Then merge adjacent spans.
+  // Then loop.
+  //    Do we need to expand l/r again?
+  //    aa0a00
+  //     --__
+  //    yes, indeed.
+  struct sp { size_t l; size_t r; };
+  vector<sp> spans;
+  for (size_t i = 0; i < L-1; ++i) {
+    if (isalpha(s[i]) == isnum(s[i+1])) {
+      spans.emplace_back(i, j);
+    }
+  }
+
+  if (spans.empty()) return false;
+
+  bool loop;
+  do {
+    loop = false;
+
+    {
+      // merge adjacent spans.
+      // note we zipper merge because we can remove as we're iterating.
+      // 'write' points to the last valid span.
+      // 'read' points to the first unconsidered span after that.
+      // note there can be a gap built up in between, as long as we keep merging into 'write'.
+      sp* write = begin(spans);
+      sp* read = write+1;
+      while (read != end(spans)) {
+        if (write->r + 1 == read->l) {
+          loop = true;
+          write->r = read->r;
+          // don't advance write, advance read.
+          ++read;
+        }
+        else {
+          // advance write, read.
+          // also copy read to write, to bridge the invalid gap that's built up.
+          // we could avoid the write if write==read, but I don't now if it's worth the branch.
+          ++write;
+          *write = *read;
+          ++read;
+        }
+      }
+    }
+
+    // expand spans.
+    {
+      for (size_t i = 0; i < spans.size(); ++i) {
+        auto tryAgain = true;
+        while (tryAgain) {
+          tryAgain = false;
+
+          bool lNum = false;
+          bool lAlpha = false;
+          bool lHas = false;
+          auto si = spans[i];
+          if (si.l > 0 && i > 0 && spans[i-1].r + 1 < si.l) {
+            lHas = true;
+            lNum = isnum(s[si.l-1]);
+            lAlpha = isalpha(s[si.l-1]);
+          }
+          bool rNum = false;
+          bool rAlpha = false;
+          bool rHas = false;
+          if (si.r + 1 < L && i+1 < spans.size() && si.r+1 < spans[i+1].l) {
+            rHas = true;
+            rNum = isnum(s[si.r+1]);
+            rAlpha = isalpha(s[si.r+1]);
+          }
+          if (rHas && lHas) {
+            assert(lAlpha || lNum);
+            assert(rAlpha || rNum);
+            if (lAlpha == rNum) {
+              si.l -= 1;
+              si.r += 1;
+              loop = true;
+              tryAgain = true;
+            }
+          }
+        } // end while (tryAgain)
+      } // end for
+    }
+  } while (loop);
+
+  size_t ispan = spans.size();
+  size_t maxW = 0;
+  for (size_t i = 0; i < spans.size(); ++i) {
+    auto si = spans[i];
+    auto w = si.r - si.l + 1;
+    if (w >= maxW) {
+      maxW = w;
+      ispan = i;
+    }
+  }
+  if (ispan == spans.size()) return false;
+  rL = spans[ispan].l;
+  rR = spans[ispan].r;
+  return true;
+}
+
+
+
+count the number of 2s in the base10 reps of all in [0,n], given n.
+e.g.
+n=24
+{2, 12, 20, 21, 22, 23, 24} -> 8
+note that 22 contains 2 2s, so it's 8, not 7.
+
+[0,9] has 1.
+[10,19] has 1
+[20,29] has 10+1
+[30,39] has 1
+...
+[100,109] has 1
+[110,119] has 1
+[120,129] has 10+1
+[130,139] has 1
+...
+[200,209] has 10+1
+[210,219] has 10+1
+
+we could just build a big table to binary search.
+
+closed form would be better...
+
+ones place: (d >= 2) ? 1 : 0
+
+
+
+
+void dedupe(
+  span<pair<string_view, size_t>> histogramWithDupes,
+  span<pair<string_view, string_view>> aliases, // left/right are unordered.
+  vector<pair<string_view, size_t>>& result)
+{
+  struct node { node* parent; string_view value; };
+  map<string_view, node*> unionfind;
+  for (auto& [alias0, alias1] : aliases) {
+    auto it = unionfind.find(alias0);
+    if (it == end(unionfind)) {
+      node* n = new node;
+      n->parent = nullptr;
+      n->value = alias0;
+      unionfind.emplace(make_pair<string_view, node*>(alias0, n));
+      unionfind.emplace(make_pair<string_view, node*>(alias1, n));
+    }
+    else {
+      auto n0 = it->second;
+      auto it1 = unionfind.find(alias1);
+      if (it1 == end(unionfind)) {
+        unionfind.emplace(make_pair<string_view, node*>(alias1, n0));
+      }
+      else {
+        auto n1 = it1->second;
+        // union find reparent the whole n1 parent chain to n0.
+        vector<node*> v;
+        v.push_back(n1);
+        while (n1->parent) {
+          n1 = n1->parent;
+          v.push_back(n1);
+        }
+        for (node* n : v) {
+          n->parent = n0;
+        }
+      }
+    }
+  } // end for
+
+  map<string_view, size_t> histogramDedupe;
+  for (auto& [name, count] : histogramWithDupes) {
+    auto nameDedupe = name;
+    auto it = unionfind.find(name);
+    if (it != end(unionfind)) {
+      auto n = it->second;
+      while (n->parent) n = n->parent; // PERF: could be an if. Or we could make a map<sv,sv> above.
+      nameDedupe = n->value;
+    }
+    auto itd = histogramDedupe.find(nameDedupe);
+    if (itd == end(histogramDedupe)) {
+      histogramDedupe.emplace(make_pair<string_view, size_t>(nameDedupe, count));
+    }
+    else {
+      it->second += count;
+    }
+  }
+
+  result.clear();
+  for (auto& [nameDedupe, count] : histogramDedupe) {
+    result.emplace_back(nameDedupe, count);
+  }
+
+  for (auto& [alias, n] : unionfind) {
+    delete n;
+  }
+}
+
+
+
+
+// find min distance between two given words in a document.
+vector<size_t> match(span<int> words, int w) {
+  vector<size_t> r;
+  for (size_t i = 0; i < words.size(); ++i) {
+    if (words[i] == w) r.push_back(i);
+  }
+  return r;
+}
+size_t absdiff(size_t a, size_t b) {
+  return max(a,b) - min(a,b);
+}
+bool foo(
+  span<int> words,
+  int w0,
+  int w1,
+  size_t& minD
+  )
+{
+  // PERF: could merge the two document loops.
+  auto match0 = match(words, w0);
+  auto match1 = match(words, w1);
+  minD = numeric_limits<size_t>::max();
+  bool found = false;
+  // For perf reasons, outer loop here should be the shorter of the two lists.
+  // This is N lg M, so we want the N<M case, not N>M.
+  const bool larger0 = match0.size() > match1.size();
+  const auto& larger = (larger0 ? match0 : match1);
+  const auto& smaller = (larger0 ? match1 : match0);
+  for (auto m0 : smaller) {
+    auto it1 = lower_bound(begin(larger), end(larger), m0);
+    // it1 points to the first element >= m0.
+    // it1-1 will be the first element < m0 if it exists.
+    // so these are the two we need to check distance for.
+    // the rest are guaranteed to be farther away.
+    if (it1 != end(larger)) {
+      auto d = absdiff(*it1, m0);
+      if (!found || d < minD) {
+        found = true;
+        minD = d;
+      }
+    }
+    if (it1 != begin(larger)) {
+      auto d = absdiff(*(it1-1), m0);
+      if (!found || d < minD) {
+        found = true;
+        minD = d;
+      }
+    }
+  }
+  return found;
+}
+
+
+
+convert a BST to an ordered double LL.
+struct node { node* l; node* r; int value; };
+node* successor(node* n) {
+  if (n->r) {
+    n = n->r;
+    while (n->l) n = n->l;
+    return r;
+  }
+  else {
+    // while (n) {
+    //   auto p = n->parent;
+    //   if (n == p->left) return p;
+    //   n = p;
+    // }
+    // return n;
+  }
+}
+
+node* rightmost(node* n) {
+  while (n->r) n = n->r;
+  return n;
+}
+node* leftmost(node* n) {
+  while (n->l) n = n->l;
+  return n;
+}
+void relink(node* t) {
+  auto l = t->l;
+  auto r = t->r;
+  // TODO: can I return this up from relink instead?
+  // it's a BST so I could do compares I think.
+  // can I do it w/o compares?
+  auto lR = rightmost(l);
+  auto rL = leftmost(r);
+  if (l) relink(l);
+  t->l = lR;
+  t->r = rL;
+  if (r) relink(r);
+}
+void relink2(node* t, node** rMost, node** lMost) {
+  auto l = t->l;
+  auto r = t->r;
+  if (!l && lMost) *lMost = t;
+  if (!r && rMost) *rMost = t;
+  node* lR;
+  node* rL;
+  if (l) relink2(l, &lr, (node**)nullptr);
+  if (r) relink2(r, (node**)nullptr, &rL);
+  t->l = lR;
+  t->r = rL;
+}
+void relink3(node* t) {
+  auto l = t->l;
+  auto r = t->r;
+  node* lR;
+  node* rL;
+  if (l) relink2(l, &lr, (node**)nullptr);
+  if (r) relink2(r, (node**)nullptr, &rL);
+  t->l = lR;
+  t->r = rL;
+}
+
+
+
+
+given a string that had the spaces removed, and a dict of valid strings,
+reconstruct the original string with minimal invalid characters.
+
+void fn(const set<string_view>& valid, string_view s, string& result) {
+  // for each character, we can choose to include it as a valid char or not.
+  // and then we can pick any valid subset starting at that char, or not.
+  // effectively a maximum matching.
+  // choice:
+  // 1.
+  const auto L = s.length();
+  vector<bool> invalid{L, false};
+
+}
+
+
+
+smallest k of an array:
+void fn(span<int> s, size_t k, vector<int>& result) {
+  priority_queue_max<int> pq;
+  for (int c : s) {
+    if (pq.size() < k) {
+      pq.insert(c);
+    }
+    else {
+      auto m = pq.pop();
+      pq.insert((c < m) ? c : m);
+    }
+  }
+
+  result.clear();
+  for (int c : pq) {
+    result.push_back(c);
+  }
+}
+
+
+
+longest compound word, given a list of words. e.g. { dog, cat, dogcat } should return dogcat
+bool fn(span<string_view> list, size_t& result) {
+  // we can check all pairs.
+  map<string_view, size_t> map;
+  const auto L = list.length();
+  for (size_t i = 0; i < L; ++i) {
+    map.emplace(make_pair<string_view, size_t>(list[i], i));
+  }
+
+  size_t cmax = 0;
+  size_t imax = 0;
+  for (size_t i = 0; i < L; ++i) {
+    auto si = list[i];
+    for (size_t j = 0; j < L; ++j) {
+      if (i == j) continue;
+      auto sj = list[j];
+      string tmp = si;
+      tmp += sj;
+      auto it = map.find(tmp);
+      if (it == end(map)) continue;
+      if (tmp.size() > cmax) {
+        cmax = tmp.size();
+        imax = it->second;
+      }
+    }
+  }
+  if (cmax == 0) return false;
+  result = imax;
+  return true;
+}
+
+
+
+appt scheduling:
+given a contig. slicing of time w/o gaps.
+all multiples of 15mins.
+there has to be 15min gaps between chosen appts.
+find the optimal assignment of appts (most total minutes).
+e.g. { 30, 15, 60, 75, 45, 15, 15, 45 }
+        ^       ^       ^           ^
+optimal: { 30, 60, 45, 45 }
+
+score(i..k) =
+  0 if i>k.
+  max {
+    minutes(i) + score(i+2..k) if we choose i
+    score(i+1..k) if we don't choose i
+  }
+
+just finding the score (most total minutes):
+int64_t optimal(size_t i, span<int> s) {
+  const auto L = s.length();
+  if (i > L) return 0; // base case
+  const auto opt1 = s[i] + optimal(i+2, s);
+  const auto opt2 = optimal(i+1, s);
+  return max(opt1, opt2);
+}
+can we dynamic program it? compute in reverse.
+
+int64_t optimal2(span<int> s, vector<size_t>& result) {
+  result.clear();
+  const auto L = s.length();
+  if (!L) return 0;
+  vector<bool> which{L, false};
+  vector<int> opt{L+2};
+  opt[L+1] = 0;
+  opt[L] = 0;
+  for (size_t i = 0; i < L; ++i) {
+    auto ri = L - i - 1;
+    auto opt1 = s[ri] + opt[ri+2];
+    auto opt2 = opt[ri+1];
+    which[ri] = opt1 >= opt2;
+    opt[ri] = max(opt1, opt2);
+  }
+  // which says if the appt was chosen, or not.
+  for (size_t i = 0; i < L; ++i) {
+    if (which[i]) {
+      result.push_back(i);
+    }
+  }
+  return opt[0];
+}
+
+
+
+given a large string, and a set of small strings, find the instances in the large string.
+
+void fn(
+  string_view large,
+  span<string_view> small,
+  map<size_t, size_t>& matches) // index into large, index into small.
+{
+  matches.clear();
+
+  const auto S = small.length();
+  trie t;
+  for (const auto& s : small) {
+    t.insert(s);
+  }
+
+  struct mstate {
+    trie_cursor* c;
+    size_t match_start;
+  };
+  vector<mstate> cursors;
+  for (size_t i = 0; i < S; ++i) {
+    cursors.push_back(mstate{begin(t), 0});
+  }
+
+  const auto L = large.length();
+  for (size_t i = 0; i < L; ++i) {
+    const auto li = large[i];
+    for (size_t s = 0; s < S; ++s) {
+      auto& m = cursors[s];
+      auto nextc = m.c->next(li);
+      // cases:
+      // 1. m.c was pointing to root
+      // 2. m.c was pointing to subtree node.
+      // and for each of those,
+      // 1. nextc is not a valid child of m.c.
+      // 2. nextc is a valid child of m.c
+      // 3. nextc is a terminal node.
+      const auto cwasroot = m.c == begin(t);
+      const auto foundchild = nextc != nullptr;
+      const auto finishedmatch = foundchild && nextc->terminal;
+      // We could simplify these cases, I'm sure.
+      if (cwasroot) {
+        if (finishedmatch) {
+          matches.emplace(make_pair<size_t,size_t>(m.match_start, s));
+          m.c = begin(t);
+        }
+        else if (foundchild) {
+          m.match_start = i;
+          m.c = nextc;
+        }
+        else {
+          // leave m.c as root.
+        }
+      }
+      else {
+        if (finishedmatch) {
+          matches.emplace(make_pair<size_t,size_t>(m.match_start, s));
+          m.c = begin(t);
+        }
+        else if (foundchild) {
+          m.c = nextc;
+        }
+        else {
+          m.c = begin(t);
+        }
+      }
+    }
+  }
+}
+
+
+
+
+given two arrays:
+  one short (no dupes)
+  one long (maybe dupes, unsorted)
+find the shortest span in long that contains all of short.
+
+unordered_map<int, size_t> histogram(span<int> s) {
+  unordered_map<int, size_t> r;
+  for (int c : s) {
+    auto it = r.find(c);
+    if (it == end(r)) {
+      r.emplace(make_pair<int,size_t>(c, 1));
+    }
+    else {
+      ++it->second;
+    }
+  }
+  return r;
+}
+bool fn(span<int> short, span<int> long, size_t& rL, size_t& rR) {
+  //   1 1 1 1
+  //  2   2
+  // 3      3
+  //    4
+  // given some position x, for each element in S, we need the closest instance of s to x in both directions.
+  // then we need the max of the closest distances in both directions, and that's our smallest span, given x.
+  // then we take the min over all x.
+  //
+  // we could simplify by only looking right, and iterating x to exclude the prefix long.
+  //
+  // does it help to transpose to index space?
+  // i.e. element of s -> list of long indices
+  // unsure.
+  // i'll start with the simple soln above.
+
+  const auto L = long.length();
+  const auto S = short.length();
+  if (S > L) return false;
+  unordered_set<int> s;
+  for (int c : s) {
+    c.insert(c);
+  }
+  size_t minL = 0;
+  size_t minR = 0;
+  bool found = false;
+  for (size_t x = 0; x < L-S; ++x) {
+    auto sT = s; // clone
+    size_t y = x;
+    while (y < L && !sT.empty()) {
+      auto it = sT.find(long[y]);
+      if (it != end(sT)) {
+        sT.erase(it);
+      }
+      ++y;
+    }
+    if (!sT.empty()) {
+      // no such span exists.
+      // we don't have to check spans starting at x+1, since we know that won't work.
+      // excluding x from the span won't make any elements magically appear.
+      break;
+    }
+    // [x,y) is the span.
+    if (!found || y-x < minR-minL) {
+      found = true;
+      minL = x;
+      minR = y;
+    }
+  }
+  if (!found) return false;
+  rL = minL;
+  rR = minR;
+}
+
+
+
+maintain a median value as numbers are added to a stream.
+that requires storing infinite unique history, since early values may recur as the median later.
+
+struct stream {
+  priority_queue_min<int> minq;
+  priority_queue_max<int> maxq;
+  // all elements of maxq <= all elements of minq.
+  // invariant: |minq.size() - maxq.size()| <= 1
+  // that is, the median is either minq.top() or maxq.top(), depending on size parity.
+  //
+
+  // { ..., A } { B, ... }
+  // inserting v, we have cases:
+  // 1. |L| == |R|
+  // 2. |L| < |R|
+  // 3. |L| > |R|
+  // WLOG, we can say A <= v < B via PQ push/pop swapping v with A,B as appropriate.
+  // Once we've done that, then we just choose the PQ of smaller size to push to.
+  void insert(int value) {
+    if (maxq.empty()) {
+      maxq.push(value);
+      return;
+    }
+    if (minq.empty()) {
+      auto L = maxq.top();
+      maxq.pop();
+      auto At = min(L, value);
+      auto Bt = max(L, value);
+      maxq.push(At);
+      minq.push(Bt);
+      return;
+    }
+    auto L = maxq.size();
+    auto R = minq.size();
+
+    auto A = maxq.top();
+    auto B = minq.top();
+    if (value < A) {
+      maxq.pop();
+      maxq.push(value);
+      swap(value, A);
+    }
+    else if (value > B) {
+      minq.pop();
+      minq.push(value);
+      swap(value, B);
+    }
+
+    auto& q = (L < R) ? maxq : minq;
+    q.push(value);
+  }
+  int median() {
+    assertCrash(!minq.empty() || !maxq.empty());
+    if (minq.empty()) {
+      return maxq.top();
+    }
+    auto A = maxq.top();
+    auto B = minq.top();
+    return (int)(((int64_t)A+(int64_t)B)/2);
+  }
+};
+
+
+
+histogram volume.
+given a column chart, columns are width=1.
+            |
+            |  x  |
+      |  x  |  x  |
+      |  x  |  |  |  x  |
+0, 0, 2, 0, 4, 1, 3, 0, 1
+should return 5, the x being water.
+
+we need to find the tallest column on either side, to know if we have water at a given cell.
+we also need to consider positions with columns, since they can be buried in water.
+
+could precompute tallest on the right, tallest on the left.
+tallR(i) = max { heights[j] } over j in {i+1..}
+tallL(i) = max { heights[j] } over j in {..i-1}
+
+then at position i, the amount of water we can stack is:
+  min(tallR(i), tallL(i)) - height[i]
+
+int64_t volume(span<int> heights) {
+  auto H = heights.size();
+  if (!H) return 0;
+  vector<int> tallR{H};
+  vector<int> tallL{H};
+  tallL[0] = heights[0];
+  tallR[H-1] = heights[H-1];
+  for (size_t i = 1; i < H; ++i) {
+    tallL[i] = max(tallL[i-1], heights[i]);
+    auto ri = H-1-i;
+    tallR[ri] = max(tallR[ri+1], heights[ri]);
+  }
+
+  int64_t r = 0;
+  for (size_t i = 0; i < H; ++i) {
+    auto waterline = min(tallL[i], tallR[i]);
+    auto hi = height[i];
+    if (waterline > height) {
+      r += waterline - height;
+    }
+  }
+  return r;
+}
+
+
+
+given two words of equal length,
+given a dictionary,
+transform the first word into the second by changing one char at a time.
+each intermediate word must also be in the dictionary.
+
+bool matchSub1(string_view a, string_view b) {
+  assert(a.size() == b.size();
+  size_t c = 0;
+  for (size_t i = 0; i < a.size(); ++i) {
+    if (a[i] != b[i]) {
+      ++c;
+      if (c == 2) break;
+    }
+  }
+  return c == 1;
+}
+vector<node*> pathSearch(
+  const vector<node*>& nodes,
+  node* source,
+  node* sink);
+void fn(
+  string_view w1,
+  string_view w2,
+  const set<string_view>& dict,
+  vector<string_view>& result)
+{
+  // we can't go directly, targeting w2 characters directly.
+  // aaa
+  // baa
+  // bba
+  // bbc
+  // bdc
+  // ddc
+  // so i think we basically need to do a graph search.
+  struct node {
+    string_view w;
+    vector<node*> nbrs;
+  };
+  vector<node*> nodes;
+  auto source = new node;
+  source->w = w1;
+  nodes.push_back(source);
+  auto sink = new node;
+  sink->w = w2;
+  nodes.push_back(sink);
+  for (const auto& s : dict) {
+    node* n = new node;
+    n->w = s;
+    nodes.push_back(n);
+  }
+
+  size_t N = nodes.size();
+  for (size_t i = 0; i < N; ++i) {
+    node* ni = nodes[i];
+    for (size_t j = 0; j < N; ++j) {
+      auto nj = nodes[j];
+      if (i == j) continue;
+      if (matchSub1(ni->w, nj->w)) {
+        ni->nbrs.push_back(nj);
+      }
+    }
+  }
+
+  // Path search
+  result.clear();
+  vector<node*> path = pathSearch(nodes, source, sink);
+  for (const auto& n : path) {
+    result.push_back(n->w);
+  }
+}
+
+
+
+max black square
+given a 2d grid of black/white values
+find the max subsquare s.t. the border is all black.
+
+struct pt { size_t x; size_t y; };
+size_t latestTrueXR(
+  const vector<bool>& grid, // black=true.
+  size_t dx,
+  size_t dy,
+  size_t x,
+  size_t y)
+{
+  size_t xR = x;
+  for (; xR + 1 < dx; ++xR) {
+    if (!grid[xR+1+dx*y]) break;
+  }
+  return xR;
+}
+bool isBorder(
+  const vector<bool>& grid, // black=true.
+  size_t dx,
+  size_t dy,
+  size_t x,
+  size_t y,
+  size_t xR,
+  size_t yR)
+{
+  for (size_t i = x; i <= xR; ++i) {
+    if (!grid[i+dx*y]) return false;
+    if (!grid[i+dx*yR]) return false;
+  }
+  for (size_t j = y; j <= yR; ++j) {
+    if (!grid[x+dx*y]) return false;
+    if (!grid[xR+dx*y]) return false;
+  }
+  return true;
+}
+bool maxSubsq(
+  const vector<bool>& grid, // black=true.
+  size_t dx,
+  size_t dy,
+  pt& rL,
+  pt& rR)
+{
+  // if we collect max spans, does that help?
+  //
+  //   b b b b  0,3
+  //   _ b _ b  1,1  3,3
+  //   _ b _ b  1,1  3,3
+  //   b b b b  0,3
+  //
+  //   0,0
+  //   3,3
+  //     0,3
+  //       0,0
+  //       3,3
+  //         0,3
+  //
+  // i'm not sure it does.
+  // i think we just have to check the possibilities.
+
+  size_t maxArea = 0;
+  pt maxL;
+  pt maxR;
+  for (size_t y = 0; y < dy; ++y) {
+    for (size_t x = 0; x < dx; ++x) {
+      if (!grid[x+dx*y]) continue;
+      
+      for (size_t yR = y; yR < dy; ++yR) {
+        for (size_t xR = x; xR < dx; ++xR) {
+          if (!isBorder(grid, dx, dy, x, y, xR, yR)) continue;
+          const auto area = (yR-y+1)*(xR-x+1);
+          if (area > maxArea) {
+            maxArea = area;
+            maxL = pt{x,y};
+            maxR = pt{xR,yR};
+          }
+        }
+      }
+    }
+  }
+  if (maxArea == 0) return false;
+  rL = maxL;
+  rR = maxR;
+  return true;
+}
+
+
+
+
+max submatrix
+
+int64_t sum(
+  span<int> grid,
+  size_t dx,
+  size_t dy,
+  pt L,
+  pt R)
+{
+  
+}
+bool maxsum(
+  span<int> grid,
+  size_t dx,
+  size_t dy,
+  pt& rL,
+  pt& rR)
+{
+  size_t L = dx*dy;
+  vector<int64_t> cumuL{L};
+  vector<int64_t> cumuR{L};
+  cumuL[0] = grid[0];
+  cumuR[0] = grid[L-1];
+  for (size_t x = 1; x < dx; ++x) {
+    cumuL[x] = grid[x] + cumuL[x-1];
+    auto rx = dx - x;
+    cumuR[rx] = grid[rx] + cumuR[rx-1];
+  }
+  for (size_t y = 1; y < dy; ++y) {
+    cumuL[dx*y] = grid[dx*y] + cumuL[dx*(y-1)];
+    auto ry = dy - y;
+    cumuR[dx*ry] = grid[dx*ry] + cumuR[dx*(ry-1)];
+  }
+  for (size_t y = 1; y < dy; ++y) {
+    auto ry = dy - y;
+    for (size_t x = 1; x < dx; ++x) {
+      auto rx = dx - x;
+      cumuL[x+dx*y] = grid[x-1+dx*y] + grid[x+dx*(y-1)];
+      cumuR[rx+dx*ry] = grid[rx-1+dx*ry] + grid[rx+dx*(ry-1)];
+    }
+  }
+
+  int64_t maxSum = 0;
+  bool found = false;
+  for (size_t y = 0; y < dy; ++y) {
+    for (size_t x = 0; x < dx; ++x) {
+      for (size_t yR = y; yR < dy; ++yR) {
+        for (size_t xR = x; xR < dx; ++xR) {
+          auto sum = cumuR[x+dx*y] - cumuL[xR+dx*yR];
+          if (!found || sum > maxSum) {
+            found = true;
+            maxSum = sum;
+            rL = pt{x,y};
+            rR = pt{xR,yR};
+          }
+        }
+      }
+    }
+  }
+  return found;
+}
+
+
+
+word rectangle
+given millions of words, form the largest fully filled crossword, where every row/col is a word in the list.
+given { ab, ba, aa }
+we can return {ab, ba}
+  ab
+  ba
+
+
+
 
 
 

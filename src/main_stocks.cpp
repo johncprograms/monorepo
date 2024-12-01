@@ -33,8 +33,6 @@
 #include "ds_list.h"
 #include "ds_stack_cstyle.h"
 #include "ds_hashset_cstyle.h"
-#include "ds_hashset_complexkey.h"
-#include "ds_hashset_nonzeroptrs.h"
 #include "filesys.h"
 #include "cstr_integer.h"
 #include "cstr_float.h"
@@ -50,6 +48,8 @@
 #define PROF_ENABLED   0
 #define PROF_ENABLED_AT_LAUNCH   0
 #include "profile.h"
+#include "ds_hashset_nonzeroptrs.h"
+#include "ds_hashset_complexkey.h"
 #include "rand.h"
 #include "allocator_heap_findleaks.h"
 #include "mainthread.h"

@@ -169,7 +169,7 @@ using pagetree_16x4_t = tpagetree_16x4_t<>;
 TA Inl void
 Init( PAGETREE16x4* pt, Allocator alloc = {} )
 {
-  pt->toplevel = AllocatePage<pagetree_page16_t<Allocation>>( alloc );
+  pt->toplevel = AllocatePage<pagetree_page16_t<Allocation>, Allocator, Allocation>( alloc );
   pt->alloc = alloc;
 }
 TA Inl void
@@ -220,17 +220,17 @@ AccessLastLevelPage( PAGETREE16x4* pt, u64 address )
   auto table0 = pt->toplevel;
   auto entry0 = table0->entries + idx0;
   if( !*entry0 ) {
-    *entry0 = AllocatePage<pagetree_page16_t<Allocation>>( pt->alloc );
+    *entry0 = AllocatePage<pagetree_page16_t<Allocation>, Allocator, Allocation>( pt->alloc );
   }
   auto table1 = Cast( pagetree_page16_t<Allocation>*, *entry0 );
   auto entry1 = table1->entries + idx1;
   if( !*entry1 ) {
-    *entry1 = AllocatePage<pagetree_page16_t<Allocation>>( pt->alloc );
+    *entry1 = AllocatePage<pagetree_page16_t<Allocation>, Allocator, Allocation>( pt->alloc );
   }
   auto table2 = Cast( pagetree_page16_t<Allocation>*, *entry1 );
   auto entry2 = table2->entries + idx2;
   if( !*entry2 ) {
-    *entry2 = Allocate<pagetree_page16_t<Allocation>>( pt->alloc );
+    *entry2 = AllocatePage<pagetree_page16_t<Allocation>, Allocator, Allocation>( pt->alloc );
   }
   auto table3 = Cast( pagetree_page16_t<Allocation>*, *entry2 );
   auto entry3 = table3->entries + idx3;

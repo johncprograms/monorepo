@@ -1,16 +1,18 @@
 // build:window_x64_debug
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
+#include "os_mac.h"
+#include "os_windows.h"
+
 #if defined(WIN)
 
 #define FINDLEAKS   0
+#define WEAKINLINING   0
 #include "core_cruntime.h"
 #include "core_types.h"
 #include "core_language_macros.h"
-#include "os_mac.h"
-#include "os_windows.h"
-#include "memory_operations.h"
 #include "asserts.h"
+#include "memory_operations.h"
 #include "math_integer.h"
 #include "math_float.h"
 #include "math_lerp.h"
@@ -30,24 +32,29 @@
 #include "ds_list.h"
 #include "ds_stack_cstyle.h"
 #include "ds_hashset_cstyle.h"
-#include "ds_hashset_complexkey.h"
 #include "ds_pagetree.h"
 #include "allocator_pagelist.h"
 #include "filesys.h"
+#include "cstr_integer.h"
+#include "cstr_float.h"
 #include "timedate.h"
 #include "thread_atomics.h"
+#include "ds_mtqueue_srsw_nonresizeable.h"
+#include "ds_mtqueue_srmw_nonresizeable.h"
+#include "ds_mtqueue_mrsw_nonresizeable.h"
+#include "ds_mtqueue_mrmw_nonresizeable.h"
 #include "threading.h"
 #define LOGGER_ENABLED   1
 #include "logger.h"
 #define PROF_ENABLED   0
 #define PROF_ENABLED_AT_LAUNCH   0
 #include "profile.h"
+#include "ds_hashset_nonzeroptrs.h"
+#include "ds_hashset_complexkey.h"
 #include "rand.h"
 #include "allocator_heap_findleaks.h"
 #include "mainthread.h"
 #include "text_parsing.h"
-#include "cstr_integer.h"
-#include "cstr_float.h"
 
 #define OPENGL_INSTEAD_OF_SOFTWARE       0
 #define GLW_RAWINPUT_KEYBOARD            0
@@ -919,7 +926,7 @@ Kill( grid_t* grid )
   Free( grid->custom_dim_xs );
   Free( grid->graph_edges );
 #if PT
-  Kill( &grid->cellblock_tree );
+  Zero( &grid->cellblock_tree );
 #else
   Kill( grid->cellblocks );
 #endif
@@ -3314,16 +3321,11 @@ RenderGrid(
       else {
         DRAW_TEXT( label_cellinput, bounds.p0 );
 
-        TxtLayoutSingleLineSubset(
-          grid->txt_input,
-          GetBOF( grid->txt_input.buf ),
-          TxtLen( grid->txt_input ),
-          font
-          );
         TxtRenderSingleLineSubset(
           grid->txt_input,
           stream,
           font,
+          0u,
           _rect(
             bounds.p0 + _vec2( label_cellinput_w, 0.0f ),
             _vec2( bounds.p1.x, MIN( bounds.p1.y, bounds.p0.y + line_h ) )
@@ -3420,7 +3422,7 @@ RenderGrid(
     absolutepos_t abspos = grid->scroll_absolutepos + _vec2( i, j );
     auto cell_dimf = default_cell_dimf;
     if( grid->focus == gridfocus_t::input  &&  grid->c_head == abspos ) {
-      auto input = AllocContents( grid->txt_input.buf );
+      auto input = AllocContents( &grid->txt_input.buf, eoltype_t::crlf );
       auto w = LayoutString( font, spaces_per_tab, ML( input ) );
       cell_dimf.x = 2.0f * cell_contents_offset.x + w;
       Free( input );
@@ -3814,16 +3816,11 @@ RenderGrid(
 
         // draw cell contents
         if( grid->focus == gridfocus_t::input  &&  grid->c_head == abspos ) {
-          TxtLayoutSingleLineSubset(
-            grid->txt_input,
-            GetBOF( grid->txt_input.buf ),
-            TxtLen( grid->txt_input ),
-            font
-            );
           TxtRenderSingleLineSubset(
             grid->txt_input,
             stream,
             font,
+            0u,
             _rect(
               bounds.p0 + p0 + cell_contents_offset,
               bounds.p1 // TODO: clip against next col? i think we need better horz-scroll in txt_t for that.
@@ -4427,33 +4424,32 @@ GridCmd_EnterCellContents( grid_t* grid )
 {
   AssertCrash( grid->focus == gridfocus_t::input );
 
-  auto input_start = GetBOF( grid->txt_input.buf );
-  slice32_t input;
-  auto len = TxtLen( grid->txt_input );
-  AssertCrash( len <= MAX_u32 );
-  input.len = Cast( u32, len );
+  auto input = AllocContents( &grid->txt_input.buf, eoltype_t::crlf );
   if( input.len ) {
-    input.mem = AddPagelist( grid->cellmem, u8, 1, input.len );
-    Contents( grid->txt_input.buf, input_start, ML( input ) );
-    InsertOrSetCellContents( grid, &grid->cursel, input );
+    AssertCrash( input.len <= MAX_u32 );
+    slice32_t input32 { input.mem, Cast( u32, input.len ) };
+    InsertOrSetCellContents( grid, &grid->cursel, input32 );
     RefreshCurselIdenticals( grid );
     if( grid->has_identical_error  &&  HasError( &grid->identical_error ) ) {
-      auto bof = GetBOF( grid->txt_input.buf );
-      auto eof = GetEOF( grid->txt_input.buf );
-      auto sel_l = CursorCharR( grid->txt_input.buf, bof, grid->identical_error.start, 0 );
-      auto sel_len = grid->identical_error.end - grid->identical_error.start;
-      auto sel_r = CursorCharR( grid->txt_input.buf, sel_l, sel_len, 0 );
-      if( !sel_len ) {
-        sel_l = bof;
-        sel_r = eof;
+      txt_setsel_t setsel;
+      setsel.y_start = 0;
+      setsel.y_end = 0;
+      auto sel_l = grid->identical_error.start;
+      auto sel_r = grid->identical_error.end;
+      if( sel_l == sel_r ) {
+        sel_l = 0;
+        sel_r = CursorInlineEOL( &grid->txt_input.buf, 0 );
       }
-      CmdSetSelection( grid->txt_input, Cast( idx_t, &sel_l ), Cast( idx_t, &sel_r ) );
+      setsel.x_start = sel_l;
+      setsel.x_end = sel_r;
+      CmdSetSelection( grid->txt_input, Cast( idx_t, &setsel ) );
     }
   }
   else {
     DeleteCellContents( grid, &grid->cursel );
     RefreshCurselIdenticals( grid );
   }
+  Free( input );
 
   grid->focus = gridfocus_t::cursel;
 }
@@ -5084,8 +5080,8 @@ WinMain( HINSTANCE prog_inst, HINSTANCE prog_inst_prev, LPSTR prog_cmd_line, int
   // well each choice of m,n has a given row maximum, which we use as the row header width.
   // so we can just bake that calculation into ComputeMetric, and the dim validity checking.
   // so the dim validity check is basically: does the m,n cell span the given bounds.p1 ?
-  
-  
+
+
 #if 0 // BUGS:
 
   ctrl+click+drag for one rect. release.

@@ -270,3 +270,32 @@ typedef u32 enum_t;
     __fortwolists2_listelem0 = __fortwolists2_listelem0->next; \
     __fortwolists2_listelem1 = __fortwolists2_listelem1->next; \
   } \
+
+
+
+
+#if TEST
+  using FnTest = void(*)();
+  constexpr size_t g_ctests = 100;
+  FnTest g_tests[g_ctests];
+  size_t g_ntests = 0;
+  struct RegisterTestObject
+  {
+    RegisterTestObject( FnTest fn )
+    {
+      if( g_ntests >= g_ctests ) __debugbreak();
+      g_tests[g_ntests++] = fn;
+    }
+  };
+  #define RegisterTest \
+    static RegisterTestObject NAMEJOIN( g_register_test_obj, __COUNTER__ ) = RegisterTestObject
+
+#else
+  using FnTest = void(*)();
+  struct RegisterTestObject
+  {
+    RegisterTestObject( FnTest fn ) {}
+  };
+  #define RegisterTest \
+    static RegisterTestObject NAMEJOIN( g_register_test_obj, __COUNTER__ ) = RegisterTestObject
+#endif
