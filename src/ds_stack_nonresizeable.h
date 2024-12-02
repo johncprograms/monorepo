@@ -1,55 +1,52 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#define STACKNONRESIZEABLE   stack_nonresizeable_t<T, Allocator, Allocation>
+#define STACKNONRESIZEABLE   stack_nonresizeable_t<T>
 
-TEA struct
+Templ struct
 stack_nonresizeable_t
 {
   idx_t len; // # of elements in mem.
   T* mem;
   idx_t capacity; // # of elements mem can possibly hold.
-  Allocator alloc;
-  Allocation allocn;
+  alloctype_t allocn;
 };
-TEA Inl void
+Templ Inl void
 Zero( STACKNONRESIZEABLE& stack )
 {
   stack.len = 0;
   stack.mem = 0;
   stack.capacity = 0;
-  stack.alloc = {};
 }
-TEA Inl void
-Alloc( STACKNONRESIZEABLE& stack, idx_t nelems, Allocator alloc = {} )
+Templ Inl void
+Alloc( STACKNONRESIZEABLE& stack, idx_t nelems )
 {
   Zero( stack );
-  stack.mem = Allocate<T>( alloc, stack.allocn, nelems );
+  stack.mem = Allocate<T>( &stack.allocn, nelems );
   stack.capacity = nelems;
-  stack.alloc = alloc;
 }
-TEA Inl void
+Templ Inl void
 Free( STACKNONRESIZEABLE& stack )
 {
   AssertCrash( stack.len <= stack.capacity );
   if( stack.mem ) {
-    Free( stack.alloc, stack.allocn, stack.mem );
+    Free( stack.allocn, stack.mem );
   }
   Zero( stack );
 }
 
 // Intentionally no expansion/contraction here!
 
-TEA Inl idx_t
+Templ Inl idx_t
 Capacity( STACKNONRESIZEABLE& stack )
 {
   return stack.capacity;
 }
-TEA Inl idx_t
+Templ Inl idx_t
 LenRemaining( STACKNONRESIZEABLE& stack )
 {
   return stack.capacity - stack.len;
 }
-TEA Inl T*
+Templ Inl T*
 AddBack( STACKNONRESIZEABLE& stack, idx_t nelems = 1 )
 {
   AssertCrash( stack.len + nelems <= stack.capacity );
@@ -57,7 +54,7 @@ AddBack( STACKNONRESIZEABLE& stack, idx_t nelems = 1 )
   stack.len += nelems;
   return r;
 }
-TEA Inl T*
+Templ Inl T*
 AddAt( STACKNONRESIZEABLE& stack, idx_t idx, idx_t nelems = 1 )
 {
   AssertCrash( stack.len + nelems <= stack.capacity );
@@ -74,14 +71,14 @@ AddAt( STACKNONRESIZEABLE& stack, idx_t idx, idx_t nelems = 1 )
   stack.len += nelems;
   return r;
 }
-TEA Inl void
+Templ Inl void
 RemBack( STACKNONRESIZEABLE& stack, idx_t nelems = 1 )
 {
   AssertCrash( stack.len <= stack.capacity );
   AssertCrash( nelems <= stack.len );
   stack.len -= nelems;
 }
-TEA Inl void
+Templ Inl void
 RemBack( STACKNONRESIZEABLE& stack, T* dst, idx_t dst_len = 1 )
 {
   AssertCrash( stack.len <= stack.capacity );
@@ -93,7 +90,7 @@ RemBack( STACKNONRESIZEABLE& stack, T* dst, idx_t dst_len = 1 )
     dst_len
     );
 }
-TEA Inl void
+Templ Inl void
 RemBackReverse( STACKNONRESIZEABLE& stack, T* dst, idx_t dst_len = 1 )
 {
   AssertCrash( stack.len <= stack.capacity );
@@ -105,7 +102,7 @@ RemBackReverse( STACKNONRESIZEABLE& stack, T* dst, idx_t dst_len = 1 )
     dst_len
     );
 }
-TEA Inl void
+Templ Inl void
 RemAt( STACKNONRESIZEABLE& stack, idx_t idx, idx_t nelems = 1 )
 {
   AssertCrash( stack.len <= stack.capacity );

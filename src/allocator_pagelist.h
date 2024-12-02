@@ -1,12 +1,11 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#define PAGELIST_PAGE   pagelist_page_t<Allocation>
-#define PAGELIST        tpagelist_t<Allocator, Allocation>
+#define PAGELIST_PAGE   pagelist_page_t
+#define PAGELIST        tpagelist_t
 
 // allocated with the rest of the page, this is just the header at the start.
 // the rest of the page memory follows immediately afterwards.
 // note that size and top don't account for the pagelist_page_t header itself.
-template< typename Allocation = allocation_heap_or_virtual_t >
 struct
 pagelist_page_t
 {
@@ -14,32 +13,30 @@ pagelist_page_t
   PAGELIST_PAGE* next;
   idx_t top;
   idx_t size;
-  Allocation allocn;
+  alloctype_t allocn;
 };
 
-template< typename Allocator = allocator_heap_or_virtual_t, typename Allocation = allocation_heap_or_virtual_t >
 struct
 tpagelist_t
 {
   PAGELIST_PAGE* current_page;
   idx_t userbytes;
-  Allocator alloc;
 };
 
-using pagelist_t = tpagelist_t<>;
+using pagelist_t = tpagelist_t;
 
-TA Inl void
+Inl void
 Zero( PAGELIST& list )
 {
   list.current_page = 0;
   list.userbytes = 0;
 }
 
-TA Inl void
-Init( PAGELIST& list, idx_t initial_size, Allocator alloc = {} )
+Inl void
+Init( PAGELIST& list, idx_t initial_size )
 {
   Zero( list );
-  auto str = AllocString<u8, Allocator, Allocation>( initial_size + sizeof( PAGELIST_PAGE ), list.alloc );
+  auto str = AllocString<u8>( initial_size + sizeof( PAGELIST_PAGE ) );
   auto newpage = Cast( PAGELIST_PAGE*, str.mem );
   newpage->prev = 0;
   newpage->next = 0;
@@ -48,30 +45,28 @@ Init( PAGELIST& list, idx_t initial_size, Allocator alloc = {} )
   newpage->allocn = str.allocn;
 
   list.current_page = newpage;
-  list.alloc = str.alloc;
 }
 
 // each pagelist_page_t is a string_t allocation, but we store the fields in a different way.
 // this lets us reconstruct the string_t we allocated, so we can free it.
-TA Inl tstring_t<u8, Allocator, Allocation>
+Inl tstring_t<u8>
 _StringFromPage( PAGELIST& list, PAGELIST_PAGE* page )
 {
-  tstring_t<u8, Allocator, Allocation> r;
+  tstring_t<u8> r;
   r.mem = Cast( u8*, page );
   r.len = page->size + sizeof( PAGELIST_PAGE );
-  r.alloc = list.alloc;
   r.allocn = page->allocn;
   return r;
 }
 
-TA Inl void
+Inl void
 FreePage( PAGELIST& list, PAGELIST_PAGE* page )
 {
   auto str = _StringFromPage( list, page );
   Free( str );
 }
 
-TA Inl void
+Inl void
 Kill( PAGELIST& list )
 {
   auto page = list.current_page;
@@ -86,7 +81,7 @@ Kill( PAGELIST& list )
   Zero( list );
 }
 
-TA Inl void
+Inl void
 Reset( PAGELIST& list )
 {
   auto page = list.current_page;
@@ -103,7 +98,7 @@ Reset( PAGELIST& list )
   list.userbytes = 0;
 }
 
-TA Inl u8*
+Inl u8*
 AddBackBytes( PAGELIST& list, idx_t align_pow2, idx_t len )
 {
   list.userbytes += len;
@@ -130,7 +125,7 @@ AddBackBytes( PAGELIST& list, idx_t align_pow2, idx_t len )
   while( newsize < len + align_pow2 + sizeof( PAGELIST_PAGE ) ) {
     newsize *= 2;
   }
-  auto str = AllocString<u8, Allocator, Allocation>( newsize + sizeof( PAGELIST_PAGE ), list.alloc );
+  auto str = AllocString<u8>( newsize + sizeof( PAGELIST_PAGE ) );
   auto newpage = Cast( PAGELIST_PAGE*, str.mem );
   auto oldpage = page;
   oldpage->next = newpage;
@@ -156,7 +151,7 @@ AddBackBytes( PAGELIST& list, idx_t align_pow2, idx_t len )
 #define AddPagelist( list, type, align_pow2, count ) \
   Cast( type*, AddBackBytes( list, align_pow2, count * sizeof( type ) ) )
 
-TEA Inl tslice_t<T>
+Templ Inl tslice_t<T>
 _AddPagelistSlice(
   PAGELIST& list,
   idx_t align_pow2,
@@ -172,7 +167,7 @@ _AddPagelistSlice(
 #define AddPagelistSlice( list, type, align_pow2, count ) \
   _AddPagelistSlice<type>( list, align_pow2, count )
 
-TEA Inl tslice32_t<T>
+Templ Inl tslice32_t<T>
 _AddPagelistSlice32(
   PAGELIST& list,
   u32 align_pow2,

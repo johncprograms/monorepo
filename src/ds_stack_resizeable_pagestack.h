@@ -3,32 +3,32 @@
 // TODO: change to stack_nonresizeable_stack_t for the page, to avoid an extra allocation/indirection.
 //   the problem there is that the page capacity is dynamic.
 
-#define STACKRESIZEABLEPAGESTACK_PAGE   stack_resizeable_pagestack_page_t<T, Allocator, Allocation>
-TEA struct
+#define STACKRESIZEABLEPAGESTACK_PAGE   stack_resizeable_pagestack_page_t<T>
+Templ struct
 stack_resizeable_pagestack_page_t
 {
-  stack_nonresizeable_t<T, Allocator, Allocation> space;
-  Allocation allocn;
+  stack_nonresizeable_t<T> space;
+  alloctype_t allocn;
 };
-TEA Inl STACKRESIZEABLEPAGESTACK_PAGE*
-AllocatePagestackPage( Allocator& alloc, idx_t page_capacity )
+Templ Inl STACKRESIZEABLEPAGESTACK_PAGE*
+AllocatePagestackPage( idx_t page_capacity )
 {
-  Allocation allocn = {};
-  auto page = Allocate<STACKRESIZEABLEPAGESTACK_PAGE>( alloc, allocn, 1 );
-  Alloc( page->space, page_capacity, alloc );
+  alloctype_t allocn = {};
+  auto page = Allocate<STACKRESIZEABLEPAGESTACK_PAGE>( &allocn, 1 );
+  Alloc( page->space, page_capacity );
   page->allocn = allocn;
   return page;
 }
-TEA Inl void
-FreePage( Allocator& alloc, STACKRESIZEABLEPAGESTACK_PAGE* page )
+Templ Inl void
+FreePage( STACKRESIZEABLEPAGESTACK_PAGE* page )
 {
   Free( page->space );
-  Allocation allocn = page->allocn;
-  Free( alloc, allocn, page );
+  auto allocn = page->allocn;
+  Free( allocn, page );
 }
 
-#define STACKRESIZEABLEPAGESTACK   stack_resizeable_pagestack_t<T, Allocator, Allocation>
-TEA struct
+#define STACKRESIZEABLEPAGESTACK   stack_resizeable_pagestack_t<T>
+Templ struct
 stack_resizeable_pagestack_t
 {
   // TODO: how to forward the Allocator instance so we don't have to duplicate it?
@@ -40,36 +40,36 @@ stack_resizeable_pagestack_t
 
   constant idx_t c_default_num_pages = 4000 / _SIZEOF_IDX_T;
 };
-TEA Inl void
+Templ Inl void
 Zero( STACKRESIZEABLEPAGESTACK& list )
 {
   Zero( list.pages );
   list.len = 0;
 }
-TEA Inl void
-Init( STACKRESIZEABLEPAGESTACK& list, idx_t nelems_capacity, Allocator alloc = {} )
+Templ Inl void
+Init( STACKRESIZEABLEPAGESTACK& list, idx_t nelems_capacity )
 {
   AssertCrash( nelems_capacity );
-  Alloc( list.pages, STACKRESIZEABLEPAGESTACK::c_default_num_pages, alloc );
-  *AddBack( list.pages ) = AllocatePagestackPage<T>( alloc, nelems_capacity );
+  Alloc( list.pages, STACKRESIZEABLEPAGESTACK::c_default_num_pages );
+  *AddBack( list.pages ) = AllocatePagestackPage<T>( nelems_capacity );
   list.len = 0;
 }
-TEA Inl void
+Templ Inl void
 Kill( STACKRESIZEABLEPAGESTACK& list )
 {
   ForLen( i, list.pages ) {
     auto page = list.pages.mem[i];
-    FreePage( list.pages.alloc, page );
+    FreePage( page );
   }
   Free( list.pages );
   Zero( list );
 }
-TEA Inl void
+Templ Inl void
 Reset( STACKRESIZEABLEPAGESTACK& list )
 {
   For( i, 1, list.pages.len ) {
     auto page = list.pages.mem[i];
-    FreePage( list.pages.alloc, page );
+    FreePage( page );
   }
   auto page_first = list.pages.mem[0];
   page_first->space.len = 0;
@@ -77,7 +77,7 @@ Reset( STACKRESIZEABLEPAGESTACK& list )
   list.len = 0;
 }
 // TODO: contiguous version that returns T* instead of copying.
-TEA Inl void
+Templ Inl void
 AddBack( STACKRESIZEABLEPAGESTACK& list, T* src, idx_t src_len )
 {
   list.len += src_len; // doing this first since nothing fails, and we modify src_len below.
@@ -102,7 +102,7 @@ AddBack( STACKRESIZEABLEPAGESTACK& list, T* src, idx_t src_len )
       AssertCrash( new_default <= MAX_idx / 2 );
       new_default *= 2;
     }
-    auto newpage = AllocatePagestackPage<T>( list.pages.alloc, new_default );
+    auto newpage = AllocatePagestackPage<T>( new_default );
     *AddBack( list.pages ) = newpage;
     auto newspace = &newpage->space;
 //    idx_t num_added = 0;
@@ -111,7 +111,7 @@ AddBack( STACKRESIZEABLEPAGESTACK& list, T* src, idx_t src_len )
     TMove( AddBack( *newspace, src_len ), src, src_len );
   }
 }
-TEA Inl void
+Templ Inl void
 RemBack( STACKRESIZEABLEPAGESTACK& list, T* dst, idx_t dst_len )
 {
   AssertCrash( dst_len <= list.len );
@@ -130,7 +130,7 @@ RemBack( STACKRESIZEABLEPAGESTACK& list, T* dst, idx_t dst_len )
     RemBackReverse( *space, dst_write, num_rem );
     dst_len -= num_rem;
     if( !space->len  &&  pages_len > 1 ) {
-      FreePage( pages.alloc, page );
+      FreePage( page );
       RemBack( pages );
       continue;
     }
@@ -138,16 +138,15 @@ RemBack( STACKRESIZEABLEPAGESTACK& list, T* dst, idx_t dst_len )
 }
 
 
-#define STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS   stack_resizeable_pagestack_pagerelativepos_t<T, Allocation>
-template< typename T, typename Allocation = allocation_heap_or_virtual_t >
-struct
+#define STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS   stack_resizeable_pagestack_pagerelativepos_t<T>
+Templ struct
 stack_resizeable_pagestack_pagerelativepos_t
 {
   STACKRESIZEABLEPAGE* page;
   idx_t idx;
 };
 
-TEA Inl STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS
+Templ Inl STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS
 MakeIteratorAtLinearIndex( STACKRESIZEABLEPAGESTACK& list, idx_t idx )
 {
   AssertCrash( idx < list.totallen );
@@ -164,22 +163,21 @@ MakeIteratorAtLinearIndex( STACKRESIZEABLEPAGESTACK& list, idx_t idx )
   return {};
 }
 
-TEA Inl T*
+Templ Inl T*
 GetElemAtIterator( STACKRESIZEABLEPAGESTACK& list, STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS pos )
 {
   auto elem = pos.page->mem + pos.idx;
   return elem;
 }
 
-template< typename T, typename Allocation = allocation_heap_or_virtual_t >
-Inl bool
+Templ Inl bool
 CanIterate( STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS pos )
 {
   auto r = pos.page;
   return r;
 }
 
-TEA Inl STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS
+Templ Inl STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS
 IteratorMoveR( STACKRESIZEABLEPAGESTACK& list, STACKRESIZEABLEPAGESTACK_PAGERELATIVEPOS pos, idx_t nelems = 1 )
 {
   auto r = pos;
@@ -196,7 +194,7 @@ IteratorMoveR( STACKRESIZEABLEPAGESTACK& list, STACKRESIZEABLEPAGESTACK_PAGERELA
   return r;
 }
 
-TEA Inl T*
+Templ Inl T*
 LookupElemByLinearIndex( STACKRESIZEABLEPAGESTACK& list, idx_t idx )
 {
   AssertCrash( idx < list.totallen );

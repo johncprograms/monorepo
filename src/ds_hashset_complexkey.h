@@ -473,7 +473,7 @@ RegisterTest([]()
   idx_t tmp, tmp2;
   bool found, already_there;
 
-  auto values = AllocString<u32*, allocator_heap_t, allocation_heap_t>( count );
+  auto values = AllocString<u32*>( count );
   For( i, 0, count ) {
     values.mem[i] = (u32*)( i + 1 );
   }

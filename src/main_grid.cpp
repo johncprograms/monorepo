@@ -854,7 +854,8 @@ grid_t
   // core data
   pagelist_t cellmem;
 #if PT
-  tpagetree_16x4_t<allocator_pagelist_t, allocation_pagelist_t> cellblock_tree;
+  // PERF: This used to be allocator_pagelist_t, and that's likely better.
+  tpagetree_16x4_t cellblock_tree;
 #else
   listwalloc_t<cellblock_t> cellblocks;
 #endif
@@ -891,7 +892,7 @@ Init( grid_t* grid )
 {
   Init( grid->cellmem, 32000 );
 #if PT
-  Init( &grid->cellblock_tree, allocator_pagelist_t{ &grid->cellmem } );
+  Init( &grid->cellblock_tree );
 #else
   Init( grid->cellblocks, &grid->cellmem );
 #endif

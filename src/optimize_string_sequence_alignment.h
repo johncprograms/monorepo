@@ -1228,8 +1228,8 @@ RegisterTest([]()
       auto w_expected = SliceFromCStr( test.w );
       AssertCrash( MAX( x.len, y.len ) == w_expected.len );
       AssertCrash( z_expected.len == w_expected.len );
-      auto z = AllocString<u8, allocator_heap_t, allocation_heap_t>( z_expected.len );
-      auto w = AllocString<u8, allocator_heap_t, allocation_heap_t>( z_expected.len );
+      auto z = AllocString<u8>( z_expected.len );
+      auto w = AllocString<u8>( z_expected.len );
       ZeroContents( z );
       ZeroContents( w );
       auto score = AllocString<s32>( 2 * ( y.len + 1 ) );

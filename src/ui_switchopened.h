@@ -81,8 +81,9 @@ Save( edittxtopen_t* open )
 struct
 switchopened_t
 {
-  listwalloc_t<edittxtopen_t, allocator_pagelist_t, allocation_pagelist_t> opened;
-  listwalloc_t<edittxtopen_t*, allocator_pagelist_t, allocation_pagelist_t> openedmru;
+  // PERF: These used to be allocator_pagelist_t, and that's likely better.
+  listwalloc_t<edittxtopen_t> opened;
+  listwalloc_t<edittxtopen_t*> openedmru;
   stack_resizeable_cont_t<edittxtopen_t*> search_matches;
   txt_t opened_search;
   idx_t opened_cursor;

@@ -57,6 +57,7 @@ LogUI( const void* cstr ... );
 #include "rand.h"
 #include "allocator_heap_findleaks.h"
 #include "mainthread.h"
+#include "ds_hashset_nonzeroptrs.h"
 #include "ds_hashset_complexkey.h"
 #include "text_parsing.h"
 #include "ds_stack_resizeable_cont_addbacks.h"

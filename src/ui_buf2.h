@@ -462,7 +462,8 @@ buf_t
   stack_resizeable_cont_t<u32> internal_idx_from_line; // len = number of actual lines.
   stack_resizeable_cont_t<u32> unused_internal_idxs; // len = O( max len of internal_idx_from_line )
 #if LB
-  pagetree_11x2_t<allocator_pagelist_t, allocation_pagelist_t> internal_lineblocks;
+  // PERF: This used to be allocator_pagelist_t, and that's likely faster.
+  pagetree_11x2_t internal_lineblocks;
 #else
   stack_resizeable_cont_t<line_t> unordered_lines; // TODO: do something different. see above comment blocks.
 #endif
@@ -851,7 +852,7 @@ BufLoadEmpty( buf_t* buf )
   *AddBack( buf->internal_idx_from_line ) = 0;
   Alloc( buf->unused_internal_idxs, 8 );
 #if LB
-  Init( &buf->internal_lineblocks, allocator_pagelist_t{ &buf->pagelist } );
+  Init( &buf->internal_lineblocks );
   auto first_line = AccessLine( buf, 0 );
   *first_line = {};
 #else
@@ -883,7 +884,7 @@ BufLoad( buf_t* buf, file_t* file, eoltype_t* eoltype_detected )
 #if LB
   stack_resizeable_pagelist_t<slice32_t> lines;
   Init( lines, 65000 );
-  Init( &buf->internal_lineblocks, allocator_pagelist_t{ &buf->pagelist } );
+  Init( &buf->internal_lineblocks );
   idx_t num_cr = 0;
   idx_t num_lf = 0;
   idx_t num_crlf = 0;
@@ -971,7 +972,7 @@ BufSave( buf_t* buf, file_t* file, eoltype_t eoltype )
 
   slice_t eol = EolString( eoltype );
   constant idx_t c_chunk_size = 200*1024*1024;
-  auto chunk = AllocString<u8, allocator_virtual_t, allocation_virtual_t>( c_chunk_size );
+  auto chunk = AllocString<u8>( c_chunk_size );
   idx_t chunkpos = 0;
   idx_t bytepos = 0;
   auto last_line = LastLine( buf );

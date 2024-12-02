@@ -1,19 +1,18 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#define STACK   stack_resizeable_cont_t<T, Allocator, Allocation>
+#define STACK   stack_resizeable_cont_t<T>
 
 // meant to hold elements which are uniform in size.
-TEA struct
+Templ struct
 stack_resizeable_cont_t
 {
   T* mem;
   idx_t capacity; // # of elements mem can possibly hold.
   idx_t len; // # of elements in mem.
-  Allocator alloc;
-  Allocation allocn;
+  alloctype_t allocn;
 };
 
-TEA Inl tslice_t<T>
+Templ Inl tslice_t<T>
 SliceFromArray( STACK& stack )
 {
   tslice_t<T> r;
@@ -22,41 +21,39 @@ SliceFromArray( STACK& stack )
   return r;
 }
 
-TEA Inl void
+Templ Inl void
 Zero( STACK& stack )
 {
   stack.mem = 0;
   stack.capacity = 0;
   stack.len = 0;
-  stack.alloc = {};
   stack.allocn = {};
 }
-TEA Inl void
+Templ Inl void
 ZeroContents( STACK& stack )
 {
   Memzero( stack.mem, stack.len * sizeof( T ) );
 }
-TEA Inl void
-Alloc( STACK& stack, idx_t nelems, Allocator alloc = {} )
+Templ Inl void
+Alloc( STACK& stack, idx_t nelems )
 {
   Zero( stack );
-  stack.mem = Allocate<T>( alloc, stack.allocn, nelems );
+  stack.mem = Allocate<T>( &stack.allocn, nelems );
   stack.capacity = nelems;
-  stack.alloc = alloc;
 }
-TEA Inl void
+Templ Inl void
 Free( STACK& stack )
 {
   AssertCrash( stack.len <= stack.capacity );
   if( stack.mem ) {
-    Free( stack.alloc, stack.allocn, stack.mem );
+    Free( stack.allocn, stack.mem );
   }
   Zero( stack );
 }
 
-template< typename T, typename Allocator, typename Allocation, typename Idx >
+template< typename T, typename Idx >
 ForceInl void
-Reserve( Allocator& alloc, Allocation& allocn, T*& mem, Idx* new_capacity_, Idx capacity, Idx len, Idx enforce_capacity )
+Reserve( alloctype_t allocn, T*& mem, Idx* new_capacity_, Idx capacity, Idx len, Idx enforce_capacity )
 {
   AssertCrash( capacity );
   AssertCrash( len <= capacity );
@@ -65,18 +62,18 @@ Reserve( Allocator& alloc, Allocation& allocn, T*& mem, Idx* new_capacity_, Idx 
     while( new_capacity < enforce_capacity ) {
       new_capacity *= 2;
     }
-    mem = Reallocate<T>( alloc, allocn, mem, capacity, new_capacity );
+    mem = Reallocate<T>( allocn, mem, capacity, new_capacity );
     capacity = new_capacity;
   }
   *new_capacity_ = capacity;
 }
-TEA Inl void
+Templ Inl void
 Reserve( STACK& stack, idx_t enforce_capacity )
 {
-  Reserve( stack.alloc, stack.allocn, stack.mem, &stack.capacity, stack.capacity, stack.len, enforce_capacity );
+  Reserve( stack.allocn, stack.mem, &stack.capacity, stack.capacity, stack.len, enforce_capacity );
 }
 
-TEA Inl void
+Templ Inl void
 Copy( STACK& stack, STACK& src )
 {
   AssertCrash( stack.len <= stack.capacity );
@@ -85,22 +82,22 @@ Copy( STACK& stack, STACK& src )
   stack.len = src.len;
 }
 
-template< typename T, typename Allocator, typename Allocation, typename Idx >
+template< typename T, typename Idx >
 ForceInl T*
-AddBack( Allocator& alloc, Allocation& allocn, T*& mem, Idx& capacity, Idx& len, Idx nelems = 1 )
+AddBack( alloctype_t allocn, T*& mem, Idx& capacity, Idx& len, Idx nelems = 1 )
 {
   AssertCrash( len <= capacity );
-  Reserve( alloc, allocn, mem, &capacity, capacity, len, len + nelems );
+  Reserve( allocn, mem, &capacity, capacity, len, len + nelems );
   auto r = mem + len;
   len += nelems;
   return r;
 }
-TEA Inl T*
+Templ Inl T*
 AddBack( STACK& stack, idx_t nelems = 1 )
 {
-  return AddBack( stack.alloc, stack.allocn, stack.mem, stack.capacity, stack.len, nelems );
+  return AddBack( stack.allocn, stack.mem, stack.capacity, stack.len, nelems );
 }
-TEA Inl T*
+Templ Inl T*
 AddAt( STACK& stack, idx_t idx, idx_t nelems = 1 )
 {
   AssertCrash( stack.len <= stack.capacity );
@@ -118,14 +115,14 @@ AddAt( STACK& stack, idx_t idx, idx_t nelems = 1 )
   stack.len += nelems;
   return r;
 }
-TEA Inl void
+Templ Inl void
 RemBack( STACK& stack, idx_t nelems = 1 )
 {
   AssertCrash( stack.len <= stack.capacity );
   AssertCrash( nelems <= stack.len );
   stack.len -= nelems;
 }
-TEA Inl void
+Templ Inl void
 RemAt( STACK& stack, idx_t idx, idx_t nelems = 1 )
 {
   AssertCrash( stack.len <= stack.capacity );
@@ -139,7 +136,7 @@ RemAt( STACK& stack, idx_t idx, idx_t nelems = 1 )
   }
   stack.len -= nelems;
 }
-TEA Inl void
+Templ Inl void
 UnorderedRemAt( STACK& stack, idx_t idx )
 {
   idx_t nelems = 1; // TODO: rewrite for larger values?

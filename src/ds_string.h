@@ -3,16 +3,15 @@
 // TODO: we can make tstring_t an alias of stack_resizeable_cont_t<u8> i believe.
 //   the only consideration is: should we even have an alias, or just use <u8> everywhere?
 
-#define TSTRING   tstring_t<T, Allocator, Allocation>
+#define TSTRING   tstring_t<T>
 
 // arbitrary-length contiguous string of memory.
-TEA struct
+Templ struct
 tstring_t
 {
   T* mem;
   idx_t len; // # of bytes mem can possibly hold.
-  Allocator alloc;
-  Allocation allocn;
+  alloctype_t allocn;
   
   ForceInl operator tslice_t<T>()
   {
@@ -20,23 +19,21 @@ tstring_t
   }
 };
 
-//template< typename Allocator = allocator_heap_or_virtual_t >
 using string_t = tstring_t<u8>;
 
-TEA Inl void
+Templ Inl void
 Zero( TSTRING& dst )
 {
   dst.mem = 0;
   dst.len = 0;
-  dst.alloc = {};
   dst.allocn = {};
 }
-TEA Inl void
+Templ Inl void
 ZeroContents( TSTRING& dst )
 {
   Memzero( dst.mem, dst.len * sizeof( T ) );
 }
-TEA Inl tslice_t<T>
+Templ Inl tslice_t<T>
 SliceFromString( TSTRING& str )
 {
   tslice_t<T> r;
@@ -44,7 +41,7 @@ SliceFromString( TSTRING& str )
   r.len = str.len;
   return r;
 }
-TEA Inl tslice32_t<T>
+Templ Inl tslice32_t<T>
 Slice32FromString( TSTRING& str )
 {
   tslice32_t<T> r;
@@ -53,44 +50,43 @@ Slice32FromString( TSTRING& str )
   r.len = Cast( u32, str.len );
   return r;
 }
-template< typename T = u8, typename Allocator = allocator_heap_or_virtual_t, typename Allocation = allocation_heap_or_virtual_t >
+template< typename T = u8 >
 Inl TSTRING
-AllocString( idx_t len, Allocator alloc = {} )
+AllocString( idx_t len )
 {
   TSTRING dst;
-  dst.alloc = alloc;
   dst.len = len;
-  dst.mem = Allocate<T>( dst.alloc, dst.allocn, len );
+  dst.mem = Allocate<T>( &dst.allocn, len );
   return dst;
 }
-// TA Inl tstring_t<u8, Allocator, Allocation>
+// TA Inl tstring_t<u8>
 // AllocString( idx_t len, Allocator alloc = {} )
 // {
 //   return AllocString<u8, Allocator, Allocation>( len, alloc );
 // }
 
-TEA Inl void
+Templ Inl void
 Free( TSTRING& dst )
 {
-  Free( dst.alloc, dst.allocn, dst.mem );
+  Free( dst.allocn, dst.mem );
   Zero( dst );
 }
-TEA Inl void
+Templ Inl void
 ExpandTo( TSTRING& dst, idx_t len_new )
 {
   AssertCrash( len_new > dst.len );
-  dst.mem = Reallocate<T>( dst.alloc, dst.allocn, dst.mem, dst.len, len_new );
+  dst.mem = Reallocate<T>( dst.allocn, dst.mem, dst.len, len_new );
   dst.len = len_new;
 }
-TEA Inl void
+Templ Inl void
 ShrinkTo( TSTRING& dst, idx_t len_new )
 {
   AssertCrash( len_new < dst.len );
   AssertCrash( len_new > 0 );
-  dst.mem = Reallocate<T>( dst.alloc, dst.allocn, dst.mem, dst.len, len_new );
+  dst.mem = Reallocate<T>( dst.allocn, dst.mem, dst.len, len_new );
   dst.len = len_new;
 }
-TEA Inl void
+Templ Inl void
 Reserve( TSTRING& dst, idx_t enforce_capacity )
 {
   AssertCrash( dst.len );
@@ -102,7 +98,7 @@ Reserve( TSTRING& dst, idx_t enforce_capacity )
     ExpandTo( dst, len_new );
   }
 }
-TEA Inl bool
+Templ Inl bool
 PtrInsideMem( TSTRING& str, void* ptr )
 {
   AssertCrash( str.mem );
@@ -113,13 +109,13 @@ PtrInsideMem( TSTRING& str, void* ptr )
   bool inside = ( start <= ptr )  &&  ( ptr < end );
   return inside;
 }
-TEA Inl bool
+Templ Inl bool
 Equal( TSTRING& a, TSTRING& b )
 {
   return MemEqual( ML( a ), ML( b ) );
 }
 
-TEA Inl u8*
+Templ Inl u8*
 AllocCstr( TSTRING& str )
 {
   return AllocCstr( ML( str ) );
@@ -144,10 +140,10 @@ AllocCstr( TSTRING& str )
     return Cast( s32, ulen );
   }
 #endif
-tstring_t<u8, allocator_heap_t, allocation_heap_t>
+tstring_t<u8>
 AllocFormattedString( const void* cstr ... )
 {
-  auto str = AllocString<u8, allocator_heap_t, allocation_heap_t>( MAX( 32768, 2 * CstrLength( Str( cstr ) ) ) );
+  auto str = AllocString<u8>( MAX( 32768, 2 * CstrLength( Str( cstr ) ) ) );
 
   va_list args;
   va_start( args, cstr );
@@ -186,7 +182,7 @@ RegisterTest([]()
     1, 2, 3, 4, 5, 8, 10, 16, 24, 1024, 65536, 100000,
   };
   ForEach( size, sizes ) {
-    auto str = AllocString<u8, allocator_heap_t, allocation_heap_t>( size );
+    auto str = AllocString<u8>( size );
     For( i, 0, fill_count ) {
       auto idx = indices[i];
       auto value = values[i];
