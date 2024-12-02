@@ -96,7 +96,6 @@ MemHeapAllocBytes( idx_t nbytes )
   return mem;
 }
 
-
 Inl void*
 MemHeapReallocBytes( void* oldmem, idx_t oldlen, idx_t newlen )
 {
@@ -138,24 +137,3 @@ MemHeapFree( void* mem )
 
 
 constant idx_t c_virtualalloc_threshold = 100u * 1024*1024;
-
-// ============================================================================
-// HEAP ALLOCATOR
-
-struct allocator_heap_t {};
-struct allocation_heap_t {};
-
-Templ Inl T* Allocate( allocator_heap_t& alloc, allocation_heap_t& allocn, idx_t num_elements, idx_t alignment_pow2 = DEFAULT_ALIGN )
-{
-  AssertCrash( sizeof( T ) * num_elements <= c_virtualalloc_threshold ); // You should use other data structures for large allocations!
-  return MemHeapAlloc( T, num_elements );
-}
-Templ Inl T* Reallocate( allocator_heap_t& alloc, allocation_heap_t& allocn, T* oldmem, idx_t oldlen, idx_t newlen, idx_t alignment_pow2 = DEFAULT_ALIGN )
-{
-  AssertCrash( sizeof( T ) * newlen <= c_virtualalloc_threshold ); // You should use other data structures for large allocations!
-  return MemHeapRealloc( T, oldmem, oldlen, newlen );
-}
-Inl void Free( allocator_heap_t& alloc, allocation_heap_t& allocn, void* mem )
-{
-  return MemHeapFree( mem );
-}

@@ -4,46 +4,43 @@
 // if we store a unique id per page, then we can uniquely identify any string.
 // pagetrees are sparse, so we're not paying huge memory costs.
 // i suspect this will be slower than string hashtables, but may as well see.
-#define CHARTREEPAGE   chartree_page_t<Allocation>
-template< typename Allocation = allocation_heap_or_virtual_t >
+#define CHARTREEPAGE   chartree_page_t
 struct
 chartree_page_t
 {
   // 0 in [x] where x!=0 means the page isn't initialized.
   CHARTREEPAGE* child_pages[256];
   idx_t page_id;
-  Allocation allocn;
+  alloctype_t allocn;
 };
-TA Inl CHARTREEPAGE*
-AllocateChartreePage( Allocator& alloc, idx_t page_id )
+Inl CHARTREEPAGE*
+AllocateChartreePage( idx_t page_id )
 {
-  Allocation allocn = {};
-  auto page = Allocate<CHARTREEPAGE>( alloc, allocn, 1 );
+  alloctype_t allocn = {};
+  auto page = Allocate<CHARTREEPAGE>( &allocn, 1 );
   Arrayzero( page->child_pages );
   page->page_id = page_id;
   page->allocn = allocn;
   return page;
 }
 
-#define CHARTREE   chartree_t<Allocator, Allocation>
-TA struct
+#define CHARTREE   chartree_t
+struct
 chartree_t
 {
   CHARTREEPAGE* root;
-  Allocator alloc;
   idx_t id_generator;
   idx_t num_pages;
 };
-TA Inl void
-Init( CHARTREE* tree, Allocator alloc = {} )
+Inl void
+Init( CHARTREE* tree )
 {
   // Give the root page_id=0.
-  tree->root = AllocateChartreePage<Allocator, Allocation>( alloc, 0 );
-  tree->alloc = alloc;
+  tree->root = AllocateChartreePage( 0 );
   tree->id_generator = 1;
   tree->num_pages = 1;
 }
-TA Inl idx_t
+Inl idx_t
 Uniquify( CHARTREE* tree, slice_t str )
 {
   auto page = tree->root;
@@ -51,7 +48,7 @@ Uniquify( CHARTREE* tree, slice_t str )
     auto c = str.mem[i];
     auto next_page = page->child_pages[c];
     if( !next_page ) {
-      next_page = AllocateChartreePage<Allocator, Allocation>( tree->alloc, tree->id_generator );
+      next_page = AllocateChartreePage( tree->id_generator );
       page->child_pages[c] = next_page;
       tree->id_generator += 1;
       tree->num_pages += 1;
@@ -65,10 +62,10 @@ Uniquify( CHARTREE* tree, slice_t str )
 
 RegisterTest([]()
 {
-  chartree_t<allocator_pagelist_t, allocation_pagelist_t> tree;
+  chartree_t tree;
   pagelist_t mem;
   Init( mem, 64000 );
-  Init( &tree, allocator_pagelist_t{ &mem } );
+  Init( &tree );
 
   slice_t tests[] = {
     SliceFromCStr( "" ),

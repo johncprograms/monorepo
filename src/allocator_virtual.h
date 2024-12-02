@@ -58,23 +58,3 @@ MemVirtualReallocBytes( void* oldmem, idx_t oldlen, idx_t newlen )
 
 #define MemVirtualRealloc( type, mem, oldnum, newnum ) \
   Cast( type*, MemVirtualReallocBytes( mem, oldnum * sizeof( type ), newnum * sizeof( type ) ) )
-
-
-// ============================================================================
-// VIRTUAL ALLOCATOR
-
-struct allocator_virtual_t {};
-struct allocation_virtual_t {};
-
-Templ Inl T* Allocate( allocator_virtual_t& alloc, allocation_virtual_t& allocn, idx_t num_elements )
-{
-  return MemVirtualAlloc( T, num_elements );
-}
-Templ Inl T* Reallocate( allocator_virtual_t& alloc, allocation_virtual_t& allocn, T* oldmem, idx_t oldlen, idx_t newlen )
-{
-  return MemVirtualRealloc( T, oldmem, oldlen, newlen );
-}
-Inl void Free( allocator_virtual_t& alloc, allocation_virtual_t& allocn, void* mem )
-{
-  return MemVirtualFree( mem );
-}

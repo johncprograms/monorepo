@@ -187,46 +187,47 @@ _AddPagelistSlice32(
 
 // ============================================================================
 // PAGELIST ALLOCATOR
-
-struct allocator_pagelist_t
-{
-  pagelist_t* mem;
-
-  ForceInl allocator_pagelist_t()
+#if 0
+  struct allocator_pagelist_t
   {
-    mem = 0;
-  }
-  ForceInl allocator_pagelist_t( pagelist_t* mem_ )
+    pagelist_t* mem;
+  
+    ForceInl allocator_pagelist_t()
+    {
+      mem = 0;
+    }
+    ForceInl allocator_pagelist_t( pagelist_t* mem_ )
+    {
+      mem = mem_;
+    }
+  };
+  struct allocation_pagelist_t
   {
-    mem = mem_;
+    // Nothing to store per-allocation.
+  };
+  Templ Inl T* Allocate( allocator_pagelist_t& alloc, allocation_pagelist_t& allocn, idx_t num_elements, idx_t alignment_pow2 = DEFAULT_ALIGN )
+  {
+    return AddPagelist( *alloc.mem, T, alignment_pow2, num_elements );
   }
-};
-struct allocation_pagelist_t
-{
-  // Nothing to store per-allocation.
-};
-Templ Inl T* Allocate( allocator_pagelist_t& alloc, allocation_pagelist_t& allocn, idx_t num_elements, idx_t alignment_pow2 = DEFAULT_ALIGN )
-{
-  return AddPagelist( *alloc.mem, T, alignment_pow2, num_elements );
-}
-Templ Inl T* Reallocate( allocator_pagelist_t& alloc, allocation_pagelist_t& allocn, T* oldmem, idx_t oldlen, idx_t newlen, idx_t alignment_pow2 = DEFAULT_ALIGN )
-{
-  auto newmem = Allocate<T>( alloc, allocn, newlen, alignment_pow2 );
-  TMove( newmem, oldmem, MIN( oldlen, newlen ) );
-  return newmem;
-}
-Templ Inl tslice_t<T> AllocateSlice( allocator_pagelist_t& alloc, allocation_pagelist_t& allocn, idx_t num_elements, idx_t alignment_pow2 = DEFAULT_ALIGN )
-{
-  return AddPagelistSlice( *alloc.mem, T, alignment_pow2, num_elements );
-}
-Templ Inl tslice_t<T> AllocateSlice32( allocator_pagelist_t& alloc, allocation_pagelist_t& allocn, idx_t num_elements, idx_t alignment_pow2 = DEFAULT_ALIGN )
-{
-  return AddPagelistSlice32( *alloc.mem, T, alignment_pow2, num_elements );
-}
-Inl void Reset( allocator_pagelist_t& alloc )
-{
-  return Reset( *alloc.mem );
-}
+  Templ Inl T* Reallocate( allocator_pagelist_t& alloc, allocation_pagelist_t& allocn, T* oldmem, idx_t oldlen, idx_t newlen, idx_t alignment_pow2 = DEFAULT_ALIGN )
+  {
+    auto newmem = Allocate<T>( alloc, allocn, newlen, alignment_pow2 );
+    TMove( newmem, oldmem, MIN( oldlen, newlen ) );
+    return newmem;
+  }
+  Templ Inl tslice_t<T> AllocateSlice( allocator_pagelist_t& alloc, allocation_pagelist_t& allocn, idx_t num_elements, idx_t alignment_pow2 = DEFAULT_ALIGN )
+  {
+    return AddPagelistSlice( *alloc.mem, T, alignment_pow2, num_elements );
+  }
+  Templ Inl tslice_t<T> AllocateSlice32( allocator_pagelist_t& alloc, allocation_pagelist_t& allocn, idx_t num_elements, idx_t alignment_pow2 = DEFAULT_ALIGN )
+  {
+    return AddPagelistSlice32( *alloc.mem, T, alignment_pow2, num_elements );
+  }
+  Inl void Reset( allocator_pagelist_t& alloc )
+  {
+    return Reset( *alloc.mem );
+  }
+#endif
 
 
 

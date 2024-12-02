@@ -47,11 +47,11 @@
 // TODO: B+ tree
 
 
-#define TCA    template< typename T, idx_t C, typename Allocation = allocation_heap_or_virtual_t >
-#define TCAA   template< typename T, idx_t C, typename Allocator = allocator_heap_or_virtual_t, typename Allocation = allocation_heap_or_virtual_t >
+#define TCA    template< typename T, idx_t C >
+#define TCAA   template< typename T, idx_t C >
 
-#define BTREENODE btree_node_t<T, C, Allocation>
-#define BTREE btree_t<T, C, Allocator, Allocation>
+#define BTREENODE btree_node_t<T, C>
+#define BTREE btree_t<T, C>
 
 TCA
 struct
@@ -64,7 +64,7 @@ btree_node_t
   u32 M;
   T keys[C];
   BTREENODE* children[C+1];
-  Allocation allocn;
+  alloctype_t allocn;
 };
 TCA Inl T*
 Keys( BTREENODE* node )
@@ -77,10 +77,10 @@ Children( BTREENODE* node )
   return node->children;
 }
 TCAA Inl BTREENODE*
-AllocateBtreeNode( Allocator& alloc )
+AllocateBtreeNode()
 {
-  Allocation allocn = {};
-  auto node = Allocate<BTREENODE>( alloc, allocn, 1 );
+  alloctype_t allocn = {};
+  auto node = Allocate<BTREENODE>( &allocn, 1 );
   node->M = 0;
   Arrayzero( node->keys );
   Arrayzero( node->children );
@@ -94,13 +94,11 @@ btree_t
 {
   BTREENODE* root;
   idx_t nbytes_node; // TODO: delete this if possible
-  Allocator alloc;
 };
 TCAA Inl void
-Init( BTREE* t, Allocator alloc = {} )
+Init( BTREE* t )
 {
-  t->alloc = alloc;
-  auto root = AllocateBtreeNode<T, C, Allocator, Allocation>( t->alloc );
+  auto root = AllocateBtreeNode<T, C>();
   t->root = root;
   t->nbytes_node = sizeof( BTREENODE );
 }
@@ -283,7 +281,7 @@ _InsertAtIdxAssumingRoom(
 }
 
 
-#define PARENTINFO   parent_info_t<T, C, Allocation>
+#define PARENTINFO   parent_info_t<T, C>
 TCA struct
 parent_info_t
 {
@@ -667,7 +665,7 @@ _Insert_WalkUpwards(
 
     AssertCrash( M == C );
 
-    auto new_right = AllocateBtreeNode<T, C, Allocator, Allocation>( t->alloc );
+    auto new_right = AllocateBtreeNode<T, C>();
     auto new_right_children = Children<T>( new_right );
     auto new_right_keys = Keys<T>( new_right );
 
@@ -916,7 +914,7 @@ _Insert_WalkUpwards(
       // we're at the root, and it's full.
       // this means we need to make a new root, and set it's children to [ left, new_right ].
       //
-      auto new_root = AllocateBtreeNode<T, C, Allocator, Allocation>( t->alloc );
+      auto new_root = AllocateBtreeNode<T, C>();
       new_root->M = 1;
       auto new_root_children = Children<T>( new_root );
       auto new_root_keys = Keys<T>( new_root );
@@ -1427,11 +1425,11 @@ DeleteRecur(
 RegisterTest([]()
 {
   constexpr idx_t C = 10;
-  btree_t<u32, C, allocator_pagelist_t, allocation_pagelist_t> t;
+  btree_t<u32, C> t;
   pagelist_t mem;
   Init( mem, 64000 );
-  Init( &t, allocator_pagelist_t{ &mem } );
-  stack_resizeable_cont_t<parent_info_t<u32, C, allocation_pagelist_t>> infos;
+  Init( &t );
+  stack_resizeable_cont_t<parent_info_t<u32, C>> infos;
   Alloc( infos, 1024 );
   stack_resizeable_cont_t<u32> flat;
   Alloc( flat, 1024 );
@@ -1589,7 +1587,7 @@ Insert(
       //
       // haven't yet created a child_node in this slot, and we're out of room.
       //
-      child_node = AllocateBtreeNode<T, C, Allocator, Allocation>( t->alloc );
+      child_node = AllocateBtreeNode<T, C>();
       auto child_keys = Keys<T>( child_node );
       auto child_children = Children<T>( child_node );
 
