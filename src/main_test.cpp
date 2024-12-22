@@ -215,7 +215,7 @@ int myAtoi(string s) {
     if (it == itend) return 0;
 
     bool neg = false;
-    if (*it == '-') { 
+    if (*it == '-') {
         neg = true;
         ++it;
     }
@@ -260,7 +260,7 @@ bool match(string_view s, string_view p) {
     auto p0 = p[0];
     auto m0 = p0 == '.' || p0 == s[0];
     if (P > 1 && p[1] == '*') {
-        // either we: 
+        // either we:
         // 1. use the * 0 times, OR,
         // 2. advance and keep trying to use the *
         return match(s, p.substr(2)) || (m0 && match(s.substr(1), p));
@@ -515,7 +515,7 @@ vector<vector<int>> fourSum(vector<int>& n, int target) {
         s.erase(a);
         s.erase(b);
         s.erase(c);
-        if (s.empty()) continue;   
+        if (s.empty()) continue;
         vector<int> rv; rv.resize(4);
         rv[0] = n[a];
         rv[1] = n[b];
@@ -597,14 +597,14 @@ int search(vector<int>& n, int target) {
     }
     const bool foundPivot = n[L] > n[R];
     auto linear = [=](size_t i) {
-        // 3 4 5 0 1 2 
+        // 3 4 5 0 1 2
         //     L R
         // L=2
         // R=3
-        // to linearize / wrap around, 
+        // to linearize / wrap around,
         // 0 1 2 3 4 5
         // shift by +R, mod by N.
-        return foundPivot ? (i+R)%N : i; 
+        return foundPivot ? (i+R)%N : i;
     };
     L = 0;
     R = N-1;
@@ -655,10 +655,10 @@ bool less00(const vector<int>& a, const vector<int>& b){ return a[0] < b[0]; }
 bool less01(const vector<int>& a, const vector<int>& b){ return a[0] < b[1]; }
 bool less10(const vector<int>& a, const vector<int>& b){ return a[1] < b[0]; }
 bool less11(const vector<int>& a, const vector<int>& b){ return a[1] < b[1]; }
-bool overlap(const vector<int>& a, const vector<int>& b){ 
+bool overlap(const vector<int>& a, const vector<int>& b){
     return !((a[0] > b[1]) || (b[0] > a[1]));
 }
-vector<int> mergeoverlapping(const vector<int>& a, const vector<int>& b){ 
+vector<int> mergeoverlapping(const vector<int>& a, const vector<int>& b){
     vector<int> r; r.resize(2);
     r[0] = min(a[0],b[0]);
     r[1] = max(a[1],b[1]);
@@ -687,7 +687,7 @@ vector<vector<int>> insert(vector<vector<int>>& intervals, vector<int>& n) {
     //                           L10
     //                    L11
     // We want L01 and L11 to determine proper overlap.
-    // 
+    //
     // [[1,3],[5,6],[7,7],[8,10],[12,16]]
     // e.g. n=[4,11]
     //        L01                L11
@@ -774,7 +774,7 @@ string minWindow(string s, string t) {
 }
 
 enum ext { num, unaryparen, unaryneg, binadd, binsub };
-struct ex { 
+struct ex {
     ext type;
     union {
         int num;
@@ -916,7 +916,7 @@ void Junk() {
   vv.push_back(vector<int>{{1,2,3}});
   vv.push_back(vector<int>{{4,5,6}});
   vv.push_back(vector<int>{{7,8,9}});
-  spiralOrder(vv);
+  //spiralOrder(vv);
   longestPalindrome("cbbd");
   convert("abc",2);
   myAtoi("42");
@@ -952,17 +952,17 @@ Main( u8* cmdline, idx_t cmdline_len )
   #endif
   g_client = &client;
 
-//  For( i, 0, g_ntests ) {
-//    g_tests[i]();
-//  }
-//
+  For( i, 0, g_ntests ) {
+    g_tests[i]();
+  }
+
 //  CalcJunk();
-//
+
 //#if defined(WIN)
 //  ExeJunk();
 //#endif
 
-  Junk();
+//  Junk();
 
 // Fast DFT:
 //   F[n] = sum( k=0..N-1, f[k] * exp( i * -2pi * n * k / N ) )
@@ -5091,7 +5091,7 @@ bool maxSubsq(
   for (size_t y = 0; y < dy; ++y) {
     for (size_t x = 0; x < dx; ++x) {
       if (!grid[x+dx*y]) continue;
-      
+
       for (size_t yR = y; yR < dy; ++yR) {
         for (size_t xR = x; xR < dx; ++xR) {
           if (!isBorder(grid, dx, dy, x, y, xR, yR)) continue;
@@ -5123,7 +5123,7 @@ int64_t sum(
   pt L,
   pt R)
 {
-  
+
 }
 bool maxsum(
   span<int> grid,

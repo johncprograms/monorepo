@@ -4,39 +4,37 @@
 // double-ended queue, aka deque.
 //
 
-#define DEQUERESIZEABLECONT   deque_resizeable_cont_t<T, Allocator, Allocation>
-TEA struct
+#define DEQUERESIZEABLECONT   deque_resizeable_cont_t<T>
+Templ struct
 deque_resizeable_cont_t
 {
   T* mem;
   idx_t head;
   idx_t tail;
   idx_t capacity;
-  Allocation allocn;
-  Allocator alloc;
+  alloctype_t allocn;
 };
-TEA Inl void
-Init( DEQUERESIZEABLECONT& q, idx_t capacity, Allocator alloc = {} )
+Templ Inl void
+Init( DEQUERESIZEABLECONT& q, idx_t capacity )
 {
-  Allocation allocn = {};
-  q.mem = Allocate<T>( alloc, allocn, capacity );
-  q.alloc = alloc;
+  alloctype_t allocn = {};
+  q.mem = Allocate<T>( &allocn, capacity );
   q.allocn = allocn;
   q.capacity = capacity;
   q.head = 0;
   q.tail = 0;
 }
-TEA Inl void
+Templ Inl void
 Kill( DEQUERESIZEABLECONT& q )
 {
-  Free( q.alloc, q.allocn, q.mem );
+  Free( q.allocn, q.mem );
   q.mem = 0;
   q.capacity = 0;
   q.allocn = {};
   q.head = 0;
   q.tail = 0;
 }
-TEA Inl void
+Templ Inl void
 AddFront( DEQUERESIZEABLECONT& q, T* src, idx_t src_len )
 {
   auto len_remaining = RingbufferLenRemaining( q.capacity, q.head, q.tail );
@@ -45,7 +43,6 @@ AddFront( DEQUERESIZEABLECONT& q, T* src, idx_t src_len )
     ResizeRingbuffer(
       &q.mem,
       &q.capacity,
-      q.alloc,
       q.allocn,
       &q.head,
       &q.tail
@@ -53,7 +50,7 @@ AddFront( DEQUERESIZEABLECONT& q, T* src, idx_t src_len )
   }
   AddFrontAssumingRoom( q.mem, q.capacity, &q.head, q.tail, src, src_len );
 }
-TEA Inl void
+Templ Inl void
 AddBack( DEQUERESIZEABLECONT& q, T* src, idx_t src_len, idx_t* num_added )
 {
   auto len_remaining = RingbufferLenRemaining( q.capacity, q.head, q.tail );
@@ -62,7 +59,6 @@ AddBack( DEQUERESIZEABLECONT& q, T* src, idx_t src_len, idx_t* num_added )
     ResizeRingbuffer(
       &q.mem,
       &q.capacity,
-      q.alloc,
       q.allocn,
       &q.head,
       &q.tail
@@ -71,7 +67,7 @@ AddBack( DEQUERESIZEABLECONT& q, T* src, idx_t src_len, idx_t* num_added )
   AddBackAssumingRoom( q.mem, q.capacity, q.head, &q.tail, src, src_len );
 }
 // TODO: shrinking option?
-TEA Inl void
+Templ Inl void
 RemFront( DEQUERESIZEABLECONT& q, T* dst, idx_t dst_len, idx_t* num_removed )
 {
   auto len = RingbufferLen( q.capacity, q.head, q.tail );
@@ -79,7 +75,7 @@ RemFront( DEQUERESIZEABLECONT& q, T* dst, idx_t dst_len, idx_t* num_removed )
   RemFrontAssumingRoom( q.mem, q.capacity, &q.head, q.tail, dst, num_remove );
   *num_removed = num_remove;
 }
-TEA Inl void
+Templ Inl void
 RemBack( DEQUERESIZEABLECONT& q, T* dst, idx_t dst_len, idx_t* num_removed )
 {
   auto len = RingbufferLen( q.capacity, q.head, q.tail );

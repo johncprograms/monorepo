@@ -59,11 +59,6 @@ AllocString( idx_t len )
   dst.mem = Allocate<T>( &dst.allocn, len );
   return dst;
 }
-// TA Inl tstring_t<u8>
-// AllocString( idx_t len, Allocator alloc = {} )
-// {
-//   return AllocString<u8, Allocator, Allocation>( len, alloc );
-// }
 
 Templ Inl void
 Free( TSTRING& dst )

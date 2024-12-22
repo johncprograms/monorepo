@@ -85,44 +85,42 @@ DequeueAssumingRoom(
 }
 
 
-#define QUEUE   queue_nonresizeable_t<T, Allocator, Allocation>
+#define QUEUE   queue_nonresizeable_t<T>
 // requires:
 // - Allocate<T>( Allocator&, idx_t )
 // - Free( Allocator&, void* )
-TEA struct
+Templ struct
 queue_nonresizeable_t
 {
   T* mem;
   idx_t head;
   idx_t tail;
   idx_t capacity;
-  Allocator alloc;
-  Allocation allocn;
+  alloctype_t allocn;
 };
-TEA Inl void
-Init( QUEUE& q, idx_t initial_capacity, Allocator alloc = {} )
+Templ Inl void
+Init( QUEUE& q, idx_t initial_capacity )
 {
-  q.alloc = alloc;
-  q.mem = Allocate<T>( q.alloc, q.allocn, initial_capacity );
+  q.mem = Allocate<T>( &q.allocn, initial_capacity );
   q.capacity = initial_capacity;
   q.head = 0;
   q.tail = 0;
 }
-TEA Inl void
+Templ Inl void
 Kill( QUEUE& q )
 {
-  Free( q.alloc, q.allocn, q.mem );
+  Free( q.allocn, q.mem );
   q.mem = 0;
   q.capacity = 0;
   q.head = 0;
   q.tail = 0;
 }
-TEA Inl void
+Templ Inl void
 Enqueue( QUEUE& q, T* src, bool* success )
 {
   Enqueue( q.mem, q.tail, q.head, q.capacity, src, success );
 }
-TEA Inl void
+Templ Inl void
 Dequeue( QUEUE& q, T* dst, bool* success )
 {
   Dequeue( q.mem, q.tail, &q.head, q.capacity, dst, success );

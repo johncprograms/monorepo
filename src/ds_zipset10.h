@@ -14,20 +14,20 @@
 // ...
 // [ 0 1 ... 9,999,999,999 ] len = 10B = 10^10
 //
-#define ZIPSET10   zipset10_t<T, Allocator, Allocation>
-TEA struct
+#define ZIPSET10   zipset10_t<T>
+Templ struct
 zipset10_t
 {
   constant idx_t c_num_rows = 10;
 
-  Allocation allocns[c_num_rows];
+  alloctype_t allocns[c_num_rows];
   T* rows[c_num_rows];
   idx_t capacities[c_num_rows];
   idx_t lens[c_num_rows];
   idx_t N;
   Allocator alloc;
 };
-TEA Inl void
+Templ Inl void
 Init( ZIPSET10& s, Allocator alloc = {} )
 {
   Arrayzero( s.allocns );
@@ -41,7 +41,7 @@ Init( ZIPSET10& s, Allocator alloc = {} )
 //   we could use the same algorithm as InsertAllowDuplicates and just throw away the carry_row if we
 //   find a duplicate.
 //   or, we could do a lookup and only insert if not found.
-TEA Inl void
+Templ Inl void
 InsertAllowDuplicates(
   ZIPSET10& s,
   T value
@@ -126,7 +126,7 @@ InsertAllowDuplicates(
   // note that integer arithmetic does the appropriate bit carries trivially, which is nice.
   s.N = N + 1;
 }
-TEA Inl void
+Templ Inl void
 Lookup(
   ZIPSET10& s,
   T value,
@@ -154,7 +154,7 @@ Lookup(
 
   *found = 0;
 }
-TEA Inl void
+Templ Inl void
 Delete(
   ZIPSET10& s,
   T value,
@@ -187,7 +187,7 @@ Delete(
 
   *found = 0;
 }
-TEA Inl void
+Templ Inl void
 FreeUnusedRows(
   ZIPSET10& s
   )

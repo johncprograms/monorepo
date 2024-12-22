@@ -140,39 +140,37 @@ RemBackAssumingRoom(
   *tail_ = tail;
 }
 
-#define DEQUENONRESIZEABLE   deque_nonresizeable_t<T, Allocator, Allocation>
-TEA struct
+#define DEQUENONRESIZEABLE   deque_nonresizeable_t<T>
+Templ struct
 deque_nonresizeable_t
 {
   T* mem;
   idx_t head;
   idx_t tail;
   idx_t capacity;
-  Allocation allocn;
-  Allocator alloc;
+  alloctype_t allocn;
 };
-TEA Inl void
-Init( DEQUENONRESIZEABLE& q, idx_t capacity, Allocator alloc = {} )
+Templ Inl void
+Init( DEQUENONRESIZEABLE& q, idx_t capacity )
 {
-  Allocation allocn = {};
-  q.mem = Allocate<T>( alloc, allocn, capacity );
-  q.alloc = alloc;
+  alloctype_t allocn = {};
+  q.mem = Allocate<T>( &allocn, capacity );
   q.allocn = allocn;
   q.capacity = capacity;
   q.head = 0;
   q.tail = 0;
 }
-TEA Inl void
+Templ Inl void
 Kill( DEQUENONRESIZEABLE& q )
 {
-  Free( q.alloc, q.allocn, q.mem );
+  Free( q.allocn, q.mem );
   q.mem = 0;
   q.capacity = 0;
   q.allocn = {};
   q.head = 0;
   q.tail = 0;
 }
-TEA Inl void
+Templ Inl void
 AddFront( DEQUENONRESIZEABLE& q, T* src, idx_t src_len, idx_t* num_added )
 {
   auto len_remaining = RingbufferLenRemaining( q.capacity, q.head, q.tail );
@@ -180,7 +178,7 @@ AddFront( DEQUENONRESIZEABLE& q, T* src, idx_t src_len, idx_t* num_added )
   AddFrontAssumingRoom( q.mem, q.capacity, &q.head, q.tail, src, num_add );
   *num_added = num_add;
 }
-TEA Inl void
+Templ Inl void
 RemFront( DEQUENONRESIZEABLE& q, T* dst, idx_t dst_len, idx_t* num_removed )
 {
   auto len = RingbufferLen( q.capacity, q.head, q.tail );
@@ -188,7 +186,7 @@ RemFront( DEQUENONRESIZEABLE& q, T* dst, idx_t dst_len, idx_t* num_removed )
   RemFrontAssumingRoom( q.mem, q.capacity, &q.head, q.tail, dst, num_remove );
   *num_removed = num_remove;
 }
-TEA Inl void
+Templ Inl void
 AddBack( DEQUENONRESIZEABLE& q, T* src, idx_t src_len, idx_t* num_added )
 {
   auto len_remaining = RingbufferLenRemaining( q.capacity, q.head, q.tail );
@@ -197,7 +195,7 @@ AddBack( DEQUENONRESIZEABLE& q, T* src, idx_t src_len, idx_t* num_added )
   AddBackAssumingRoom( q.mem, q.capacity, q.head, &q.tail, src, num_add );
   *num_added = num_add;
 }
-TEA Inl void
+Templ Inl void
 RemBack( DEQUENONRESIZEABLE& q, T* dst, idx_t dst_len, idx_t* num_removed )
 {
   auto len = RingbufferLen( q.capacity, q.head, q.tail );
@@ -205,17 +203,17 @@ RemBack( DEQUENONRESIZEABLE& q, T* dst, idx_t dst_len, idx_t* num_removed )
   RemBackAssumingRoom( q.mem, q.capacity, q.head, &q.tail, dst, num_remove );
   *num_removed = num_remove;
 }
-TEA Inl idx_t
+Templ Inl idx_t
 LenRemaining( DEQUENONRESIZEABLE& q )
 {
   return RingbufferLenRemaining( q.capacity, q.head, q.tail );
 }
-TEA Inl idx_t
+Templ Inl idx_t
 Len( DEQUENONRESIZEABLE& q )
 {
   return RingbufferLen( q.capacity, q.head, q.tail );
 }
-TEA Inl void
+Templ Inl void
 Clear( DEQUENONRESIZEABLE& q )
 {
   q.head = 0;

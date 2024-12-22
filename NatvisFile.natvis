@@ -30,7 +30,7 @@
   <Type Name="token_t">
     <DisplayString>{{ {type} {mem,[len]s8} }}</DisplayString>
   </Type>
-  <Type Name="stack_resizeable_cont_t&lt;*,*,*&gt;">
+  <Type Name="stack_resizeable_cont_t&lt;*&gt;">
     <DisplayString>{{ {len} / {capacity} }}</DisplayString>
     <Expand>
       <ArrayItems>
@@ -39,7 +39,7 @@
       </ArrayItems>
     </Expand>
   </Type>
-  <Type Name="stack_resizeable_page_t&lt;*,*,*&gt;">
+  <Type Name="stack_resizeable_page_t&lt;*&gt;">
     <DisplayString>{{ {len} / {capacity} }}</DisplayString>
     <Expand>
       <ArrayItems>
@@ -48,7 +48,7 @@
       </ArrayItems>
     </Expand>
   </Type>
-  <Type Name="stack_nonresizeable_t&lt;*,*,*&gt;">
+  <Type Name="stack_nonresizeable_t&lt;*&gt;">
     <DisplayString>{{ {len} / {capacity} }}</DisplayString>
     <Expand>
       <ArrayItems>
@@ -115,7 +115,7 @@
       </LinkedListItems>
     </Expand>
   </Type>
-  <Type Name="stack_resizeable_pagelist_t&lt;*,*,*&gt;">
+  <Type Name="stack_resizeable_pagelist_t&lt;*&gt;">
     <DisplayString>{{ len={totallen} }}</DisplayString>
     <Expand>
       <LinkedListItems>

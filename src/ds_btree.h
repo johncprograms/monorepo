@@ -47,14 +47,12 @@
 // TODO: B+ tree
 
 
-#define TCA    template< typename T, idx_t C >
-#define TCAA   template< typename T, idx_t C >
+#define TC   template< typename T, idx_t C >
 
 #define BTREENODE btree_node_t<T, C>
 #define BTREE btree_t<T, C>
 
-TCA
-struct
+TC struct
 btree_node_t
 {
   // the memory packing looks like:
@@ -66,17 +64,17 @@ btree_node_t
   BTREENODE* children[C+1];
   alloctype_t allocn;
 };
-TCA Inl T*
+TC Inl T*
 Keys( BTREENODE* node )
 {
   return node->keys;
 }
-TCA Inl BTREENODE**
+TC Inl BTREENODE**
 Children( BTREENODE* node )
 {
   return node->children;
 }
-TCAA Inl BTREENODE*
+TC Inl BTREENODE*
 AllocateBtreeNode()
 {
   alloctype_t allocn = {};
@@ -88,21 +86,20 @@ AllocateBtreeNode()
   return node;
 }
 
-TCAA
-struct
+TC struct
 btree_t
 {
   BTREENODE* root;
   idx_t nbytes_node; // TODO: delete this if possible
 };
-TCAA Inl void
+TC Inl void
 Init( BTREE* t )
 {
   auto root = AllocateBtreeNode<T, C>();
   t->root = root;
   t->nbytes_node = sizeof( BTREENODE );
 }
-TCAA Inl void
+TC Inl void
 Lookup(
   BTREE* t,
   T key,
@@ -146,7 +143,7 @@ Lookup(
   UnreachableCrash();
 }
 
-TCAA Inl void
+TC Inl void
 _FlattenValues(
   BTREE* t,
   BTREENODE* node,
@@ -171,7 +168,7 @@ _FlattenValues(
     }
   }
 }
-TCAA void
+TC void
 FlattenValues(
   BTREE* t,
   stack_resizeable_cont_t<T>* result
@@ -180,7 +177,7 @@ FlattenValues(
   _FlattenValues( t, t->root, result );
 }
 
-TCAA Inl void
+TC Inl void
 _Validate(
   BTREE* t,
   BTREENODE* node,
@@ -229,7 +226,7 @@ _Validate(
     }
   }
 }
-TCAA Inl void
+TC Inl void
 Validate(
   BTREE* t
   )
@@ -240,7 +237,7 @@ Validate(
   AssertCrash( min_subtree <= max_subtree );
 }
 
-TCA ForceInl void
+TC ForceInl void
 _InsertAtIdxAssumingRoom(
   BTREENODE* node,
   T* keys,
@@ -282,7 +279,7 @@ _InsertAtIdxAssumingRoom(
 
 
 #define PARENTINFO   parent_info_t<T, C>
-TCA struct
+TC struct
 parent_info_t
 {
   BTREENODE* node;
@@ -299,7 +296,7 @@ parent_info_t
     // for internal nodes as we walk upwards, child_left, child_right are the result of the previous iterations's split.
     // we need to store these in the node's children to maintain the tree structure.
     //
-    TCA Inl void
+    TC Inl void
     _Insert_WalkUpwardsRecur(
       BTREE* t,
       T key,
@@ -639,7 +636,7 @@ parent_info_t
 
 #endif
 
-TCAA Inl void
+TC Inl void
 _Insert_WalkUpwards(
   BTREE* t,
   T key,
@@ -984,7 +981,7 @@ _Insert_WalkUpwards(
   }
 }
 
-TCAA Inl void
+TC Inl void
 Insert(
   BTREE* t,
   T key,
@@ -1070,7 +1067,7 @@ Insert(
   if the leaf node has room for insertion,
 
 
-TCAA Inl void
+TC Inl void
 Insert(
   BTREE* t,
   T key,
@@ -1127,7 +1124,7 @@ Insert(
 // - node is the leaf part of parent_chain
 // - node has fewer than the minimum allowed number of keys: ( M < C / 2 )
 //
-TCAA Inl void
+TC Inl void
 _DeleteRebalance_WalkUpwardsRecur(
   BTREE* t,
   stack_resizeable_cont_t<PARENTINFO>* parent_chain,
@@ -1172,7 +1169,6 @@ _DeleteRebalance_WalkUpwardsRecur(
     // the same kind of balancing question applies to choice B.1 vs B.2, and i'm not sure.
     //
     // TODO: what if we opportunistically merge? e.g. check left for spares or merging, before even considering right.
-    //
     //
 
     auto parent_info = parent_chain->mem + parent_chain->len - 1;
@@ -1274,7 +1270,7 @@ _DeleteRebalance_WalkUpwardsRecur(
   }
 }
 
-TCAA Inl void
+TC Inl void
 DeleteRecur(
   BTREE* t,
   T key,
@@ -1422,12 +1418,337 @@ DeleteRecur(
 
 
 
+#define CC 10
+struct btnode {
+  std::vector<int> keys;
+  std::vector<btnode*> children;
+
+  bool leaf() { return children.empty(); }
+  void insertKey(size_t i, int key) {
+    AssertCrash(i <= keys.size());
+    keys.insert(std::begin(keys)+i, key);
+  }
+  void insertChild(size_t i, btnode* c) {
+    AssertCrash(i <= children.size());
+    children.insert(std::begin(children)+i, c);
+  }
+  void removeKey(size_t i) {
+    AssertCrash(i < keys.size());
+    keys.erase(std::begin(keys)+i);
+  }
+  void removeChild(size_t i) {
+    AssertCrash(i < children.size());
+    children.erase(std::begin(children)+i);
+  }
+
+  static btnode* Alloc() {
+    auto r = new btnode;
+    return r;
+  }
+  static void Free(btnode* t) {
+    for (auto c : t->children) {
+      Free(c);
+      delete c;
+    }
+    delete t;
+  }
+
+  void Lookup(int key, size_t& index, bool& found) {
+    found = false;
+    size_t i = 0;
+    for (; i < keys.size(); ++i) {
+      auto cmp = key <=> keys[i];
+      if (cmp == 0) {
+        found = 1;
+        break;
+      }
+      else if (cmp < 0) {
+        break;
+      }
+    }
+    index = i;
+  }
+};
+
+struct btree {
+  btnode* root;
+
+  btree() {
+    root = btnode::Alloc();
+  }
+  ~btree() {
+    btnode::Free(root);
+  }
+
+  void Lookup(int key, bool& found) {
+    found = 0;
+    auto t = root;
+    while (t) {
+      size_t index;
+      t->Lookup(key, index, found);
+      if (found) return;
+
+      // key should be down the tree in children[index].
+      t = t->children[index];
+    }
+  }
+
+  struct parentelt {
+    btnode* t;
+    size_t index;
+  };
+
+  void Delete(int key, bool& deleted) {
+    deleted = 0;
+
+    std::vector<parentelt> parents;
+    auto t = root;
+    btnode* rebalance = 0;
+    Forever {
+      size_t index;
+      bool found = 0;
+      t->Lookup(key, index, found);
+
+      const auto leaf = t->leaf();
+      if (!found) {
+        if (leaf) {
+          // not found!
+          return;
+        }
+
+        parents.push_back(parentelt{t, index});
+        t = t->children[index];
+        continue;
+      }
+
+      if (leaf) {
+        t->removeKey(index);
+        rebalance = t;
+        break;
+      }
+
+      // choose the max key of the left subtree.
+      auto L = t->children[index];
+      while (!L->leaf()) {
+        parents.push_back(parentelt{L, L->children.size()-1});
+        L = L->children.back();
+      }
+      // move the max key of the left subtree into this nonleaf node.
+      t->keys[index] = L->keys.back();
+      L->keys.resize(L->keys.size()-1);
+      rebalance = L;
+      break;
+    }
+    deleted = 1;
+    if (rebalance->keys.size() >= CC/2) return; // no need to rebalance.
+
+    // _DeleteRebalance_WalkUpwardsRecur( parents, rebalance );
+    Forever {
+      if (parents.empty()) break;
+
+      auto parent = parents.back().t;
+      auto index_in_parent = parents.back().index;
+      parents.pop_back();
+
+      btnode* L = (index_in_parent > 0) ? parent->children[index_in_parent-1] : 0;
+      btnode* R = (index_in_parent+1 < parent->children.size()) ? parent->children[index_in_parent+1] : 0;
+      if (L && L->keys.size() > CC/2) {
+        rebalance->insertKey(0, parent->keys[index_in_parent]);
+        rebalance->insertChild(0, L->children.back());
+        L->children.resize(L->children.size()-1);
+        parent->keys[index_in_parent] = L->keys.back();
+        L->keys.resize(L->keys.size()-1);
+        break;
+      }
+      if (R && R->keys.size() > CC/2) {
+        rebalance->keys.push_back(parent->keys[index_in_parent]);
+        rebalance->children.push_back(R->children[0]);
+        R->removeChild(0);
+        parent->keys[index_in_parent] = R->keys[0];
+        R->removeKey(0);
+        break;
+      }
+      if (L) {
+        AssertCrash(L->keys.size() == CC/2);
+        L->keys.push_back(parent->keys[index_in_parent]);
+        for (size_t i = 0; i < rebalance->keys.size(); ++i) {
+          L->keys.emplace_back(std::move(rebalance->keys[i]));
+        }
+        for (size_t i = 0; i < rebalance->children.size(); ++i) {
+          L->children.emplace_back(std::move(rebalance->children[i]));
+        }
+        parent->removeKey(index_in_parent);
+        parent->removeChild(index_in_parent);
+        if (parent->keys.empty() && parents.empty()) {
+          btnode::Free(parent);
+          root = L;
+        }
+        elif (parent->keys.size() < CC/2) {
+          rebalance = parent;
+          continue;
+        }
+        break;
+      }
+      // FUTURE: can combine with the above with aliasing.
+      if (R) {
+        AssertCrash(R->keys.size() == CC/2);
+        rebalance->keys.push_back(parent->keys[index_in_parent]);
+        for (size_t i = 0; i < R->keys.size(); ++i) {
+          rebalance->keys.emplace_back(std::move(R->keys[i]));
+        }
+        for (size_t i = 0; i < R->children.size(); ++i) {
+          rebalance->children.emplace_back(std::move(R->children[i]));
+        }
+        parent->removeKey(index_in_parent);
+        parent->removeChild(index_in_parent);
+        if (parent->keys.empty() && parents.empty()) {
+          btnode::Free(parent);
+          root = rebalance;
+        }
+        elif (parent->keys.size() < CC/2) {
+          rebalance = parent;
+          continue;
+        }
+        break;
+      }
+    }
+  }
+
+  void Insert(int key, bool& already_there) {
+    already_there = false;
+
+    std::vector<parentelt> parents;
+    auto t = root;
+    size_t index;
+    while (t) {
+      bool found;
+      t->Lookup(key, index, found);
+      if (found) { already_there = 1; return; }
+
+      if (!t->leaf()) {
+        parents.push_back(parentelt{t, index});
+        t = t->children[index];
+        continue;
+      }
+
+      if (t->keys.size() < CC) {
+        t->insertKey(index, key);
+        return;
+      }
+
+      break;
+    }
+
+    // _Insert_WalkUpwards( t, key, parent_chain, node, idx );
+    btnode* childL = 0;
+    btnode* childR = 0;
+    Forever {
+      const auto leaf = t->leaf();
+      auto R = btnode::Alloc();
+      auto L = t;
+
+      auto index_median = t->keys.size() / 2;
+      int key_median;
+      if (index == index_median) {
+        key_median = key;
+
+        for (size_t i = index_median; i < L->keys.size(); ++i) {
+          R->keys.push_back(L->keys[i]);
+        }
+        L->keys.resize(index_median);
+
+        if (!leaf) {
+          R->children.push_back(childR);
+          for (size_t i = index_median+1; i < L->children.size(); ++i) {
+            R->children.push_back(L->children[i]);
+          }
+
+          L->children.resize(index_median+1);
+          L->children[index_median] = childL;
+        }
+      }
+      elif (index < index_median) {
+        key_median = L->keys[index_median-1];
+
+        for (size_t i = index_median; i < L->keys.size(); ++i) {
+          R->keys.push_back(L->keys[i]);
+        }
+        L->keys.resize(index_median-1);
+        L->insertKey(index, key);
+
+        if (!leaf) {
+          for (size_t i = index_median; i < L->children.size(); ++i) {
+            R->children.push_back(L->children[i]);
+          }
+          L->children.resize(index_median);
+          L->children[index] = childL;
+          L->insertChild(index+1, childR);
+        }
+      }
+      else { // index > index_median
+        key_median = L->keys[index_median];
+
+        for (size_t i = index_median+1; i < L->keys.size(); ++i) {
+          R->keys.push_back(L->keys[i]);
+        }
+        R->insertKey(index - (index_median+1), key);
+        L->keys.resize(index_median);
+
+        if (!leaf) {
+          for (size_t i = index_median+1; i < L->children.size(); ++i) {
+            R->children.push_back(L->children[i]);
+          }
+          R->children.push_back(childL);
+          R->children.push_back(childR);
+          for (size_t i = index+1; i < L->children.size(); ++i) {
+            R->children.push_back(L->children[i]);
+          }
+          L->children.resize(index_median+1);
+        }
+      }
+
+      // pull the key_median up into the parent.
+
+      if (parents.empty()) {
+        // At the root, and it is full.
+        AssertCrash(root->keys.size() == CC);
+        auto rootN = btnode::Alloc();
+        rootN->keys.push_back(key_median);
+        rootN->children.push_back(L);
+        rootN->children.push_back(R);
+        root = rootN;
+        return;
+      }
+
+      auto parent = parents.back().t;
+      auto index_in_parent = parents.back().index;
+      parents.pop_back();
+      if (parent->keys.size() < CC) {
+        parent->insertKey(index_in_parent, key_median);
+        parent->insertChild(index_in_parent+1, R);
+        parent->children[index_in_parent] = L;
+        return;
+      }
+
+      key = key_median;
+      t = parent;
+      index = index_in_parent;
+      childL = L;
+      childR = R;
+      continue;
+    }
+  }
+};
+
+
+
+
+
+
 RegisterTest([]()
 {
   constexpr idx_t C = 10;
   btree_t<u32, C> t;
-  pagelist_t mem;
-  Init( mem, 64000 );
   Init( &t );
   stack_resizeable_cont_t<parent_info_t<u32, C>> infos;
   Alloc( infos, 1024 );
@@ -1450,7 +1771,6 @@ RegisterTest([]()
   }
   Free( flat );
   Free( infos );
-  Kill( mem );
 });
 
 

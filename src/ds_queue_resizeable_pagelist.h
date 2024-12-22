@@ -4,12 +4,12 @@
 // fixed capacity, circular queues.
 //
 
-#define QUEUERESIZEABLEPAGE   queue_resizeable_page_t<T, Allocation>
-template< typename T, typename Allocation = allocation_heap_or_virtual_t >
+#define QUEUERESIZEABLEPAGE   queue_resizeable_page_t<T>
+template< typename T >
 struct
 queue_resizeable_page_t
 {
-  Allocation allocn;
+  alloctype_t allocn;
   QUEUERESIZEABLEPAGE* prev;
   QUEUERESIZEABLEPAGE* next;
   idx_t head;
@@ -20,41 +20,40 @@ queue_resizeable_page_t
   CompileAssert( sizeof( QUEUERESIZEABLEPAGE ) <= c_hdrlen );
 };
 
-#define QUEUERESIZEABLEPAGELIST   queue_resizeable_pagelist_t<T, Allocator, Allocation>
-TEA struct
+#define QUEUERESIZEABLEPAGELIST   queue_resizeable_pagelist_t<T>
+Templ struct
 queue_resizeable_pagelist_t
 {
   // TODO: embed the first page in here?
   QUEUERESIZEABLEPAGE* head;
   QUEUERESIZEABLEPAGE* tail;
   idx_t default_page_capacity;
-  Allocator alloc;
 };
 
-TEA ForceInl T*
+Templ ForceInl T*
 PageMem( QUEUERESIZEABLEPAGE* page )
 {
   auto pagebytes = Cast( u8*, page );
   auto pagemem = pagebytes + QUEUERESIZEABLEPAGE::c_hdrlen;
   return Cast( T*, pagemem );
 }
-// TEA ForceInl idx_t
+// Templ ForceInl idx_t
 // PageLen( idx_t head, idx_t tail, idx_t capacity )
 // {
 //   auto len = head <= tail  ?  tail - head + 1  :  tail + 1 + ( capacity - head );
 //   return len;
 // }
-TEA ForceInl void
+Templ ForceInl void
 FreePage( QUEUERESIZEABLEPAGELIST& q, QUEUERESIZEABLEPAGE* page )
 {
   auto allocn = page->allocn;
-  Free( q.alloc, allocn, page );
+  Free( allocn, page );
 }
-TEA ForceInl QUEUERESIZEABLEPAGE*
+Templ ForceInl QUEUERESIZEABLEPAGE*
 AllocatePage( QUEUERESIZEABLEPAGELIST& q, idx_t capacity )
 {
-  Allocation allocn = {};
-  auto pagebytes = Allocate<u8>( q.alloc, allocn, QUEUERESIZEABLEPAGE::c_hdrlen + capacity * sizeof( T ) );
+  alloctype_t allocn = {};
+  auto pagebytes = Allocate<u8>( allocn, QUEUERESIZEABLEPAGE::c_hdrlen + capacity * sizeof( T ) );
   auto page = Cast( QUEUERESIZEABLEPAGE*, pagebytes );
   auto pagemem = PageMem( page );
   page->allocn = allocn;
@@ -65,15 +64,15 @@ AllocatePage( QUEUERESIZEABLEPAGELIST& q, idx_t capacity )
   page->capacity = capacity;
   return page;
 }
-TEA Inl void
+Templ Inl void
 Init( QUEUERESIZEABLEPAGELIST& q, idx_t initial_page_capacity )
 {
-  auto page = AllocatePage<T, Allocator, Allocation>( initial_page_capacity );
+  auto page = AllocatePage<T>( initial_page_capacity );
   q.default_page_capacity = initial_page_capacity;
   q.head = page;
   q.tail = page;
 }
-TEA Inl void
+Templ Inl void
 Kill( QUEUERESIZEABLEPAGELIST& q )
 {
   auto page = q.head;
@@ -85,14 +84,14 @@ Kill( QUEUERESIZEABLEPAGELIST& q )
   q.head = 0;
   q.tail = 0;
 }
-TEA Inl void
+Templ Inl void
 EnqueueNewTailPage( QUEUERESIZEABLEPAGELIST& q, T* src, idx_t src_len )
 {
   auto page = q.tail;
   auto capacity = q.default_page_capacity;
   auto newcap = MAX( 2 * capacity, src_len );
   q.default_page_capacity = newcap; // Update so the next new page is twice as big as the last.
-  auto newpage = AllocatePage<T, Allocator, Allocation>( newcap );
+  auto newpage = AllocatePage<T>( newcap );
   newpage->prev = page;
   page->next = newpage;
   q.tail = newpage;
@@ -100,7 +99,7 @@ EnqueueNewTailPage( QUEUERESIZEABLEPAGELIST& q, T* src, idx_t src_len )
   auto newpage_mem = PageMem( newpage );
   EnqueueAssumingRoom( newpage_mem, newcap, newpage->head, &newpage->tail, src, src_len );
 }
-TEA Inl void
+Templ Inl void
 Enqueue( QUEUERESIZEABLEPAGELIST& q, T* src, idx_t src_len )
 {
   auto page = q.tail;
@@ -123,7 +122,7 @@ Enqueue( QUEUERESIZEABLEPAGELIST& q, T* src, idx_t src_len )
     EnqueueNewTailPage( q, src + len_remaining, num_in_newpage );
   }
 }
-TEA Inl void
+Templ Inl void
 Dequeue( QUEUERESIZEABLEPAGELIST& q, T* dst, idx_t dst_len )
 {
   auto page_tail = q.tail;
@@ -160,14 +159,14 @@ Dequeue( QUEUERESIZEABLEPAGELIST& q, T* dst, idx_t dst_len )
 }
 
 
-#define ITER_QUEUERESIZEABLEPAGELIST   iterator_queue_resizeable_page_t<T, Allocator, Allocation>
-TEA struct
+#define ITER_QUEUERESIZEABLEPAGELIST   iterator_queue_resizeable_page_t<T>
+Templ struct
 iterator_queue_resizeable_page_t
 {
   QUEUERESIZEABLEPAGE* page;
   idx_t pos_in_page;
 };
-TEA Inl ITER_QUEUERESIZEABLEPAGELIST
+Templ Inl ITER_QUEUERESIZEABLEPAGELIST
 Begin( QUEUERESIZEABLEPAGELIST* q )
 {
   ITER_QUEUERESIZEABLEPAGELIST r;
@@ -176,7 +175,7 @@ Begin( QUEUERESIZEABLEPAGELIST* q )
   r.pos_in_page = page->head;
   return r;
 }
-TEA Inl ITER_QUEUERESIZEABLEPAGELIST
+Templ Inl ITER_QUEUERESIZEABLEPAGELIST
 End( QUEUERESIZEABLEPAGELIST* q )
 {
   ITER_QUEUERESIZEABLEPAGELIST r;
@@ -185,7 +184,7 @@ End( QUEUERESIZEABLEPAGELIST* q )
   r.pos_in_page = page->tail;
   return r;
 }
-TEA Inl ITER_QUEUERESIZEABLEPAGELIST
+Templ Inl ITER_QUEUERESIZEABLEPAGELIST
 Advance( ITER_QUEUERESIZEABLEPAGELIST iter, idx_t advance = 1 )
 {
   ITER_QUEUERESIZEABLEPAGELIST r = iter;

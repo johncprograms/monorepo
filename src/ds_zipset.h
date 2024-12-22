@@ -1,6 +1,6 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#define ZIPSET   zipset_t<T, Allocator, Allocation>
+#define ZIPSET   zipset_t<T>
 
 // TODO: implement the fractional cascading version.
 
@@ -22,29 +22,27 @@
 // [ b c ]
 // [ a ]
 //
-TEA struct
+Templ struct
 zipset_t
 {
   constant idx_t c_num_rows = 32;
 
-  Allocation allocns[c_num_rows];
+  alloctype_t allocns[c_num_rows];
   T* rows[c_num_rows];
   idx_t N;
-  Allocator alloc;
 };
-TEA Inl void
-Init( ZIPSET& s, Allocator alloc = {} )
+Templ Inl void
+Init( ZIPSET& s )
 {
   Arrayzero( s.rows );
   s.N = 0;
-  s.alloc = alloc;
 }
 ForceInl idx_t 
 NumRows( idx_t N )
 {
   return 8u * sizeof( idx_t ) - _lzcnt_idx_t( N );
 }
-TEA Inl void
+Templ Inl void
 Kill(
   ZIPSET& s
   )
@@ -57,19 +55,18 @@ Kill(
     auto row_len = 1u << i;
     if( !( N & row_len ) ) {
       if( row ) {
-        Free( s.alloc, s.allocns[i], row );
+        Free( s.allocns[i], row );
         rows[ i ] = 0;
       }
     }
   }
   s.N = 0;
-  s.alloc = {};
 }
 // TODO: InsertIfUnique
 //   we could use the same algorithm as InsertAllowDuplicates and just throw away the carry_row if we
 //   find a duplicate.
 //   or, we could do a lookup and only insert if not found.
-TEA Inl void
+Templ Inl void
 InsertAllowDuplicates(
   ZIPSET& s,
   T value
@@ -87,7 +84,7 @@ InsertAllowDuplicates(
   AssertCrash( !( N & dst_row_len ) ); // the row we're merging into should be unpopulated.
 
   if( !rows[ num_rows_to_merge ] ) {
-    rows[ num_rows_to_merge ] = Allocate<T>( s.alloc, s.allocns[ num_rows_to_merge ], dst_row_len );
+    rows[ num_rows_to_merge ] = Allocate<T>( &s.allocns[ num_rows_to_merge ], dst_row_len );
   }
   auto dst_row = rows[ num_rows_to_merge ];
   
@@ -161,7 +158,7 @@ InsertAllowDuplicates(
   // note that integer arithmetic does the appropriate bit carries trivially, which is nice.
   s.N = N + 1;
 }
-TEA Inl void
+Templ Inl void
 Lookup(
   ZIPSET& s,
   T value,
@@ -190,7 +187,7 @@ Lookup(
 
   *found = 0;
 }
-TEA Inl void
+Templ Inl void
 Delete(
   ZIPSET& s,
   T value,

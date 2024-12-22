@@ -4,15 +4,15 @@
 // double-ended queue, aka deque.
 //
 
-#define DEQUERESIZEABLEPAGE   deque_resizeable_page_t<T, Allocation>
-template< typename T, typename Allocation = allocation_heap_or_virtual_t >
+#define DEQUERESIZEABLEPAGE   deque_resizeable_page_t<T>
+template< typename T >
 struct
 deque_resizeable_page_t
 {
   DEQUERESIZEABLEPAGE* prev;
   DEQUERESIZEABLEPAGE* next;
   T* mem;
-  Allocation allocn;
+  alloctype_t allocn;
   idx_t head;
   idx_t tail;
   idx_t capacity;
@@ -21,35 +21,34 @@ deque_resizeable_page_t
   CompileAssert( sizeof( QUEUERESIZEABLEPAGE ) <= c_hdrlen );
 };
 
-#define DEQUERESIZEABLEPAGELIST   deque_resizeable_pagelist_t<T, Allocator, Allocation>
-TEA struct
+#define DEQUERESIZEABLEPAGELIST   deque_resizeable_pagelist_t<T>
+Templ struct
 deque_resizeable_pagelist_t
 {
   // TODO: embed the first page in here?
   DEQUERESIZEABLEPAGE* head;
   DEQUERESIZEABLEPAGE* tail;
   idx_t default_page_capacity;
-  Allocator alloc;
 };
 
-TEA ForceInl T*
+Templ ForceInl T*
 PageMem( DEQUERESIZEABLEPAGE* page )
 {
   auto pagebytes = Cast( u8*, page );
   auto pagemem = pagebytes + DEQUERESIZEABLEPAGE::c_hdrlen;
   return Cast( T*, pagemem );
 }
-TEA ForceInl void
+Templ ForceInl void
 FreePage( DEQUERESIZEABLEPAGELIST& q, DEQUERESIZEABLEPAGE* page )
 {
   auto allocn = page->allocn;
-  Free( q.alloc, allocn, page );
+  Free( allocn, page );
 }
-TEA ForceInl DEQUERESIZEABLEPAGE*
+Templ ForceInl DEQUERESIZEABLEPAGE*
 AllocatePage( DEQUERESIZEABLEPAGELIST& q, idx_t capacity )
 {
-  Allocation allocn = {};
-  auto pagebytes = Allocate<u8>( q.alloc, allocn, DEQUERESIZEABLEPAGE::c_hdrlen + capacity * sizeof( T ) );
+  alloctype_t allocn = {};
+  auto pagebytes = Allocate<u8>( &allocn, DEQUERESIZEABLEPAGE::c_hdrlen + capacity * sizeof( T ) );
   auto page = Cast( DEQUERESIZEABLEPAGE*, pagebytes );
   auto pagemem = PageMem( page );
   page->allocn = allocn;
@@ -60,16 +59,15 @@ AllocatePage( DEQUERESIZEABLEPAGELIST& q, idx_t capacity )
   page->capacity = capacity;
   return page;
 }
-TEA Inl void
-Init( DEQUERESIZEABLEPAGELIST& q, idx_t capacity, Allocator alloc = {} )
+Templ Inl void
+Init( DEQUERESIZEABLEPAGELIST& q, idx_t capacity )
 {
-  q.alloc = alloc;
-  auto page = AllocatePage<T, Allocator, Allocation>( q, capacity );
+  auto page = AllocatePage<T>( q, capacity );
   q.head = page;
   q.tail = page;
   q.default_page_capacity = capacity;
 }
-TEA Inl void
+Templ Inl void
 Kill( DEQUERESIZEABLEPAGELIST& q )
 {
   auto page = q.head;
@@ -81,14 +79,14 @@ Kill( DEQUERESIZEABLEPAGELIST& q )
   q.head = 0;
   q.tail = 0;
 }
-TEA Inl void
+Templ Inl void
 AddNewTailPage( DEQUERESIZEABLEPAGELIST& q, T* src, idx_t src_len )
 {
   auto page = q.tail;
   auto capacity = q.default_page_capacity;
   auto newcap = MAX( 2 * capacity, src_len );
   q.default_page_capacity = newcap; // Update so the next new page is twice as big as the last.
-  auto newpage = AllocatePage<T, Allocator, Allocation>( newcap );
+  auto newpage = AllocatePage<T>( newcap );
   newpage->prev = page;
   page->next = newpage;
   q.tail = newpage;
@@ -96,14 +94,14 @@ AddNewTailPage( DEQUERESIZEABLEPAGELIST& q, T* src, idx_t src_len )
   auto newpage_mem = PageMem( newpage );
   AddBackAssumingRoom( newpage_mem, newcap, newpage->head, &newpage->tail, src, src_len );
 }
-TEA Inl void
+Templ Inl void
 AddNewHeadPage( DEQUERESIZEABLEPAGELIST& q, T* src, idx_t src_len )
 {
   auto page = q.head;
   auto capacity = q.default_page_capacity;
   auto newcap = MAX( 2 * capacity, src_len );
   q.default_page_capacity = newcap; // Update so the next new page is twice as big as the last.
-  auto newpage = AllocatePage<T, Allocator, Allocation>( newcap );
+  auto newpage = AllocatePage<T>( newcap );
   newpage->next = page;
   page->prev = newpage;
   q.head = newpage;
@@ -111,7 +109,7 @@ AddNewHeadPage( DEQUERESIZEABLEPAGELIST& q, T* src, idx_t src_len )
   auto newpage_mem = PageMem( newpage );
   AddFrontAssumingRoom( newpage_mem, newcap, newpage->head, &newpage->tail, src, src_len );
 }
-TEA Inl void
+Templ Inl void
 AddFront( DEQUERESIZEABLEPAGELIST& q, T* src, idx_t src_len )
 {
   auto page = q.head;
@@ -134,7 +132,7 @@ AddFront( DEQUERESIZEABLEPAGELIST& q, T* src, idx_t src_len )
     AddNewHeadPage( q, src + len_remaining, num_in_newpage );
   }
 }
-TEA Inl void
+Templ Inl void
 AddBack( DEQUERESIZEABLEPAGELIST& q, T* src, idx_t src_len )
 {
   auto page = q.tail;
@@ -158,7 +156,7 @@ AddBack( DEQUERESIZEABLEPAGELIST& q, T* src, idx_t src_len )
   }
 }
 // TODO: shrinking option?
-TEA Inl void
+Templ Inl void
 RemFront( DEQUERESIZEABLEPAGELIST& q, T* dst, idx_t dst_len )
 {
   auto page_tail = q.tail;
@@ -192,7 +190,7 @@ RemFront( DEQUERESIZEABLEPAGELIST& q, T* dst, idx_t dst_len )
   
   q.head = page_head;
 }
-TEA Inl void
+Templ Inl void
 RemBack( DEQUERESIZEABLEPAGELIST& q, T* dst, idx_t dst_len )
 {
   auto page_tail = q.tail;

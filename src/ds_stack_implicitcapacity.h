@@ -4,16 +4,15 @@
 // this means we can elide the usual capacity field, and instead just round up the length field.
 // the theory being, smaller stack size is sometimes worth the computation cost of reconstructing capacity.
 
-#define STACKIMPLICITCAPACITY   stack_implicitcapacity_t<T, Allocator, Allocation>
+#define STACKIMPLICITCAPACITY   stack_implicitcapacity_t<T>
 
 // meant to hold elements which are uniform in size.
-TEA struct
+Templ struct
 stack_implicitcapacity_t
 {
   T* mem;
   idx_t len; // # of elements in mem.
-  Allocator alloc;
-  Allocation allocn;
+  alloctype_t allocn;
 };
 
 Inl idx_t
@@ -22,13 +21,13 @@ ImplicitCapacity( idx_t len )
   auto r = RoundUpToNextPowerOf2( len );
   return r;
 }
-TEA Inl idx_t
+Templ Inl idx_t
 Capacity( STACKIMPLICITCAPACITY& stack )
 {
   return ImplicitCapacity( stack.len );
 }
 
-TEA Inl tslice_t<T>
+Templ Inl tslice_t<T>
 SliceFromArray( STACKIMPLICITCAPACITY& stack )
 {
   tslice_t<T> r;
@@ -36,46 +35,44 @@ SliceFromArray( STACKIMPLICITCAPACITY& stack )
   r.len = stack.len;
   return r;
 }
-TEA Inl void
+Templ Inl void
 Zero( STACKIMPLICITCAPACITY& stack )
 {
   stack.mem = 0;
   stack.len = 0;
-  stack.alloc = {};
 }
-TEA Inl void
-Alloc( STACKIMPLICITCAPACITY& stack, idx_t nelems, Allocator alloc = {} )
+Templ Inl void
+Alloc( STACKIMPLICITCAPACITY& stack, idx_t nelems )
 {
   auto capacity = ImplicitCapacity( nelems );
   stack.len = nelems;
-  stack.mem = Allocate<T>( alloc, stack.allocn, capacity );
-  stack.alloc = alloc;
+  stack.mem = Allocate<T>( &stack.allocn, capacity );
 }
-TEA Inl void
+Templ Inl void
 Free( STACKIMPLICITCAPACITY& stack )
 {
   if( stack.mem ) {
-    Free( stack.alloc, stack.allocn, stack.mem );
+    Free( stack.allocn, stack.mem );
   }
   Zero( stack );
 }
-TEA Inl void
+Templ Inl void
 Reserve( STACKIMPLICITCAPACITY& stack, idx_t enforce_capacity )
 {
   auto new_capacity = ImplicitCapacity( enforce_capacity );
   auto capacity = ImplicitCapacity( stack.len );
   if( capacity < new_capacity ) {
-    stack.mem = Reallocate<T>( stack.alloc, stack.mem, capacity, new_capacity );
+    stack.mem = Reallocate<T>( stack.mem, capacity, new_capacity );
   }
 }
-TEA Inl void
+Templ Inl void
 Copy( STACKIMPLICITCAPACITY& stack, tslice_t<T>& src )
 {
   Reserve( stack, src.len );
   Memmove( stack.mem, src.mem, src.len * sizeof( T ) );
   stack.len = src.len;
 }
-TEA Inl T*
+Templ Inl T*
 AddBack( STACKIMPLICITCAPACITY& stack, idx_t nelems = 1 )
 {
   Reserve( stack, stack.len + nelems );
@@ -83,7 +80,7 @@ AddBack( STACKIMPLICITCAPACITY& stack, idx_t nelems = 1 )
   stack.len += nelems;
   return r;
 }
-TEA Inl T*
+Templ Inl T*
 AddAt( STACKIMPLICITCAPACITY& stack, idx_t idx, idx_t nelems = 1 )
 {
   AssertCrash( idx <= stack.len );
@@ -100,13 +97,13 @@ AddAt( STACKIMPLICITCAPACITY& stack, idx_t idx, idx_t nelems = 1 )
   stack.len += nelems;
   return r;
 }
-TEA Inl void
+Templ Inl void
 RemBack( STACKIMPLICITCAPACITY& stack, idx_t nelems = 1 )
 {
   AssertCrash( nelems <= stack.len );
   stack.len -= nelems;
 }
-TEA Inl void
+Templ Inl void
 RemAt( STACKIMPLICITCAPACITY& stack, idx_t idx, idx_t nelems = 1 )
 {
   AssertCrash( idx + nelems <= stack.len );
@@ -119,7 +116,7 @@ RemAt( STACKIMPLICITCAPACITY& stack, idx_t idx, idx_t nelems = 1 )
   }
   stack.len -= nelems;
 }
-TEA Inl void
+Templ Inl void
 UnorderedRemAt( STACKIMPLICITCAPACITY& stack, idx_t idx )
 {
   idx_t nelems = 1; // TODO: rewrite for larger values?
@@ -133,7 +130,7 @@ UnorderedRemAt( STACKIMPLICITCAPACITY& stack, idx_t idx )
   }
   stack.len -= nelems;
 }
-TEA Inl void
+Templ Inl void
 AddBackContents(
   STACKIMPLICITCAPACITY* stack,
   tslice_t<T> contents

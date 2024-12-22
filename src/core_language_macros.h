@@ -71,8 +71,6 @@
 #define Templ        template< typename T >
 #define TemplTIdxN   template< typename T, idx_t N >
 #define TemplIdxN    template< idx_t N >
-#define TA    template< typename Allocator = allocator_heap_or_virtual_t, typename Allocation = allocation_heap_or_virtual_t >
-#define TEA   template< typename T, typename Allocator = allocator_heap_or_virtual_t, typename Allocation = allocation_heap_or_virtual_t >
 
 #define Implies( p, q ) \
   ( !( p )  ||  ( q ) )

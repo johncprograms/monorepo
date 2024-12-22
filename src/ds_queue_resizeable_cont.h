@@ -4,8 +4,8 @@
 // fixed capacity, circular queues.
 //
 
-#define QUEUERESIZEABLECONT   queue_resizeable_cont_t<T, Allocator, Allocation>
-TEA struct
+#define QUEUERESIZEABLECONT   queue_resizeable_cont_t<T>
+Templ struct
 queue_resizeable_cont_t
 {
   T* mem;
@@ -13,30 +13,28 @@ queue_resizeable_cont_t
   idx_t tail;
   idx_t capacity;
   idx_t len_used;
-  Allocator alloc;
-  Allocation allocn;
+  alloctype_t allocn;
 };
-TEA Inl void
-Init( QUEUERESIZEABLECONT& q, idx_t initial_capacity, Allocator alloc = {} )
+Templ Inl void
+Init( QUEUERESIZEABLECONT& q, idx_t initial_capacity )
 {
-  q.mem = Allocate<T>( alloc, q.allocn, initial_capacity );
-  q.alloc = alloc;
+  q.mem = Allocate<T>( q.allocn, initial_capacity );
   q.capacity = initial_capacity;
   q.head = 0;
   q.tail = 0;
   q.len_used = 0;
 }
-TEA Inl void
+Templ Inl void
 Kill( QUEUERESIZEABLECONT& q )
 {
-  Free( q.alloc, q.mem );
+  Free( q.mem );
   q.mem = 0;
   q.capacity = 0;
   q.head = 0;
   q.tail = 0;
   q.len_used = 0;
 }
-TEA ForceInl void
+Templ ForceInl void
 EnqueueAssumingRoom( QUEUERESIZEABLECONT& q, T* src, idx_t src_len )
 {
   auto mem = q.mem;
@@ -65,12 +63,11 @@ EnqueueAssumingRoom( QUEUERESIZEABLECONT& q, T* src, idx_t src_len )
   
   q.len_used += src_len;
 }
-TEA Inl void
+Templ Inl void
 ResizeRingbuffer(
   T** mem_,
   idx_t* capacity_,
-  Allocator& alloc,
-  Allocation& allocn,
+  alloctype_t& allocn,
   idx_t* head_,
   idx_t* tail_
   )
@@ -80,8 +77,8 @@ ResizeRingbuffer(
   auto oldlen = *capacity_;
   auto oldmem = *mem_;
   auto newlen = 2 * oldlen;
-  Allocation newallocn = {};
-  auto newmem = Allocate<T>( alloc, newallocn, newlen );
+  alloctype_t newallocn = {};
+  auto newmem = Allocate<T>( newallocn, newlen );
   if( head <= tail ) {
     TMove(
       newmem + 0,
@@ -107,11 +104,11 @@ ResizeRingbuffer(
     *head_ = 0;
     *tail_ = oldlen - 1;
   }
-  Free( alloc, allocn, oldmem );
+  Free( allocn, oldmem );
   *mem_ = newmem;
   *capacity_ = newlen;
 }
-TEA Inl void
+Templ Inl void
 Enqueue( QUEUERESIZEABLECONT& q, T* src, idx_t src_len )
 {
   auto len_remaining = RingbufferLenRemaining( q.capacity, q.head, q.tail );
@@ -120,7 +117,6 @@ Enqueue( QUEUERESIZEABLECONT& q, T* src, idx_t src_len )
     ResizeRingbuffer(
       &q.mem,
       &q.capacity,
-      q.alloc,
       q.allocn,
       &q.head,
       &q.tail
@@ -128,7 +124,7 @@ Enqueue( QUEUERESIZEABLECONT& q, T* src, idx_t src_len )
   }
   EnqueueAssumingRoom( q, src, src_len );
 }
-/*TEA Inl void
+/*Templ Inl void
 DequeueOne( QUEUERESIZEABLECONT& q, T* dst, bool* success )
 {
   auto local_rd = q.head;
@@ -141,7 +137,7 @@ DequeueOne( QUEUERESIZEABLECONT& q, T* dst, bool* success )
   q.head = local_rd;
   *success = 1;
 }*/
-TEA Inl void
+Templ Inl void
 Dequeue( QUEUERESIZEABLECONT& q, T* dst, idx_t dst_len )
 {
   AssertCrash( dst_len <= q.len_used );

@@ -1,6 +1,6 @@
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
-#define ZIPBAG   zipbag_t<T, Allocator, Allocation>
+#define ZIPBAG   zipbag_t<T>
 
 //
 // bag datastructure that holds items in unspecified order.
@@ -20,22 +20,20 @@
 // [ b c ]
 // [ a ]
 //
-TEA struct
+Templ struct
 zipbag_t
 {
   static constexpr idx_t c_num_rows = 32;
 
   T* rows[c_num_rows];
   idx_t N;
-  Allocator alloc; xxxxx // TODO: this has to be per-row
 };
-TEA Inl void
-Init( ZIPBAG& s, Allocator alloc = {} )
+Templ Inl void
+Init( ZIPBAG& s )
 {
   Typezero( &s );
-  s.alloc = alloc;
 }
-TEA Inl void
+Templ Inl void
 Insert(
   ZIPBAG& s,
   T* src,
@@ -50,7 +48,7 @@ Insert(
   // TODO: work out the carrying that has to happen for arbitrary src_len.
   xxxxx;
 }
-TEA Inl void
+Templ Inl void
 Remove(
   ZIPBAG& s,
   T* dst,
@@ -63,7 +61,7 @@ Remove(
   // TODO: work out the carrying that has to happen for arbitrary dst_len.
   xxxxx;
 }
-TEA Inl void
+Templ Inl void
 FreeUnusedRows(
   ZIPBAG& s
   )
@@ -77,7 +75,7 @@ FreeUnusedRows(
     auto row_len = 1u << i;
     if( !( N & row_len ) ) {
       if( row ) {
-        Free( s.alloc, row );
+        Free( row );
         rows[ i ] = 0;
       }
     }
