@@ -830,7 +830,8 @@ PlotXY(
   }
 }
 // This plots a given histogram, with each datapoint represented as a small rect.
-// TODO: area-normalized histogram option. This works better for overlaying more-precise pdfs.
+// NOTE: we don't have to worry about area-normalized histogram options. (works better for overlaying with continuous pdfs.)
+//   That's only applicable to variable-width bins, which this is not. We only have single-width bins.
 Templ void
 PlotHistogram(
   vec2<f32> dim,
@@ -843,13 +844,13 @@ PlotHistogram(
 {
   AssertCrash( counts_when_inserted.len == bucket_from_data_idx.len );
   auto subdivision_w = Truncate32( dim.x / counts.len );
-  auto col_w = subdivision_w; // - 1;
+  auto col_w = subdivision_w; // - 1; // subtract 1 for a 1-pixel gap between columns.
   if( col_w < 1.0f ) return; // TODO: not signalling failure upwards.
   ForLen( i, bucket_from_data_idx ) {
     auto bucket_i = bucket_from_data_idx.mem[i];
     auto count_when_inserted = counts_when_inserted.mem[i];
     AssertCrash( bucket_i < counts.len );
-    auto count = counts.mem[bucket_i];
+    //auto count = counts.mem[bucket_i];
 
     // Lerp [0, counts_max] as the y range.
     // Note (dim.y - 1) is the factor, since the maximum y maps to the last pixel.
