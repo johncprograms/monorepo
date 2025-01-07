@@ -778,7 +778,7 @@ Zero( buf_t* buf )
   Zero( buf->internal_idx_from_line );
   Zero( buf->unused_internal_idxs );
 #if LB
-  Zero( &buf->internal_lineblocks );
+//  Zero( &buf->internal_lineblocks );
 #else
   Zero( buf->unordered_lines );
 #endif
@@ -803,7 +803,7 @@ Kill( buf_t* buf )
   Free( buf->internal_idx_from_line );
   Free( buf->unused_internal_idxs );
 #if LB
-  Zero( &buf->internal_lineblocks ); // uses buf->pagelist as its allocator, so no need to free.
+  Kill( &buf->internal_lineblocks );
 #else
   Free( buf->unordered_lines );
 #endif

@@ -5,17 +5,19 @@ struct
 pagetree_page_t
 {
   void* entries[N];
-  alloctype_t allocn;
 };
 Templ Inl T* // T should be pagetree_page_t<N> of some kind. Easier to specify this way.
-AllocatePage()
+AllocatePage( pagelist_t* mem )
 {
-  alloctype_t allocn = {};
-  auto page = Allocate<T>( &allocn, 1 );
-  page->allocn = allocn;
+  auto page = AddPagelist( *mem, T, alignof(T), 1 );
   Arrayzero( page->entries );
   return page;
 }
+
+// NOTE: We use a pagelist_t allocator, to avoid having to iterate and free entries[i].
+//   It sort of makes sense for this pagetree to own it, since it knows the exact fixed-size it wants.
+//   We could use an even simpler pagelist_t since it's compile-time constant size chunks we want, but 
+//   it's just as easy to use the fully generic pagelist_t, so I haven't bothered.
 
 using pagetree_page8_t  = pagetree_page_t< 1 <<  8 >;
 using pagetree_page10_t = pagetree_page_t< 1 << 10 >;
@@ -34,17 +36,20 @@ using pagetree_page16_t = pagetree_page_t< 1 << 16 >;
 struct
 pagetree_11x2_t
 {
+  pagelist_t mem;
   pagetree_page11_t* toplevel;
 };
 Inl void
 Init( PAGETREE11x2* pt )
 {
-  pt->toplevel = AllocatePage<pagetree_page11_t>();
+  Init( pt->mem, sizeof(pagetree_page11_t) );
+  pt->toplevel = AllocatePage<pagetree_page11_t>( &pt->mem );
 }
 Inl void
-Zero( PAGETREE11x2* pt )
+Kill( PAGETREE11x2* pt )
 {
   pt->toplevel = 0;
+  Kill( pt->mem );
 }
 // allocates intermediate level tables as necessary.
 // leaves the LL page allocation up to the caller, since it's going to be something other
@@ -59,7 +64,7 @@ AccessLastLevelPage( PAGETREE11x2* pt, u32 address )
   auto table0 = pt->toplevel;
   auto entry0 = table0->entries + idx0;
   if( !*entry0 ) {
-    *entry0 = AllocatePage<pagetree_page11_t>();
+    *entry0 = AllocatePage<pagetree_page11_t>( &pt->mem );
   }
   auto table1 = Cast( pagetree_page11_t*, *entry0 );
   auto entry1 = table1->entries + idx1;
@@ -96,17 +101,20 @@ TryAccessLastLevelPage( PAGETREE11x2* pt, u64 address )
 struct
 pagetree_16x2_t
 {
+  pagelist_t mem;
   pagetree_page16_t* toplevel;
 };
 Inl void
 Init( PAGETREE16x2* pt )
 {
-  pt->toplevel = AllocatePage<pagetree_page16_t>();
+  Init( pt->mem, sizeof(pagetree_page16_t) );
+  pt->toplevel = AllocatePage<pagetree_page16_t>( &pt->mem );
 }
 Inl void
-Zero( PAGETREE16x2* pt )
+Kill( PAGETREE16x2* pt )
 {
   pt->toplevel = 0;
+  Kill( pt->mem );
 }
 // allocates intermediate level tables as necessary.
 // leaves the LL page allocation up to the caller, since it's going to be something other
@@ -120,7 +128,7 @@ AccessLastLevelPage( PAGETREE16x2* pt, u32 address )
   auto table0 = pt->toplevel;
   auto entry0 = table0->entries + idx0;
   if( !*entry0 ) {
-    *entry0 = AllocatePage<pagetree_page16_t>();
+    *entry0 = AllocatePage<pagetree_page16_t>( &pt->mem );
   }
   auto table1 = Cast( pagetree_page16_t*, *entry0 );
   auto entry1 = table1->entries + idx1;
@@ -156,6 +164,7 @@ TryAccessLastLevelPage( PAGETREE16x2* pt, u64 address )
 struct
 tpagetree_16x4_t
 {
+  pagelist_t mem;
   pagetree_page16_t* toplevel;
 };
 
@@ -164,12 +173,14 @@ using pagetree_16x4_t = tpagetree_16x4_t;
 Inl void
 Init( PAGETREE16x4* pt )
 {
-  pt->toplevel = AllocatePage<pagetree_page16_t>();
+  Init( pt->mem, sizeof(pagetree_page16_t) );
+  pt->toplevel = AllocatePage<pagetree_page16_t>( &pt->mem );
 }
 Inl void
-Zero( PAGETREE16x4* pt )
+Kill( PAGETREE16x4* pt )
 {
   pt->toplevel = 0;
+  Kill( pt->mem );
 }
 
 // TODO: for dynamic address slicing/dicing, can we rewrite this as a loop?
@@ -214,17 +225,17 @@ AccessLastLevelPage( PAGETREE16x4* pt, u64 address )
   auto table0 = pt->toplevel;
   auto entry0 = table0->entries + idx0;
   if( !*entry0 ) {
-    *entry0 = AllocatePage<pagetree_page16_t>();
+    *entry0 = AllocatePage<pagetree_page16_t>( &pt->mem );
   }
   auto table1 = Cast( pagetree_page16_t*, *entry0 );
   auto entry1 = table1->entries + idx1;
   if( !*entry1 ) {
-    *entry1 = AllocatePage<pagetree_page16_t>();
+    *entry1 = AllocatePage<pagetree_page16_t>( &pt->mem );
   }
   auto table2 = Cast( pagetree_page16_t*, *entry1 );
   auto entry2 = table2->entries + idx2;
   if( !*entry2 ) {
-    *entry2 = AllocatePage<pagetree_page16_t>();
+    *entry2 = AllocatePage<pagetree_page16_t>( &pt->mem );
   }
   auto table3 = Cast( pagetree_page16_t*, *entry2 );
   auto entry3 = table3->entries + idx3;

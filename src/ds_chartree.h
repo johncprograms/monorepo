@@ -11,23 +11,27 @@ chartree_page_t
   // 0 in [x] where x!=0 means the page isn't initialized.
   CHARTREEPAGE* child_pages[256];
   idx_t page_id;
-  alloctype_t allocn;
 };
 Inl CHARTREEPAGE*
-AllocateChartreePage( idx_t page_id )
+AllocateChartreePage( pagelist_t* mem, idx_t page_id )
 {
-  alloctype_t allocn = {};
-  auto page = Allocate<CHARTREEPAGE>( &allocn, 1 );
+  auto page = AddPagelist( *mem, CHARTREEPAGE, alignof(CHARTREEPAGE), 1 );
   Arrayzero( page->child_pages );
   page->page_id = page_id;
-  page->allocn = allocn;
   return page;
 }
+
+// NOTE: We use a pagelist_t allocator, to avoid having to iterate and free entries[i].
+//   It sort of makes sense for this pagetree to own it, since it knows the exact fixed-size it wants.
+//   We could use an even simpler pagelist_t since it's compile-time constant size chunks we want, but
+//   it's just as easy to use the fully generic pagelist_t, so I haven't bothered.
+
 
 #define CHARTREE   chartree_t
 struct
 chartree_t
 {
+  pagelist_t mem;
   CHARTREEPAGE* root;
   idx_t id_generator;
   idx_t num_pages;
@@ -35,10 +39,19 @@ chartree_t
 Inl void
 Init( CHARTREE* tree )
 {
+  Init( tree->mem, sizeof(CHARTREEPAGE) );
   // Give the root page_id=0.
-  tree->root = AllocateChartreePage( 0 );
+  tree->root = AllocateChartreePage( &tree->mem, 0 );
   tree->id_generator = 1;
   tree->num_pages = 1;
+}
+Inl void
+Kill( CHARTREE* tree )
+{
+  Kill( tree->mem );
+  tree->root = 0;
+  tree->id_generator = 0;
+  tree->num_pages = 0;
 }
 Inl idx_t
 Uniquify( CHARTREE* tree, slice_t str )
@@ -48,7 +61,7 @@ Uniquify( CHARTREE* tree, slice_t str )
     auto c = str.mem[i];
     auto next_page = page->child_pages[c];
     if( !next_page ) {
-      next_page = AllocateChartreePage( tree->id_generator );
+      next_page = AllocateChartreePage( &tree->mem, tree->id_generator );
       page->child_pages[c] = next_page;
       tree->id_generator += 1;
       tree->num_pages += 1;
@@ -63,8 +76,6 @@ Uniquify( CHARTREE* tree, slice_t str )
 RegisterTest([]()
 {
   chartree_t tree;
-  pagelist_t mem;
-  Init( mem, 64000 );
   Init( &tree );
 
   slice_t tests[] = {
@@ -82,5 +93,5 @@ RegisterTest([]()
     (void)id;
   }
 
-  Kill( mem );
+  Kill( &tree );
 });

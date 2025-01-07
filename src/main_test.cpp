@@ -1079,7 +1079,7 @@ main( int argc, char** argv )
 
   MainKill();
 
-  system( "pause" );
+  //system( "pause" );
   return r;
 }
 

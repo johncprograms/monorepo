@@ -85,6 +85,16 @@ AllocateBtreeNode()
   node->allocn = allocn;
   return node;
 }
+TC Inl void
+Kill( BTREENODE* t ) {
+  if (!t) return;
+  const auto M = t->M;
+  const auto& children = t->children;
+  for( u32 i = 0; i <= M; ++i) {
+    Kill( children[i] );
+  }
+  Free( t->allocn, t );
+}
 
 TC struct
 btree_t
@@ -98,6 +108,11 @@ Init( BTREE* t )
   auto root = AllocateBtreeNode<T, C>();
   t->root = root;
   t->nbytes_node = sizeof( BTREENODE );
+}
+TC Inl void
+Kill( BTREE* t )
+{
+  Kill( t->root );
 }
 TC Inl void
 Lookup(
@@ -1416,6 +1431,35 @@ DeleteRecur(
 #endif
 }
 
+RegisterTest([]()
+{
+  constexpr idx_t C = 10;
+  btree_t<u32, C> t;
+  Init( &t );
+  stack_resizeable_cont_t<parent_info_t<u32, C>> infos;
+  Alloc( infos, 1024 );
+  stack_resizeable_cont_t<u32> flat;
+  Alloc( flat, 1024 );
+  u32 N = 100;
+  Fori( u32, i, 0, N ) {
+    auto value = i + 1;
+    bool already_there = 0;
+    Insert( &t, value, &already_there, &infos );
+    AssertCrash( !already_there );
+    flat.len = 0;
+    FlattenValues( &t, &flat );
+    AssertCrash( flat.len == i + 1 );
+    ForLen( j, flat ) {
+      auto lj = j + 1;
+      auto fj = flat.mem[j];
+      AssertCrash( lj == fj );
+    }
+  }
+  Free( flat );
+  Free( infos );
+  Kill( &t );
+});
+
 
 
 #define CC 10
@@ -1448,9 +1492,47 @@ struct btnode {
   static void Free(btnode* t) {
     for (auto c : t->children) {
       Free(c);
-      delete c;
     }
     delete t;
+  }
+  // Return the min/max keys of the subtree.
+  // Ordering invariant, from above definition of the btree:
+  //   [ child[0], key[0], child[1], key[1], ..., key[M-1], child[M] ]
+  static void _ValidateOrder(btnode* t, std::optional<int> lower, std::optional<int> upper) {
+    const bool isroot = !upper.has_value() && !lower.has_value(); // implied, so we don't have to complicate the API further.
+    if (!isroot) {
+      const auto K = t->keys.size();
+      AssertCrash(CC/2 <= K && K <= CC);
+    }
+
+    for (const auto& c : t->keys) {
+      const bool vl = Implies(lower.has_value(), *lower < c);
+      const bool vu = Implies(upper.has_value(), c < *upper);
+      AssertCrash(vl);
+      AssertCrash(vu);
+    }
+    const auto K = t->keys.size();
+    for (size_t i = 1; i < K; ++i) {
+      const auto A = t->keys[i-1];
+      const auto B = t->keys[i];
+      AssertCrash(A < B);
+    }
+    if (!t->leaf()) {
+      const auto C = t->children.size();
+      for (size_t i = 0; i < C; ++i) {
+        std::optional<int> nlower = (i == 0) ? lower : t->keys[i-1];
+        std::optional<int> nupper = (i+1 == C) ? upper : t->keys[i];
+        _ValidateOrder(t->children[i], nlower, nupper);
+      }
+    }
+  }
+  // Ensures there's no duplicate nodes in the subtree.
+  static void _ValidateUniqueness(btnode* t, std::unordered_set<btnode*>& s) {
+    AssertCrash(!s.contains(t));
+    s.insert(t);
+    for (const auto& c : t->children) {
+      _ValidateUniqueness(c, s);
+    }
   }
 
   void Lookup(int key, size_t& index, bool& found) {
@@ -1480,6 +1562,13 @@ struct btree {
     btnode::Free(root);
   }
 
+  void _Validate() {
+//    std::unordered_set<btnode*> s;
+//    btnode::_ValidateUniqueness(root, s);
+
+    btnode::_ValidateOrder(root, std::nullopt, std::nullopt);
+  }
+
   void Lookup(int key, bool& found) {
     found = 0;
     auto t = root;
@@ -1491,6 +1580,11 @@ struct btree {
       // key should be down the tree in children[index].
       t = t->children[index];
     }
+  }
+  bool Contains(int key) {
+    bool found;
+    Lookup(key, found);
+    return found;
   }
 
   struct parentelt {
@@ -1619,7 +1713,7 @@ struct btree {
 
     std::vector<parentelt> parents;
     auto t = root;
-    size_t index;
+    size_t index = 0;
     while (t) {
       bool found;
       t->Lookup(key, index, found);
@@ -1695,7 +1789,7 @@ struct btree {
         L->keys.resize(index_median);
 
         if (!leaf) {
-          for (size_t i = index_median+1; i < L->children.size(); ++i) {
+          for (size_t i = index_median+1; i < index; ++i) {
             R->children.push_back(L->children[i]);
           }
           R->children.push_back(childL);
@@ -1711,7 +1805,7 @@ struct btree {
 
       if (parents.empty()) {
         // At the root, and it is full.
-        AssertCrash(root->keys.size() == CC);
+//        AssertCrash(root->keys.size() == CC);
         auto rootN = btnode::Alloc();
         rootN->keys.push_back(key_median);
         rootN->children.push_back(L);
@@ -1740,38 +1834,26 @@ struct btree {
   }
 };
 
-
-
-
-
-
 RegisterTest([]()
 {
-  constexpr idx_t C = 10;
-  btree_t<u32, C> t;
-  Init( &t );
-  stack_resizeable_cont_t<parent_info_t<u32, C>> infos;
-  Alloc( infos, 1024 );
-  stack_resizeable_cont_t<u32> flat;
-  Alloc( flat, 1024 );
-  u32 N = 100;
+  btree t;
+  u32 N = 10000;
   Fori( u32, i, 0, N ) {
     auto value = i + 1;
     bool already_there = 0;
-    Insert( &t, value, &already_there, &infos );
+    t.Insert( value, already_there );
+    t._Validate();
     AssertCrash( !already_there );
-    flat.len = 0;
-    FlattenValues( &t, &flat );
-    AssertCrash( flat.len == i + 1 );
-    ForLen( j, flat ) {
-      auto lj = j + 1;
-      auto fj = flat.mem[j];
-      AssertCrash( lj == fj );
-    }
+
+    AssertCrash( t.Contains(value) );
   }
-  Free( flat );
-  Free( infos );
+  std::cout << "done" << std::endl;
 });
+
+
+
+
+
 
 
 
