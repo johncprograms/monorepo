@@ -740,6 +740,16 @@ MoveEdgeXL(
   return r;
 }
 Inl rectf32_t
+MoveEdgeXR(
+  rectf32_t bounds,
+  f32 w
+  )
+{
+  rectf32_t r = bounds;
+  r.p1.x = CLAMP( bounds.p1.x + w, bounds.p0.x, bounds.p1.x );
+  return r;
+}
+Inl rectf32_t
 MoveEdgeYL(
   rectf32_t bounds,
   f32 h
@@ -747,6 +757,16 @@ MoveEdgeYL(
 {
   rectf32_t r = bounds;
   r.p0.y = CLAMP( bounds.p0.y + h, bounds.p0.y, bounds.p1.y );
+  return r;
+}
+Inl rectf32_t
+MoveEdgeYR(
+  rectf32_t bounds,
+  f32 h
+  )
+{
+  rectf32_t r = bounds;
+  r.p1.y = CLAMP( bounds.p1.y + h, bounds.p0.y, bounds.p1.y );
   return r;
 }
 

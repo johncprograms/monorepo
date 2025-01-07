@@ -843,7 +843,7 @@ PlotHistogram(
 {
   AssertCrash( counts_when_inserted.len == bucket_from_data_idx.len );
   auto subdivision_w = Truncate32( dim.x / counts.len );
-  auto col_w = subdivision_w - 1;
+  auto col_w = subdivision_w; // - 1;
   if( col_w < 1.0f ) return; // TODO: not signalling failure upwards.
   ForLen( i, bucket_from_data_idx ) {
     auto bucket_i = bucket_from_data_idx.mem[i];

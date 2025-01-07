@@ -97,6 +97,10 @@
       auto-discover useful data
       auto-join time series data for subsequent analysis ops
 
+
+random ideas:
+  drop columns that don't contain numerically interesting data.
+
 #endif
 
 struct
@@ -1567,7 +1571,7 @@ __OnRender( AppOnRender )
       {
         stack_nonresizeable_stack_t<u8, 32> r;
         CsFrom_f64( r.mem, Capacity( r ), &r.len, value, 3 );
-        while( r.len ) {
+        while( r.len > 1 ) {
           auto c = r.mem[r.len - 1];
           if( c == '0' ) {
             r.len -= 1;
@@ -1592,37 +1596,29 @@ __OnRender( AppOnRender )
       {
         auto rect = sequence_rect;
 
+        // centered header, common to all charts.
         auto title = SliceFromCStr( "SEQUENCE" );
         auto title_w = LAYOUTSTRING( title );
         DRAWSTRING( AlignCenter( rect, title_w ), bounds, title );
         rect = MoveEdgeYL( rect, line_h );
 
-        auto min_text = PrettyPrint( sequence_data_min );
-        auto max_text = PrettyPrint( sequence_data_max );
-        auto min_text_w = LAYOUTSTRING( min_text );
-        auto max_text_w = LAYOUTSTRING( max_text );
-        auto axis_w = MAX( min_text_w, max_text_w );
-        auto axis_rect = _rect(
-          rect.p0,
-          _vec2( rect.p0.x + axis_w, rect.p1.y )
-          );
-        DRAWSTRING(
-          _vec2(
-            AlignR( axis_rect.p0.x, axis_rect.p1.x, min_text_w ),
-            AlignR( axis_rect.p0.y, axis_rect.p1.y, line_h )
-            ),
-          bounds,
-          min_text
-          );
-        DRAWSTRING(
-          _vec2(
-            AlignR( axis_rect.p0.x, axis_rect.p1.x, max_text_w ),
-            axis_rect.p0.y
-            ),
-          bounds,
-          max_text
-          );
-        rect = MoveEdgeXL( rect, axis_w + 0.5f * space_w );
+        // y-max
+        auto text_yr = PrettyPrint( sequence_data_max );
+        DRAWSTRING( rect.p0, bounds, text_yr );
+        rect = MoveEdgeYL( rect, line_h );
+        // x-min
+        rect = MoveEdgeYR( rect, -line_h );
+        auto text_xl = SliceFromCStr( "0" );
+        DRAWSTRING( _vec2( rect.p0.x, rect.p1.y ), bounds, text_xl );
+        // x-max
+        auto text_xr = PrettyPrint( Cast( f64, sequence_data.len ) );
+        auto text_xr_w = LAYOUTSTRING( text_xr );
+        DRAWSTRING( _vec2( AlignR( rect.p0.x, rect.p1.x, text_xr_w ), rect.p1.y ), bounds, text_xr );
+        // y-min
+        rect = MoveEdgeYR( rect, -line_h );
+        auto text_yl = PrettyPrint( sequence_data_min );
+        DRAWSTRING( _vec2( rect.p0.x, rect.p1.y ), bounds, text_yl );
+
         DrawBorderAndShrink( &rect, 1.0f );
         auto points_sequence = AllocString<vec2<f32>>( sequence_data.len );
         PlotRunSequence<f64>(
@@ -1659,7 +1655,7 @@ __OnRender( AppOnRender )
 
       // DRAWDOWN SETUP:
       auto drawdown_input = data_active;
-      auto drawdown_rect = rect_02;
+      auto drawdown_rect = rect_21;
       // ======
       {
         AssertCrash( drawdown_input.len );
@@ -1672,51 +1668,52 @@ __OnRender( AppOnRender )
 
         auto drawdown = AllocString<f64>( drawdown_input.len );
         auto cumulative_max = drawdown_input.mem[0];
-        f32 low_pct = 1;
+        f64 low_pct = 1.0;
         ForLen( i, drawdown_input ) {
-          auto input = drawdown_input.mem[i];
+          const auto input = drawdown_input.mem[i];
           cumulative_max = MAX( cumulative_max, input );
-          auto pct = input / cumulative_max;
-          low_pct = MIN( low_pct, Cast( f32, pct ) );
+          const auto pct = (cumulative_max == 0.0) ? 1.0 : input / cumulative_max;
+          low_pct = MIN( low_pct, pct );
           drawdown.mem[i] = pct;
         }
 
-        auto min_text = PrettyPrint( 0 );
-        auto max_text = PrettyPrint( 1 );
-        auto low_text = PrettyPrint( low_pct );
-        auto min_text_w = LAYOUTSTRING( min_text );
-        auto max_text_w = LAYOUTSTRING( max_text );
+        auto low_text = PrettyPrint( 100.0 * low_pct );
         auto low_text_w = LAYOUTSTRING( low_text );
-        auto axis_w = MAX3( min_text_w, max_text_w, low_text_w );
+        auto axis_w = low_text_w;
+        auto axis_offset = axis_w + 0.5f * space_w;
+
+        auto axis_x0 = rect.p0.x;
+        rect = MoveEdgeXL( rect, axis_offset );
+
+        // y-max
+        auto text_yr = SliceFromCStr( "100" );
+        DRAWSTRING( rect.p0, bounds, text_yr );
+        rect = MoveEdgeYL( rect, line_h );
+        // x-min
+        rect = MoveEdgeYR( rect, -line_h );
+        auto text_xl = SliceFromCStr( "0" );
+        DRAWSTRING( _vec2( rect.p0.x, rect.p1.y ), bounds, text_xl );
+        // x-max
+        auto text_xr = PrettyPrint( Cast( f64, drawdown_input.len ) );
+        auto text_xr_w = LAYOUTSTRING( text_xr );
+        DRAWSTRING( _vec2( AlignR( rect.p0.x, rect.p1.x, text_xr_w ), rect.p1.y ), bounds, text_xr );
+        // y-min
+        rect = MoveEdgeYR( rect, -line_h );
+        auto text_yl = SliceFromCStr( "0" );
+        DRAWSTRING( _vec2( rect.p0.x, rect.p1.y ), bounds, text_yl );
+
         auto axis_rect = _rect(
-          rect.p0,
-          _vec2( rect.p0.x + axis_w, rect.p1.y )
-          );
-        DRAWSTRING(
-          _vec2(
-            AlignR( axis_rect.p0.x, axis_rect.p1.x, min_text_w ),
-            AlignR( axis_rect.p0.y, axis_rect.p1.y, line_h )
-            ),
-          bounds,
-          min_text
-          );
-        DRAWSTRING(
-          _vec2(
-            AlignR( axis_rect.p0.x, axis_rect.p1.x, max_text_w ),
-            axis_rect.p0.y
-            ),
-          bounds,
-          max_text
+          _vec2( axis_x0, rect.p0.y ),
+          _vec2( axis_x0 + axis_w, rect.p1.y )
           );
         DRAWSTRING(
           _vec2(
             AlignR( axis_rect.p0.x, axis_rect.p1.x, low_text_w ),
-            lerp( axis_rect.p0.y, axis_rect.p1.y, 1 - low_pct ) - 0.5f * line_h
+            lerp( axis_rect.p0.y, axis_rect.p1.y, 1 - Cast( f32, low_pct ) ) - 0.5f * line_h
             ),
           bounds,
           low_text
           );
-        rect = MoveEdgeXL( rect, axis_w + 0.5f * space_w );
         DrawBorderAndShrink( &rect, 1.0f );
 
         auto linecolor = _vec4( 0.5f );
@@ -1745,10 +1742,189 @@ __OnRender( AppOnRender )
         Free( points_drawdown );
       }
 
+      // 1st and 2nd DERIVATIVE SETUP:
+      auto deriv1_input = data_active;
+      auto deriv1_rect = rect_10;
+      auto deriv2_rect = rect_20;
+      // ======
+      {
+        AssertCrash( deriv1_input.len );
+
+        auto deriv1 = AllocString<f64>( MAX( deriv1_input.len, 1 ) - 1 );
+        {
+          auto inputmem = deriv1_input.mem;
+          ForLen( i, deriv1 ) {
+            deriv1.mem[i] = inputmem[i+1] - inputmem[i];
+          }
+        }
+        auto deriv2 = AllocString<f64>( MAX( deriv1.len, 1 ) - 1 );
+        {
+          auto inputmem = deriv1.mem;
+          ForLen( i, deriv2 ) {
+            deriv2.mem[i] = inputmem[i+1] - inputmem[i];
+          }
+        }
+
+        {
+          auto rect = deriv1_rect;
+
+          auto title = SliceFromCStr( "1st DERIVATIVE DISCRETE" );
+          auto title_w = LAYOUTSTRING( title );
+          DRAWSTRING( AlignCenter( rect, title_w ), bounds, title );
+          rect = MoveEdgeYL( rect, line_h );
+
+          f64 deriv1_min;
+          f64 deriv1_max;
+          MinMax<f64>( deriv1, &deriv1_min, &deriv1_max );
+
+          auto zero_text = SliceFromCStr( "0" );
+          auto zero_text_w = LAYOUTSTRING( zero_text );
+          auto axis_w = zero_text_w;
+          auto axis_offset = axis_w + 0.5f * space_w;
+
+          auto axis_x0 = rect.p0.x;
+          rect = MoveEdgeXL( rect, axis_offset );
+
+          // y-max
+          auto text_yr = PrettyPrint( deriv1_max );
+          DRAWSTRING( rect.p0, bounds, text_yr );
+          rect = MoveEdgeYL( rect, line_h );
+          // x-min
+          rect = MoveEdgeYR( rect, -line_h );
+          auto text_xl = SliceFromCStr( "0" );
+          DRAWSTRING( _vec2( rect.p0.x, rect.p1.y ), bounds, text_xl );
+          // x-max
+          auto text_xr = PrettyPrint( Cast( f64, deriv1.len ) );
+          auto text_xr_w = LAYOUTSTRING( text_xr );
+          DRAWSTRING( _vec2( AlignR( rect.p0.x, rect.p1.x, text_xr_w ), rect.p1.y ), bounds, text_xr );
+          // y-min
+          rect = MoveEdgeYR( rect, -line_h );
+          auto text_yl = PrettyPrint( deriv1_min );
+          DRAWSTRING( _vec2( rect.p0.x, rect.p1.y ), bounds, text_yl );
+
+          auto zero_fac = lerp_T_from_T<f64>( 1.0, 0.0, deriv1_max, 0.0, deriv1_max - deriv1_min );
+          auto axis_rect = _rect(
+            _vec2( axis_x0, rect.p0.y ),
+            _vec2( axis_x0 + axis_w, rect.p1.y )
+            );
+          DRAWSTRING(
+            _vec2(
+              AlignR( axis_rect.p0.x, axis_rect.p1.x, zero_text_w ),
+              lerp( axis_rect.p0.y, axis_rect.p1.y, 1 - Cast( f32, zero_fac ) ) - 0.5f * line_h
+              ),
+            bounds,
+            zero_text
+            );
+          DrawBorderAndShrink( &rect, 1.0f );
+
+          auto linecolor = _vec4( 0.5f );
+          auto dim = Dim( &rect );
+          auto zero_y = Cast( f32, ( zero_fac - 0.0 ) / ( 1.0 - 0.0 ) ) * ( dim.y - 1 );
+          RenderQuad(
+            app->stream,
+            linecolor,
+            rect.p0 + _vec2<f32>( 0, dim.y - zero_y ),
+            rect.p0 + _vec2<f32>( dim.x - 1, dim.y - zero_y + 1 ),
+            bounds,
+            GetZ( zrange, applayer_t::txt )
+            );
+          auto points_deriv1 = AllocString<vec2<f32>>( deriv1.len );
+          PlotRunSequence<f64>( Dim( &rect ), deriv1, deriv1_min, deriv1_max, points_deriv1 );
+          DrawPoints(
+            app,
+            zrange,
+            bounds,
+            rect,
+            points_deriv1,
+            0, /*gradient*/
+            1.0f /*radius*/ );
+          Free( points_deriv1 );
+        }
+
+        {
+          auto rect = deriv2_rect;
+
+          auto title = SliceFromCStr( "2nd DERIVATIVE DISCRETE" );
+          auto title_w = LAYOUTSTRING( title );
+          DRAWSTRING( AlignCenter( rect, title_w ), bounds, title );
+          rect = MoveEdgeYL( rect, line_h );
+
+          f64 deriv2_min;
+          f64 deriv2_max;
+          MinMax<f64>( deriv2, &deriv2_min, &deriv2_max );
+
+          auto zero_text = SliceFromCStr( "0" );
+          auto zero_text_w = LAYOUTSTRING( zero_text );
+          auto axis_w = zero_text_w;
+          auto axis_offset = axis_w + 0.5f * space_w;
+
+          auto axis_x0 = rect.p0.x;
+          rect = MoveEdgeXL( rect, axis_offset );
+
+          // y-max
+          auto text_yr = PrettyPrint( deriv2_max );
+          DRAWSTRING( rect.p0, bounds, text_yr );
+          rect = MoveEdgeYL( rect, line_h );
+          // x-min
+          rect = MoveEdgeYR( rect, -line_h );
+          auto text_xl = SliceFromCStr( "0" );
+          DRAWSTRING( _vec2( rect.p0.x, rect.p1.y ), bounds, text_xl );
+          // x-max
+          auto text_xr = PrettyPrint( Cast( f64, deriv2.len ) );
+          auto text_xr_w = LAYOUTSTRING( text_xr );
+          DRAWSTRING( _vec2( AlignR( rect.p0.x, rect.p1.x, text_xr_w ), rect.p1.y ), bounds, text_xr );
+          // y-min
+          rect = MoveEdgeYR( rect, -line_h );
+          auto text_yl = PrettyPrint( deriv2_min );
+          DRAWSTRING( _vec2( rect.p0.x, rect.p1.y ), bounds, text_yl );
+
+          auto zero_fac = lerp_T_from_T<f64>( 1.0, 0.0, deriv2_max, 0.0, deriv2_max - deriv2_min );
+          auto axis_rect = _rect(
+            _vec2( axis_x0, rect.p0.y ),
+            _vec2( axis_x0 + axis_w, rect.p1.y )
+            );
+          DRAWSTRING(
+            _vec2(
+              AlignR( axis_rect.p0.x, axis_rect.p1.x, zero_text_w ),
+              lerp( axis_rect.p0.y, axis_rect.p1.y, 1 - Cast( f32, zero_fac ) ) - 0.5f * line_h
+              ),
+            bounds,
+            zero_text
+            );
+          DrawBorderAndShrink( &rect, 1.0f );
+
+          auto linecolor = _vec4( 0.5f );
+          auto dim = Dim( &rect );
+          auto zero_y = Cast( f32, ( zero_fac - 0.0 ) / ( 1.0 - 0.0 ) ) * ( dim.y - 1 );
+          RenderQuad(
+            app->stream,
+            linecolor,
+            rect.p0 + _vec2<f32>( 0, dim.y - zero_y ),
+            rect.p0 + _vec2<f32>( dim.x - 1, dim.y - zero_y + 1 ),
+            bounds,
+            GetZ( zrange, applayer_t::txt )
+            );
+          auto points_deriv2 = AllocString<vec2<f32>>( deriv2.len );
+          PlotRunSequence<f64>( Dim( &rect ), deriv2, deriv2_min, deriv2_max, points_deriv2 );
+          DrawPoints(
+            app,
+            zrange,
+            bounds,
+            rect,
+            points_deriv2,
+            0, /*gradient*/
+            1.0f /*radius*/ );
+          Free( points_deriv2 );
+        }
+
+        Free( deriv2 );
+        Free( deriv1 );
+      }
+
 
       // LAG SETUP:
       auto lag_data = data_active;
-      auto lag_rect = rect_10;
+      auto lag_rect = rect_11;
       // ======
       {
         auto rect = lag_rect;
@@ -1758,9 +1934,30 @@ __OnRender( AppOnRender )
         DRAWSTRING( AlignCenter( rect, title_w ), bounds, title );
         rect = MoveEdgeYL( rect, line_h );
 
-        DrawBorderAndShrink( &rect, 1.0f );
         auto lag = Lag<f64>( lag_data );
+
+        // y-max
+        auto text_yr = PrettyPrint( lag.max_y );
+        DRAWSTRING( rect.p0, bounds, text_yr );
+        rect = MoveEdgeYL( rect, line_h );
+        // x-min
+        rect = MoveEdgeYR( rect, -line_h );
+        auto text_xl = PrettyPrint( lag.min_x );
+        DRAWSTRING( _vec2( rect.p0.x, rect.p1.y ), bounds, text_xl );
+        // x-max
+        auto text_xr = PrettyPrint( lag.max_x );
+        auto text_xr_w = LAYOUTSTRING( text_xr );
+        DRAWSTRING( _vec2( AlignR( rect.p0.x, rect.p1.x, text_xr_w ), rect.p1.y ), bounds, text_xr );
+        // y-min
+        rect = MoveEdgeYR( rect, -line_h );
+        auto text_yl = PrettyPrint( lag.min_y );
+        DRAWSTRING( _vec2( rect.p0.x, rect.p1.y ), bounds, text_yl );
+
+        DrawBorderAndShrink( &rect, 1.0f );
         auto points_lag = AllocString<vec2<f32>>( lag.len );
+
+        // TODO: grey line on y=x, since lag plot shows the difference from that line.
+
         PlotXY<f64>( Dim( &rect ), { lag.y, lag.len }, lag.min_y, lag.max_y, { lag.x, lag.len }, lag.min_x, lag.max_x, points_lag );
         DrawPoints(
           app,
@@ -1778,7 +1975,7 @@ __OnRender( AppOnRender )
       auto autocorr_data = data_active;
       auto autocorr_data_mean = mean_active;
       auto autocorr_data_variance = variance_active;
-      auto autocorr_rect = rect_11;
+      auto autocorr_rect = rect_02;
       // ======
       {
         auto rect = autocorr_rect;
@@ -1788,9 +1985,27 @@ __OnRender( AppOnRender )
         DRAWSTRING( AlignCenter( rect, title_w ), bounds, title );
         rect = MoveEdgeYL( rect, line_h );
 
-        DrawBorderAndShrink( &rect, 1.0f );
         auto autocorr = AllocString<f64>( autocorr_data.len );
         AutoCorrelation<f64>( autocorr_data, autocorr_data_mean, autocorr_data_variance, autocorr );
+
+        // y-max
+        auto text_yr = SliceFromCStr( "1" );
+        DRAWSTRING( rect.p0, bounds, text_yr );
+        rect = MoveEdgeYL( rect, line_h );
+        // x-min
+        rect = MoveEdgeYR( rect, -line_h );
+        auto text_xl = SliceFromCStr( "0" );
+        DRAWSTRING( _vec2( rect.p0.x, rect.p1.y ), bounds, text_xl );
+        // x-max
+        auto text_xr = PrettyPrint( Cast( f64, autocorr.len ) );
+        auto text_xr_w = LAYOUTSTRING( text_xr );
+        DRAWSTRING( _vec2( AlignR( rect.p0.x, rect.p1.x, text_xr_w ), rect.p1.y ), bounds, text_xr );
+        // y-min
+        rect = MoveEdgeYR( rect, -line_h );
+        auto text_yl = SliceFromCStr( "-1" );
+        DRAWSTRING( _vec2( rect.p0.x, rect.p1.y ), bounds, text_yl );
+
+        DrawBorderAndShrink( &rect, 1.0f );
         auto points_autocorr = AllocString<vec2<f32>>( autocorr.len );
         // We use [-1, 1] as the range, since it's guaranteed to be within [-1,1].
         PlotRunSequence<f64>( Dim( &rect ), autocorr, -1 /*min_autocorr*/, 1 /*max_autocorr*/, points_autocorr );
@@ -1838,8 +2053,6 @@ __OnRender( AppOnRender )
         DRAWSTRING( AlignCenter( rect, title_w ), bounds, title );
         rect = MoveEdgeYL( rect, line_h );
 
-        DrawBorderAndShrink( &rect, 1.0f );
-
         // Scott's rule for choosing histogram bin width is:
         //   B = 3.49 * stddev * N^(-1/3)
         auto histogram_nbins = 3.49 * Sqrt( histogram_data_variance ) * Pow64( Cast( f64, histogram_data.len ), -1.0 / 3.0 );
@@ -1847,7 +2060,8 @@ __OnRender( AppOnRender )
           histogram_nbins = Sqrt64( Cast( f64, histogram_data.len ) );
         }
         histogram_nbins = MAX( histogram_nbins, 3 );
-        histogram_nbins = MIN( histogram_nbins, 0.4f * ( rect.p1.x - rect.p0.x ) );
+        // NOTE: this is only dependent on the X dimension, not Y. So we can do the x/y-min/max axis drawing independent from this.
+        histogram_nbins = MIN( histogram_nbins, 0.3f * ( rect.p1.x - rect.p0.x ) );
         auto histogram_counts = AllocString<f64>( Cast( idx_t, histogram_nbins ) + 1 );
         auto bucket_from_close_idx = AllocString<idx_t>( histogram_data.len );
         auto counts_when_inserted = AllocString<f64>( histogram_data.len );
@@ -1855,6 +2069,34 @@ __OnRender( AppOnRender )
         f64 histogram_counts_min;
         f64 histogram_counts_max;
         MinMax<f64>( histogram_counts, &histogram_counts_min, &histogram_counts_max );
+
+        auto text_bucketw = PrettyPrint( ( histogram_data_max - histogram_data_min ) / histogram_counts.len );
+        stack_nonresizeable_stack_t<u8,64> text_bucket;
+        Zero( text_bucket );
+        AddBackCStr( &text_bucket, Str( "bucketW:" ) );
+        AddBackContents( &text_bucket, SliceFromArray( text_bucketw ) );
+        auto text_bucket_w = LAYOUTSTRING( text_bucket );
+        DRAWSTRING( AlignRight( rect, text_bucket_w ), bounds, text_bucket );
+
+        // y-max
+        auto text_yr = PrettyPrint( histogram_counts_max );
+        DRAWSTRING( rect.p0, bounds, text_yr );
+        rect = MoveEdgeYL( rect, line_h );
+        // x-min
+        rect = MoveEdgeYR( rect, -line_h );
+        auto text_xl = PrettyPrint( histogram_data_min );
+        DRAWSTRING( _vec2( rect.p0.x, rect.p1.y ), bounds, text_xl );
+        // x-max
+        auto text_xr = PrettyPrint( histogram_data_max );
+        auto text_xr_w = LAYOUTSTRING( text_xr );
+        DRAWSTRING( _vec2( AlignR( rect.p0.x, rect.p1.x, text_xr_w ), rect.p1.y ), bounds, text_xr );
+        // y-min
+        rect = MoveEdgeYR( rect, -line_h );
+        auto text_yl = SliceFromCStr( "0" );
+        DRAWSTRING( _vec2( rect.p0.x, rect.p1.y ), bounds, text_yl );
+
+        DrawBorderAndShrink( &rect, 1.0f );
+
         auto histogram_rects = AllocString<rectf32_t>( histogram_data.len );
         PlotHistogram<f64>( Dim( &rect ), histogram_counts, histogram_counts_max, bucket_from_close_idx, counts_when_inserted, histogram_rects );
         DrawRects(
@@ -1874,8 +2116,9 @@ __OnRender( AppOnRender )
       // TODO: non-uniform DFT with date values.
       // POWER SPECTRUM SETUP:
       auto power_data = data_active;
-      auto power_rect = rect_20;
-      auto power_phase_rect = rect_21;
+      auto power_data_mean = mean_active;
+      auto power_rect = rect_12;
+      auto power_phase_rect = rect_22;
       // ======
       {
         {
@@ -1903,7 +2146,7 @@ __OnRender( AppOnRender )
         // Use mean-centered data for the Fourier transform, so we have a better chance of seeing periods.
         //   was: TMove( power_re.mem, ML( power_data ) );
         ForLen( i, power_data ) {
-          power_re.mem[i] = power_data.mem[i] - mean_active;
+          power_re.mem[i] = power_data.mem[i] - power_data_mean;
         }
         auto power_buffer = AllocString<f64>( 3 * power_pow2 );
         auto power = tslice_t<f64>{ power_buffer.mem + 2 * power_pow2, power_pow2 / 2 };
