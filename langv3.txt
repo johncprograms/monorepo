@@ -1,0 +1,475 @@
+
+jcpl, v3
+
+Inl binoptype_t
+BinopFromTokentype( tokentype_t type )
+{
+  switch( type ) {
+    case tokentype_t::star: return binoptype_t::mul;
+    case tokentype_t::slash: return binoptype_t::div;
+    ...
+    case tokentype_t::lteq: return binoptype_t::lteq;
+    default: UnreachableCrash(); return {};
+  }
+}
+
+BinopFromTokentype
+  type tokentype_t
+returns
+  binoptype_t
+body
+  switch_complete type
+    case tokentype_t.star
+      ret binoptype_t.mul
+    case tokentype_t.slash
+      ret binoptype_t.div
+    ...
+    case tokentype_t.lteq
+      ret binoptype_t.lteq
+
+
+
+
+Inl u32
+PrecedenceValue( binoptype_t type )
+{
+  switch( type ) {
+    case binoptype_t::or_: return 0;
+    case binoptype_t::and_: return 1;
+    case binoptype_t::eqeq:
+    case binoptype_t::noteq: return 2;
+    case binoptype_t::gt:
+    case binoptype_t::gteq:
+    case binoptype_t::lt:
+    case binoptype_t::lteq: return 3;
+    case binoptype_t::add:
+    case binoptype_t::sub: return 4;
+    case binoptype_t::mul:
+    case binoptype_t::div:
+    case binoptype_t::mod: return 5;
+    case binoptype_t::pow_: return 6;
+    default: UnreachableCrash();
+  }
+  return 0;
+}
+
+PrecedenceValue
+  type binoptype_t
+returns
+  u32
+body
+  switch_complete type
+    case binoptype_t.or_
+      ret 0
+    case binoptype_t.and_
+      ret 1
+    case binoptype_t.eqeq
+    case binoptype_t.noteq
+      ret 2
+    case binoptype_t.gt
+    case binoptype_t.gteq
+    case binoptype_t.lt
+    case binoptype_t.lteq
+      ret 3
+    case binoptype_t.add
+    case binoptype_t.sub
+      ret 4
+    case binoptype_t.mul
+    case binoptype_t.div
+    case binoptype_t.mod
+      ret 5
+    case binoptype_t.pow_
+      ret 6
+
+NOTE: since we'll allow early-returns, it makes sense to keep the 'ret value' syntax.
+
+QUESTION: should we allow / require elision of the ret keywords?
+  i.e. the last statement to evaluate is the implicit return value.
+  if we do, i think it means we have to do full control flow analysis to make sure you don't do that
+  somewhere in the middle of a function.
+  since we'll probably want to do that anyways for dead code, maybe that's fine.
+  this will also affect parsing: a leading ret is trivial to parse; an arbitrary leading expression less so.
+  well we'd want to disallow function calls, so not really arbitrary.
+  probably just allow named expressions, maybe somewhat complex, and constants.
+  e.g. foo_t.enumvalue, struct_foo.field, etc.
+
+
+Inl void
+PrintExprAssignable(
+  array_t<u8>* out,
+  expr_assignable_t* expr_assignable
+  )
+{
+  FORLIST( entry, elem, expr_assignable->expr_assignable_entries )
+    PrintIdent( out, &entry->ident );
+    if( entry->expr_arrayidxs.len ) {
+      AddBackString( out, "[" );
+      FORLIST( expr_arrayidx, elem2, entry->expr_arrayidxs )
+        PrintExpr( out, *expr_arrayidx );
+        if( elem2 != entry->expr_arrayidxs.last ) {
+          AddBackString( out, ", " );
+        }
+      }
+      AddBackString( out, "]" );
+    }
+    if( elem != expr_assignable->expr_assignable_entries.last ) {
+      AddBackString( out, "." );
+    }
+  }
+}
+
+PrintExprAssignable
+  out * array_t(u8)
+  expr_assignable * expr_assignable_t
+body
+  IterateList entry, elem, expr_assignable.expr_assignable_entries
+    PrintIdent out, &entry.ident
+    if entry.expr_arrayidxs.len
+      AddBackString out, "["
+      IterateList expr_arrayidx, elem2, entry.expr_arrayidxs
+        PrintExpr out, *expr_arrayidx
+        if elem2 != entry.expr_arrayidxs.last
+          AddBackString out, ", "
+      AddBackString out, "]"
+    if elem != expr_assignable.expr_assignable_entries.last
+      AddBackString out, "."
+
+QUESTION: how do we define IterateList, an expression that should turn into control flow?
+  some way to define syntactic sugar, e.g. compile-time macros.
+
+AddBackString
+  array * array_t(u8)
+  text slice_t
+body
+  AddBackContents array, text
+
+AddBackContents
+  array * array_t(u8)
+  contents slice_t
+body
+  dst := AddBack *array, contents.len
+  Memmove dst, ML contents
+
+NOTE: a return slot is important for type inference, so we probably want that.
+
+QUESTION: how do we handle ML?
+  we could make parens optional in general, but required for ML( contents ) ?
+  if we do a macro system, then it's just syntactic sugar operating on the token stream.
+  no special parse-time things needed, besides the pre-pass macro system.
+  well there's some fiddliness with macros that take args. what if we have Foo a, Macro b, c
+  is that: Foo a, ( Macro b ), c
+  or:      Foo a, Macro( b, c )
+  well if we disallow conflicting macro names, then we'll know what Macro is, and can always decide.
+
+
+#define ForList( elem, list ) \
+  for( auto elem = ( list ).first;  elem;  elem = ( elem  ?  elem->next  :  0 ) )
+
+IterateList
+  elem
+  list
+macro
+  for
+    elem := list.first
+    elem
+    elem = elem->next
+  block
+
+QUESTION: how do we handle macros that need to implicitly indent the subsequent code, like this one?
+  we could virtually increment the indent level after expanding the macro, but critically:
+  how do we know when to close that virtual indent scope?
+  actually this one is fine, since the block keyword is at the same level as the for and the IterateList.
+  so simple text replace would just work here. but we might still have this problem for other macros?
+
+NOTE: forms of 'for':
+  single-line:
+    for auto elem = list.first; elem; elem = elem->next
+  multi-line:
+    for
+      auto elem = list.first
+      elem
+      elem = elem->next
+    block
+  note that multi-line must have the block keyword to make it clear when the loop cond/iter stuff is done.
+  we could have chosen to elide that in the design, but it would be unclear that the first 3 statements are special.
+
+QUESTION: should macro args be typed somehow?
+  i don't think they can be, since the macro system would be a pre-pass thing.
+  generic types will be useful elsewhere for generic functions.
+
+
+QUESTION: how do we do generic types? e.g. array_t(u8)
+  probably we can also elide the parens, since generic types will specify their template args.
+  we'll likely have to disallow overloads of different arg lengths here, just like with macros.
+
+template< typename T > struct
+array_t
+{
+  T* mem;
+  idx_t capacity; // # of elements mem can possibly hold.
+  idx_t len; // # of elements in mem.
+};
+
+array_t
+  T type_t
+struct
+  mem * T
+  capacity idx_t
+  len idx_t
+
+template< typename T, idx_t N > struct
+embeddedarray_t
+{
+  idx_t len; // # of elements in mem.
+  T mem[N];
+};
+
+embeddedarray_t
+  T type_t
+  N idx_t
+struct
+  mem [N] T
+  len idx_t
+
+QUESTION: can / should we make array_t a part of the syntax, like with static arrays?
+  looks like it doesn't particularly matter for passing them around.
+  the main thing is probably making a good version of AddBack / Memmove AddBack.
+
+TemplTIdxN Inl T*
+AddAt( embeddedarray_t<T, N>& array, idx_t idx, idx_t nelems = 1 )
+{
+  AssertCrash( array.len + nelems <= N );
+  AssertCrash( idx <= array.len );
+  if( idx < array.len ) {
+    auto nshift = array.len - idx;
+    Memmove(
+      array.mem + idx + nelems,
+      array.mem + idx,
+      sizeof( T ) * nshift
+    );
+  }
+  auto r = array.mem + idx;
+  array.len += nelems;
+  return r;
+}
+
+QUESTION: how do we specify default arg values?
+  just like: nelems idx_t = 1 ?
+
+QUESTION: can we elide generic type args in functions when they're already part of the arg list?
+  we'll still need syntax for generic type args to functions, since you might want generic functions,
+  separate from generic structs. e.g. generic basic types, handling u32 and u64.
+  one idea is to treat unknown types as generic. since a type can be either concrete or generic, we
+  shouldn't have to be concerned with name conflicts. but, this has the problem of allowing typos of
+  concrete types to still be compiled successfully as generic types. is that a concern worth duplication?
+  i'd really prefer not to duplicate, so.
+  what about a special character to indicate generic? e.g. $T or \T
+  that would also help distinguish compile-time args from run-time args.
+
+AddAt
+  \T type_t
+  \N idx_t
+  array * embeddedarray_t(T, N)
+  idx idx_t
+  nelems idx_t = 1
+body
+  AssertCrash array.len + nelems <= N
+  AssertCrash idx <= array.len
+  if idx < array.len
+    nshift := array.len - idx
+    Memmove
+      array.mem + idx + nelems
+      array.mem + idx
+      sizeof T * nshift
+  r := array.mem + idx
+  array.len += nelems
+  ret r
+
+NOTE: forms of a function call:
+  single-line:
+    Memmove array.mem + idx + nelems, array.mem + idx, sizeof T * nshift
+  multi-line:
+    Memmove
+      array.mem + idx + nelems
+      array.mem + idx
+      sizeof T * nshift
+
+QUESTION: commas not required, or should we require no commas?
+QUESTION: should we enforce multi-arg => multi-line?
+
+
+// This plots a given histogram, with each datapoint represented as a small rect.
+// TODO: area-normalized histogram option. This works better for overlaying more-precise pdfs.
+Templ void
+PlotHistogram(
+  vec2<f32> dim,
+  tslice_t<T> counts,
+  T counts_max,
+  tslice_t<idx_t> bucket_from_data_idx,
+  tslice_t<T> counts_when_inserted,
+  tslice_t<rectf32_t> rects
+  )
+{
+  AssertCrash( counts_when_inserted.len == bucket_from_data_idx.len );
+  auto subdivision_w = Truncate32( dim.x / counts.len );
+  auto col_w = subdivision_w - 1;
+  if( col_w < 1.0f ) return; // TODO: not signalling failure upwards.
+  ForLen( i, bucket_from_data_idx ) {
+    auto bucket_i = bucket_from_data_idx.mem[i];
+    auto count_when_inserted = counts_when_inserted.mem[i];
+    AssertCrash( bucket_i < counts.len );
+    auto count = counts.mem[bucket_i];
+
+    // Lerp [0, counts_max] as the y range.
+    // Note (dim.y - 1) is the factor, since the maximum y maps to the last pixel.
+    auto y_i  = Cast( f32, ( ( count_when_inserted + 0 ) / counts_max ) ) * ( dim.y - 1 );
+    auto y_ip = Cast( f32, ( ( count_when_inserted + 1 ) / counts_max ) ) * ( dim.y - 1 );
+    auto x_i = bucket_i * subdivision_w;
+
+    auto rect = rects.mem + i;
+    rect->p0 = _vec2( x_i, dim.y - 1 - y_ip );
+    rect->p1 = _vec2( x_i + col_w, dim.y - 1 - y_i );
+  }
+}
+
+PlotHistogram
+  \T type_t
+  dim vec2(f32)
+  counts slice(T)
+  counts_max T
+  bucket_from_data_idx slice(uint)
+  counts_when_inserted slice(T)
+  rects slice(rect_t(f32))
+function
+  AssertCrash counts_when_inserted.len == bucket_from_data_idx.len
+  subdivision_w := Truncate32( dim.x / counts.len )
+  col_w := subdivision_w - 1
+  if( col_w < 1.0f ) return // TODO: not signalling failure upwards.
+  ForLen( i, bucket_from_data_idx ) {
+    bucket_i := bucket_from_data_idx[i]
+    count_when_inserted := counts_when_inserted[i]
+    AssertCrash bucket_i < counts.len
+    count := counts[bucket_i]
+
+    // Lerp [0, counts_max] as the y range.
+    // Note (dim.y - 1) is the factor, since the maximum y maps to the last pixel.
+    y_i  := Cast( f32, ( ( count_when_inserted + 0 ) / counts_max ) ) * ( dim.y - 1 )
+    y_ip := Cast( f32, ( ( count_when_inserted + 1 ) / counts_max ) ) * ( dim.y - 1 )
+    x_i := bucket_i * subdivision_w
+
+    rect := rects + i
+    rect.p0 = _vec2( x_i, dim.y - 1 - y_ip )
+    rect.p1 = _vec2( x_i + col_w, dim.y - 1 - y_i )
+  }
+
+
+Templ Inl void
+InverseDiscreteFourierTransform(
+  tslice_t<T> Re_f,
+  tslice_t<T> Im_f,
+  tslice_t<T> Re_F,
+  tslice_t<T> Im_F
+  )
+{
+  auto n = Re_f.len;
+  AssertCrash( n == Im_f.len );
+  AssertCrash( n == Re_F.len );
+  AssertCrash( n == Im_F.len );
+  AssertCrash( IsPowerOf2( n ) );
+
+  // log_base_2(n), the number of bits needed to represent { 0, 1, ..., n-1 }.
+  auto num_bits_n = 8u * _SIZEOF_IDX_T - _lzcnt_idx_t( n ) - 1;
+  AssertCrash( n <= MAX_u32 );
+  For( i, 0, n ) {
+    auto rev_i = ReverseBits( Cast( u32, i ) ) >> ( 32 - num_bits_n );
+    Re_f.mem[rev_i] = Re_F.mem[i];
+    Im_f.mem[rev_i] = Im_F.mem[i];
+  }
+
+  idx_t step = 2;
+  For( pass, 0, num_bits_n ) {
+    auto twopi_over_step = Cast( T, f64_2PI ) / step;
+    for( idx_t offset = 0;  offset < n;  offset += step ) {
+      auto half_step = step/2;
+      For( k, 0, half_step ) {
+        auto offset_k = offset + k;
+        auto offset_k_half_step = offset_k + half_step;
+        auto t = twopi_over_step * k;
+        auto Re_w = Cos( t );
+        auto Im_w = Sin( t );
+        auto Re_u = Re_f.mem[offset_k];
+        auto Im_u = Im_f.mem[offset_k];
+        auto Re_v = Re_f.mem[offset_k_half_step];
+        auto Im_v = Im_f.mem[offset_k_half_step];
+        auto Re_w_v = Re_w * Re_v - Im_w * Im_v;
+        auto Im_w_v = Re_w * Im_v + Im_w * Re_v;
+        Re_f.mem[offset_k]           = Re_u + Re_w_v;
+        Im_f.mem[offset_k]           = Im_u + Im_w_v;
+        Re_f.mem[offset_k_half_step] = Re_u - Re_w_v;
+        Im_f.mem[offset_k_half_step] = Im_u - Im_w_v;
+      }
+    }
+    step *= 2;
+  }
+
+  auto rec_N = 1 / Cast( T, n );
+  For( i, 0, n ) {
+    Re_f.mem[i] *= rec_N;
+    Im_f.mem[i] *= rec_N;
+  }
+}
+
+InverseDiscreteFourierTransform
+  \T type
+  Re_f slice(mut T)
+  Im_f slice(mut T)
+  Re_F slice(T)
+  Im_F slice(T)
+function
+  n := Re_f.len;
+  AssertCrash( n == Im_f.len );
+  AssertCrash( n == Re_F.len );
+  AssertCrash( n == Im_F.len );
+  AssertCrash( IsPowerOf2( n ) );
+
+  // log_base_2(n), the number of bits needed to represent { 0, 1, ..., n-1 }.
+  num_bits_n := 8 * _SIZEOF_IDX_T - _lzcnt_idx_t( n ) - 1;
+  AssertCrash( n <= MAX_u32 );
+  For( i, 0, n ) {
+    rev_i := ReverseBits( Cast( u32, i ) ) >> ( 32 - num_bits_n );
+    Re_f[rev_i] = Re_F[i];
+    Im_f[rev_i] = Im_F[i];
+  }
+
+  step : mut uint = 2;
+  For( pass, 0, num_bits_n ) {
+    twopi_over_step := Cast( T, f64_2PI ) / step;
+    for( idx_t offset = 0;  offset < n;  offset += step ) {
+      half_step := step/2;
+      For( k, 0, half_step ) {
+        offset_k := offset + k;
+        offset_k_half_step := offset_k + half_step;
+        t := twopi_over_step * k;
+        Re_w := Cos( t );
+        Im_w := Sin( t );
+        Re_u := Re_f[offset_k];
+        Im_u := Im_f[offset_k];
+        Re_v := Re_f[offset_k_half_step];
+        Im_v := Im_f[offset_k_half_step];
+        Re_w_v := Re_w * Re_v - Im_w * Im_v;
+        Im_w_v := Re_w * Im_v + Im_w * Re_v;
+        Re_f[offset_k]           = Re_u + Re_w_v;
+        Im_f[offset_k]           = Im_u + Im_w_v;
+        Re_f[offset_k_half_step] = Re_u - Re_w_v;
+        Im_f[offset_k_half_step] = Im_u - Im_w_v;
+      }
+    }
+    step *= 2;
+  }
+
+  rec_N := 1 / Cast( T, n );
+  For( i, 0, n ) {
+    Re_f[i] *= rec_N;
+    Im_f[i] *= rec_N;
+  }
+}
