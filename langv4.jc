@@ -1,0 +1,336 @@
+// build:console_x64_debug
+// Copyright (c) John A. Carlos Jr., all rights reserved.
+
+
+option
+  \T type
+  value T
+  present bool
+struct
+
+
+
+// What kind of disc. union syntax do we want?
+maybe
+  \T type
+  none
+  some(T)
+union
+
+  /*
+  Rust style:
+      enum Message {
+          Quit,
+          Move { x: i32, y: i32 },
+          Write(String),
+          ChangeColor(i32, i32, i32),
+  }
+
+  Zig style:
+      const ComplexTypeTag = enum {
+          Ok,
+          NotOk,
+      };
+      const ComplexType = union(ComplexTypeTag) {
+          Ok: u8,
+          NotOk: void,
+      };
+  Or,
+      const Variant = union(enum) {
+          Int: i32,
+          Bool: bool,
+          None,
+      };
+  */
+
+// TODO: macro tables?
+// Or can we do enum reflection?
+// Or can disc. unions support this case?
+
+// TODO: allow eliding braces around slice defn?
+// TODO: which kind of braces? [] {} () <>
+
+let tokens_variable slice(ident) =
+  eol
+  number
+  string_
+  char_
+  ident
+
+TokenFixed
+  id ident
+  token string
+
+let tokens_fixed slice(TokenFixed) = {
+  continue_        "continue"
+  switch_          "switch"
+  struct_          "struct"
+  defer            "defer"
+  inout            "inout"
+  while_           "while"
+  break_           "break"
+  main             "Main"
+  elif_            "elif"
+  else_            "else"
+  case_            "case"
+  enum_            "enum"
+  type             "type"
+  and_             "and"
+  for_             "for"
+  ret              "ret"
+  out              "out"
+  var              "var"
+  let              "let"
+  if_              "if"
+  or_              "or"
+  in               "in"
+  ltlteq           "<<="
+  gtgteq           ">>="
+  pluspercenteq    "+%="
+  minuspercenteq   "-%="
+  starpercenteq    "*%="
+  gtgtpound        ">>#"
+  slashslash       "//"
+  slashstar        "/*"
+  starslash        "*/"
+  eqeq             "=="
+  lteq             "<="
+  gteq             ">="
+  pluseq           "+="
+  minuseq          "-="
+  stareq           "*="
+  slasheq          "/="
+  percenteq        "%="
+  ampersandeq      "&="
+  pipeeq           "|="
+  careteq          "^="
+  ltlt             "<<"
+  gtgt             ">>"
+  exclamationeq    "!="
+  starpercent      "*%"
+  pluspercent      "+%"
+  minuspercent     "-%"
+  exclamation      "!"
+  caret            "^"
+  ampersand        "&"
+  pipe             "|"
+  star             "*"
+  plus             "+"
+  minus            "-"
+  slash            "/"
+  backslash        "\\"
+  percent          "%"
+  bracket_curly_l  "{"
+  bracket_curly_r  "}"
+  bracket_square_l "["
+  bracket_square_r "]"
+  paren_l          "("
+  paren_r          ")"
+  dot              "."
+  comma            ""
+  doublequote      "\""
+  singlequote      "'"
+  eq               "="
+  lt               "<"
+  gt               ">"
+  semicolon        ";"
+  colon            ":"
+}
+
+TokenType
+  out r type
+{
+  var e enum(u4)
+  for id in tokens_variable {
+    EnumAddField e id
+  }
+  for t in tokens_fixed {
+    EnumAddField e t.id t.token
+  }
+  r = e;
+}
+
+TokenType out tokentype
+
+StringOfTokenType
+  t tokentype
+  out r string
+{
+  EnumFieldName
+    t
+    out r
+}
+
+Token
+  type tokentype
+  text string
+  uint bol
+  uint lineno
+  uint indent
+struct
+
+PrintTokens
+  out r string
+  tokens slice(Token)
+{
+  for t in tokens {
+    StringOfTokenType
+      t.type
+      out s string
+    switch t.type {
+      case .eol {
+        var eol_type;
+        switch t.text {
+          case "\r\n" { eol_type = "CRLF" }
+          case "\n" { eol_type = "LF" }
+          case { eol_type = "CR" }
+        }
+        Append r s
+        Append r " = "
+        Append r eol_type
+        Append r "\n"
+      }
+      case {
+        Append r s
+        Append r " = "
+        Append r t.text
+        Append r "\n"
+      }
+    }
+  }
+}
+
+
+Swap
+  \T type
+  inout a T
+  inout b T
+{
+  let temp = a
+  a = b
+  b = temp
+}
+
+MemReverse
+  \T type
+  mem slice(var T)
+{
+  for i in [0, mem.len/2) {
+    Swap
+      inout mem[i]
+      inout mem[mem.len - i - 1]
+  }
+}
+
+SlicePrefix
+  out prefix slice(T)
+  given slice(T)
+  prefix_len uint
+{
+  Assert prefix_len <= given.len
+  prefix.mem = given.mem
+  prefix.len = prefix_len
+}
+
+StringFromIntegerU
+  \T type
+  out success bool
+  out dst_size uint
+  dst slice(var u1)
+  src T
+  use_separator bool = 0
+  separator u1 = ','
+  separator_count u1 = 3
+  radix u1 = 10
+  digitmap slice(u1) = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+{
+  Assert radix <= digitmap.len
+  success = 0
+  dst_size = 0
+
+  var sep_count u1 = 0
+  if !src {
+    if dst_size >= dst.len {
+      ret
+    }
+    dst[dst_size] = digitmap[0]
+    dst_size += 1
+  }
+  else {
+    var s = src
+    while s {
+      let digit = s % radix
+      s /= radix
+      if use_separator {
+        if sep_count == separator_count {
+          sep_count = 0
+          if dst_size >= dst.len {
+            ret
+          }
+          dst[dst_size] = separator
+          dst_size += 1
+        }
+        sep_count += 1
+      }
+      if dst_size >= dst.len {
+        ret
+      }
+      dst[dst_size] = digitmap[digit]
+      dst_size += 1
+    }
+
+    SlicePrefix
+      out reverse slice(T)
+      dst
+      dst_size
+    MemReverse reverse
+  }
+  success = 1
+}
+
+stack_nonresizeable_stack
+  \T type
+  \N uint
+  mem slice(T,N)
+  len uint
+struct
+
+/* TODO: allocation here
+OutputDebugString
+  mem slice(u1)
+{
+
+}
+*/
+
+TimeTSC
+  out result u8
+{
+  // TODO: external function
+  // result = __rdtsc()
+  result = 123456789
+}
+
+Main
+  args slice(u1)
+  out result s4
+{
+  // TODO: allow this automatic return slot syntax?
+  // let value = TimeTSC()
+
+  TimeTSC
+    out t0 u8
+
+  var tmp stack_nonresizeable_stack(u1,64)
+  StringFromIntegerU
+    out success bool
+    out tmp.len
+    tmp.mem
+    t0
+    use_separator bool = 1
+
+  // TODO: convert to OutputDebugString
+  // printf( "%s", tmp.mem )
+
+  result = 0
+}

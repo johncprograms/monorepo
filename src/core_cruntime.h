@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <string>
 #include <cmath>
 #include <ctype.h> // for isspace, etc.
 #include <time.h>
@@ -18,4 +19,6 @@
 #include <set>
 #include <iostream>
 #include <optional>
+#include <string_view>
+#include <span>
 //#include <stdatomic.h>
