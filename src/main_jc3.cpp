@@ -387,7 +387,6 @@ using namespace std;
   _x( eol              ) \
   _x( number           ) \
   _x( string_          ) \
-  _x( char_            ) \
   _x( ident            ) \
 
 #define TOKENS_FIXED( _x ) \
@@ -490,6 +489,18 @@ StringOfTokenType( tokentype_t type )
 }
 
 struct
+num_t
+{
+  size_t before;
+  size_t before_len;
+  size_t after;
+  size_t after_len;
+  size_t exp;
+  size_t exp_len;
+  bool exp_negative;
+};
+
+struct
 token_t
 {
   tokentype_t type;
@@ -501,6 +512,7 @@ token_t
   // then after stripping comment blocks, we convert nspaces to indent levels.
   // so during parsing the indent levels are { 0, 1, ... }
   size_t indent;
+  size_t inum;
 };
 
 Inl void
@@ -545,6 +557,9 @@ compilefile_t
   string_view file;
   string errors;
   vector<token_t> tokens;
+
+  string nums_digits;
+  vector<num_t> nums;
 };
 
 Inl void
@@ -575,7 +590,7 @@ OutputSrcLineAndCaret(
   const auto eof = ctx.file.length();
   const auto end = MIN( sbol + 80, eof );
   auto eol = sbol;
-  while (eol < end && !AsciiIsNewlineCh(data[eol])) ++eol;
+  while (eol < end and !AsciiIsNewlineCh(data[eol])) ++eol;
 
   e += "    ";
   e += string_view(&data[sbol], eol - sbol);
@@ -607,6 +622,19 @@ Error(
     );
 }
 
+/*
+struct globaltypes_t;
+struct vartable_t;
+struct function_t;
+
+  pagelist_t mem;
+  globaltypes_t* globaltypes; // ptr to avoid decl cycle.
+  stack_resizeable_cont_t<vartable_t*> scopestack;
+  function_t* current_function;
+  u8 ptr_bytecount;
+  u8 array_bytecount;
+};
+*/
 
 ForceInl bool
 Prefixed(string_view larger, string_view prefix) {
@@ -620,9 +648,9 @@ Prefixed(string_view larger, string_view prefix) {
 #define isvarchar(c)      (isvarcharfirst(c) or isnum(c))
 Inl bool
 Tokenize(compilefile_t& file, string_view in) {
-  auto& out = file.tokens;
+  auto& tokens = file.tokens;
 
-	out.clear();
+	tokens.clear();
 	const char* rgch = in.data();
 	const size_t cch = in.length();
 	size_t bol = 0;
@@ -649,8 +677,8 @@ Tokenize(compilefile_t& file, string_view in) {
 	  if (parsing_leading_space) {
   	  parsing_leading_space = 0;
   	  sbol = ich;
-      if (cSpace > 0 && cTab > 0) {
-        token_t t{tokentype_t::eol, string_view(&rgch[bol], sbol - bol), bol, sbol, lineno, indent};
+      if (cSpace > 0 and cTab > 0) {
+        token_t t{tokentype_t::eol, string_view(&rgch[bol], sbol - bol), bol, sbol, lineno, indent, 0};
         Error(file, t, "unexpected mixed tabs and spaces");
         r = 0;
         // continue finding all bad lines.
@@ -666,7 +694,7 @@ Tokenize(compilefile_t& file, string_view in) {
     static constexpr string_view lf = "\n";
     #define HandleEol(sv) \
       if (Prefixed(remainder, sv)) { \
-        out.emplace_back(tokentype_t::eol, string_view(&rgch[ich], sv.length()), bol, sbol, lineno, indent); \
+        tokens.emplace_back(tokentype_t::eol, string_view(&rgch[ich], sv.length()), bol, sbol, lineno, indent, 0); \
         ich += sv.length(); \
         bol = ich; \
         lineno += 1; \
@@ -684,7 +712,7 @@ Tokenize(compilefile_t& file, string_view in) {
       { \
         auto sv = NAMEJOIN(c_sym_,name); \
         if (Prefixed(remainder, sv)) { \
-          out.emplace_back(tokentype_t::name, string_view(&rgch[ich], sv.length()), bol, sbol, lineno, indent); \
+          tokens.emplace_back(tokentype_t::name, string_view(&rgch[ich], sv.length()), bol, sbol, lineno, indent, 0); \
           ich += sv.length(); \
           continue; \
         } \
@@ -692,15 +720,67 @@ Tokenize(compilefile_t& file, string_view in) {
     TOKENS_FIXED( CASE )
     #undef CASE
 
-    // number
-    // string_
-    // char_
+    if (isnum(c)) {
+      auto& digits = file.nums_digits;
+      auto& nums = file.nums;
+
+      num_t n = { 0 };
+      n.before = digits.size();
+      digits += c;
+      auto j = ich + 1;
+
+      #define ScanDigits() \
+        while (j < cch) { \
+          if (rgch[j] == '_') { ++j; continue; } \
+          if (isnum(rgch[j])) { digits.push_back(rgch[j]); ++j; continue; } \
+          break; \
+        }
+      ScanDigits();
+      n.before_len = digits.size() - n.before;
+
+      if (j < cch and rgch[j] == '.') ++j;
+
+      n.after = digits.size();
+      ScanDigits();
+      n.after_len = digits.size() - n.after;
+
+      if (j < cch and rgch[j] == 'e') {
+        ++j;
+        if (j < cch and rgch[j] == '-') {
+          ++j;
+          n.exp_negative = true;
+        }
+        elif (j < cch and rgch[j] == '+') ++j;
+
+        n.exp = digits.size();
+        ScanDigits();
+        n.exp_len = digits.size() - n.exp;
+      }
+
+      const auto inum = nums.size();
+      nums.emplace_back(move(n));
+      tokens.emplace_back(tokentype_t::number, string_view(&rgch[ich], j - ich), bol, sbol, lineno, indent, inum);
+      ich = j;
+      continue;
+    }
+
+
+    if (c == '\'' or c == '"') {
+      auto j = ich + 1;
+      while (j < cch) {
+        if (rgch[j] == c and rgch[j-1] != '\\') break;
+        ++j;
+      }
+      tokens.emplace_back(tokentype_t::string_, string_view(&rgch[ich], j - ich), bol, sbol, lineno, indent, 0);
+      ich = j;
+      continue;
+    }
 
 		if (isvarcharfirst(c)) {
 			auto j = ich + 1;
-			while (j < cch && isvarchar(rgch[j])) ++j;
+			while (j < cch and isvarchar(rgch[j])) ++j;
 			// [ich,j) is the variable name.
-			out.emplace_back(tokentype_t::ident, string_view(&rgch[ich], j - ich), bol, sbol, lineno, indent);
+			tokens.emplace_back(tokentype_t::ident, string_view(&rgch[ich], j - ich), bol, sbol, lineno, indent, 0);
 			ich = j;
 			continue;
 		}
@@ -708,458 +788,71 @@ Tokenize(compilefile_t& file, string_view in) {
 		Error(file, t, "unexpected character");
 		r = 0;
 	}
-	return r;
-}
 
+	if (!r) return false;
 
-
-/*
-struct
-globaltypes_t;
-struct
-vartable_t;
-struct
-function_t;
-
-  pagelist_t mem;
-  globaltypes_t* globaltypes; // ptr to avoid decl cycle.
-  stack_resizeable_cont_t<vartable_t*> scopestack;
-  function_t* current_function;
-  u8 ptr_bytecount;
-  u8 array_bytecount;
-};
-*/
-
-void
-Tokenize(
-  compilefile_t* ctx
-  )
-{
-  auto tokens = &ctx->tokens;
-
-  idx_t last_bol = 0;
-  idx_t line_count = 1; // 1-based indexing for user output
-
-  idx_t pos = 0;
-
-  while( pos < ctx->file.len ) {
-
-    auto curr = ctx->file.mem + pos;
-    auto curr_len = ctx->file.len - pos;
-
-    // skip over whitespace.
-    if( AsciiIsSpaceTab( curr[0] ) ) {
-      pos += 1;
-      continue;
-    }
-
-    token_t tkn;
-    tkn.mem = ctx->file.mem + pos;
-    tkn.bol = ctx->file.mem + last_bol;
-    tkn.lineno = line_count;
-
-    // tokenize eol.
-    // NOTE: possible EOL symbols:
-    //   LF: \n
-    //   CR: \r
-    //   CRLF: \r\n
-    if( ( curr[0] == '\r' )  |  ( curr[0] == '\n' ) ) {
-
-      line_count += 1;
-
-      if( curr[0] == '\n' ) {
-        tkn.len = 1;
-        tkn.type = tokentype_t::eol;
-        *AddBack( *tokens ) = tkn;
-
-        pos += 1;
-        last_bol = pos;
-
-        continue;
-
-      } else {
-        if( pos + 1 < ctx->file.len ) {
-          if( curr[1] == '\n' ) {
-            tkn.len = 2;
-            tkn.type = tokentype_t::eol;
-            *AddBack( *tokens ) = tkn;
-
-            pos += 2;
-            last_bol = pos;
-
-            continue;
-          }
-        }
-        tkn.len = 1;
-        tkn.type = tokentype_t::eol;
-        *AddBack( *tokens ) = tkn;
-
-        pos += 1;
-        last_bol = pos;
-
-        continue;
-      }
-    }
-
-    // tokenize numbers.
-    // note we include the negative sign in number, so we can determine possible typings.
-    // this is due to the bounds abs-value mismatch for signed ints.
-    bool found_num = 0;
-    idx_t offset_num_start = 0;
-    bool num_negative = 0;
-    if( curr[0] == '-' ) {
-      idx_t offset = 1;
-      while( pos + offset < ctx->file.len  &&  AsciiIsSpaceTab( curr[offset] ) ) {
-        offset += 1;
-      }
-      if( pos + offset < ctx->file.len ) {
-        if( AsciiIsNumber( curr[offset] ) ) {
-          found_num = 1;
-          num_negative = 1;
-          offset_num_start = offset;
-        }
-      }
-    }
-    elif( AsciiIsNumber( curr[0] ) ) {
-      found_num = 1;
-      num_negative = 0;
-      offset_num_start = 0;
-    }
-    if( found_num ) {
-      // we've determined AsciiIsNumber( curr[offset_num_start] )
-      idx_t offset = 1;
-      bool seen_dot = 0;
-      bool seen_e = 0;
-      // TODO: negative exponents
-//      bool seen_e_negativesign = 0;
-      while( pos + offset < ctx->file.len ) {
-        auto c = curr[offset];
-        if( AsciiIsNumber( c ) ) {
-          offset += 1;
-          continue;
-        }
-        elif( c == '.' ) {
-          if( seen_dot ) {
-            Error(
-              ctx,
-              tkn.bol,
-              tkn.mem,
-              tkn.lineno,
-              "numbers can only have one decimal point!"
-              );
-            return;
-          }
-          if( seen_e ) {
-            Error(
-              ctx,
-              tkn.bol,
-              tkn.mem,
-              tkn.lineno,
-              "number exponent can't contain a decimal point!"
-              );
-            return;
-          }
-          seen_dot = 1;
-          offset += 1;
-          continue;
-        }
-        elif( c == 'e'  ||  c == 'E' ) {
-          if( seen_e ) {
-            Error(
-              ctx,
-              tkn.bol,
-              tkn.mem,
-              tkn.lineno,
-              "numbers can only have one exponent!"
-              );
-            return;
-          }
-          seen_e = 1;
-          offset += 1;
-          continue;
-        }
-        break;
-      }
-      tkn.len = offset;
-      tkn.type = tokentype_t::number;
-      *AddBack( *tokens ) = tkn;
-      pos += offset;
-      continue;
-    }
-
-    if( ( curr[0] == '_' )  ||  AsciiIsAlpha( curr[0] ) ) {
-      idx_t offset = 1;
-      while( pos + offset < ctx->file.len ) {
-        auto c = curr[offset];
-        if( ( c == '_' )  ||  AsciiIsAlpha( c )  ||  AsciiIsNumber( c ) ) {
-          offset += 1;
-          continue;
-        }
-        break;
-      }
-      // NOTE: we're allowing _ as an accepted ident here.
-
-#define TOKENIZE_KEYWORD( _tokenname ) \
-  if( MemEqual( curr, offset, ML( NAMEJOIN( c_sym_, _tokenname ) ) ) ) { \
-    tkn.len = NAMEJOIN( c_sym_, _tokenname ).len; \
-    tkn.type = tokentype_t::_tokenname; \
-    *AddBack( *tokens ) = tkn; \
-    pos += NAMEJOIN( c_sym_, _tokenname ).len; \
-    continue; \
-  } \
-
-      // tokenize keywords.
-      // NOTE: keywords take precedence over variable idents.
-      TOKENIZE_KEYWORD( if_ );
-      TOKENIZE_KEYWORD( elif_ );
-      TOKENIZE_KEYWORD( else_ );
-      TOKENIZE_KEYWORD( while_ );
-      TOKENIZE_KEYWORD( continue_ );
-      TOKENIZE_KEYWORD( break_ );
-      TOKENIZE_KEYWORD( for_ );
-      TOKENIZE_KEYWORD( ret );
-      TOKENIZE_KEYWORD( switch_ );
-      TOKENIZE_KEYWORD( case_ );
-      TOKENIZE_KEYWORD( struct_ );
-      TOKENIZE_KEYWORD( enum_ );
-      TOKENIZE_KEYWORD( defer );
-      TOKENIZE_KEYWORD( deref );
-      TOKENIZE_KEYWORD( addrof );
-
-#undef TOKENIZE_KEYWORD
-
-      // tokenize idents that aren't keywords.
-      tkn.len = offset;
-      tkn.type = tokentype_t::ident;
-      *AddBack( *tokens ) = tkn;
-      pos += offset;
-      continue;
-    }
-
-#define TOKENIZE_SYMBOL( _tokenname ) \
-  if( MemEqual( curr, MIN( curr_len, NAMEJOIN( c_sym_, _tokenname ).len ), ML( NAMEJOIN( c_sym_, _tokenname ) ) ) ) { \
-    tkn.len = NAMEJOIN( c_sym_, _tokenname ).len; \
-    tkn.type = tokentype_t::_tokenname; \
-    *AddBack( *tokens ) = tkn; \
-    pos += NAMEJOIN( c_sym_, _tokenname ).len; \
-    continue; \
-  } \
-
-    // tokenize three-char symbols.
-    TOKENIZE_SYMBOL( ltlteq );
-    TOKENIZE_SYMBOL( gtgteq );
-
-    // tokenize two-char symbols.
-    TOKENIZE_SYMBOL( slashslash    );
-    TOKENIZE_SYMBOL( slashstar     );
-    TOKENIZE_SYMBOL( starslash     );
-    TOKENIZE_SYMBOL( eqeq          );
-    TOKENIZE_SYMBOL( lteq          );
-    TOKENIZE_SYMBOL( gteq          );
-    TOKENIZE_SYMBOL( arrow_l       );
-    TOKENIZE_SYMBOL( arrow_r       );
-    TOKENIZE_SYMBOL( pluseq        );
-    TOKENIZE_SYMBOL( minuseq       );
-    TOKENIZE_SYMBOL( stareq        );
-    TOKENIZE_SYMBOL( slasheq       );
-    TOKENIZE_SYMBOL( percenteq     );
-    TOKENIZE_SYMBOL( ampersandeq   );
-    TOKENIZE_SYMBOL( pipeeq        );
-    TOKENIZE_SYMBOL( careteq       );
-    TOKENIZE_SYMBOL( ltlt          );
-    TOKENIZE_SYMBOL( gtgt          );
-    TOKENIZE_SYMBOL( exclamationeq );
-
-    // tokenize one-char symbols.
-    TOKENIZE_SYMBOL( exclamation      );
-    TOKENIZE_SYMBOL( caret            );
-    TOKENIZE_SYMBOL( ampersand        );
-    TOKENIZE_SYMBOL( pipe             );
-    TOKENIZE_SYMBOL( star             );
-    TOKENIZE_SYMBOL( plus             );
-    TOKENIZE_SYMBOL( minus            );
-    TOKENIZE_SYMBOL( slash            );
-    TOKENIZE_SYMBOL( backslash        );
-    TOKENIZE_SYMBOL( percent          );
-    TOKENIZE_SYMBOL( bracket_curly_l  );
-    TOKENIZE_SYMBOL( bracket_curly_r  );
-    TOKENIZE_SYMBOL( bracket_square_l );
-    TOKENIZE_SYMBOL( bracket_square_r );
-    TOKENIZE_SYMBOL( paren_l          );
-    TOKENIZE_SYMBOL( paren_r          );
-    TOKENIZE_SYMBOL( dot              );
-    TOKENIZE_SYMBOL( comma            );
-    TOKENIZE_SYMBOL( doublequote      );
-    TOKENIZE_SYMBOL( singlequote      );
-    TOKENIZE_SYMBOL( eq               );
-    TOKENIZE_SYMBOL( lt               );
-    TOKENIZE_SYMBOL( gt               );
-    TOKENIZE_SYMBOL( semicolon        );
-    TOKENIZE_SYMBOL( colon            );
-
-    // tokenize unrecognized characters!
-    Error(
-      ctx,
-      tkn.bol,
-      tkn.mem,
-      tkn.lineno,
-      "unrecognized character!"
-      );
-    return;
-  }
-
-  // removes ( // ... eol ) spans.
-  // removes ( /* ... */ ) spans. handles nested comments of this style!
-  // removes all eols.
-  // convert ( " ... " ) spans into string tokens.
-  // convert ( ' ... ' ) spans into char tokens.
-
-  struct
-  tokenspan_t
-  {
-    idx_t l;
-    idx_t r;
-  };
-  stack_resizeable_cont_t<tokenspan_t> removespans;
-  Alloc( removespans, 1024 );
-
-  pos = 0;
-  while( pos < tokens->len ) {
-
-    token_t* tkns = tokens->mem + pos;
+	struct tokenspan_t { size_t l; size_t r; };
+	vector<tokenspan_t> removes;
+	const size_t ct = tokens.size();
+	for (size_t i = 0; i < ct; ) {
+	  const auto& t = tokens[i];
 
     // remove ( '//', ..., eol ) style comments.
-    if( tkns[0].type == tokentype_t::slashslash ) {
-      idx_t offset = 1;
-      while( pos + offset < tokens->len  &&  tkns[offset].type != tokentype_t::eol ) {
-        offset += 1;
-      }
-      if( pos + offset >= tokens->len ) {
-        // found a '//' but we hit eof before any eol.
-        tokens->len = pos;
-        break;
-      }
-      auto remove = AddBack( removespans );
-      remove->l = pos;
-      remove->r = pos + offset + 1;
-      pos += offset + 1;
-      continue;
-    }
+	  if (t.type == tokentype_t::slashslash) {
+	    auto j = i + 1;
+	    while (j < ct and tokens[j].type != tokentype_t::eol) ++j;
+	    if (j == ct) {
+	      // hit eof before eol.
+	      tokens.resize(i);
+	      break;
+	    }
+	    removes.emplace_back(i, j + 1);
+	    i = j + 1;
+	    continue;
+	  }
 
-    // remove ( '/*', ..., '*/' ) style comments.
+	  // remove ( '/*', ..., '*/' ) style comments.
     // NOTE: we handle nested comments of this style correctly!
-    if( tkns[0].type == tokentype_t::slashstar ) {
-      idx_t ntofind = 1;
-      idx_t offset = 1;
-      while( pos + offset < tokens->len ) {
-        token_t* test = tkns + offset;
-        if( test->type == tokentype_t::slashstar ) {
-          ntofind += 1;
+    if (t.type == tokentype_t::slashstar) {
+      size_t depth = 1;
+      auto j = i + 1;
+      for (; j < ct; ++j) {
+        if (tokens[j].type == tokentype_t::slashstar) {
+          ++depth;
         }
-        elif( test->type == tokentype_t::starslash ) {
-          ntofind -= 1;
-          if( !ntofind ) {
-            break;
-          }
+        elif (tokens[j].type == tokentype_t::starslash) {
+          --depth;
+          if (!depth) break;
         }
-        offset += 1;
       }
-      if( pos + offset >= tokens->len ) {
-        Error(
-          ctx,
-          tkns + 0,
-          "missing a right bound on a '/*', '*/' style comment!"
-          );
-        return;
+      if (j == ct) {
+        Error(file, t, "missing a right bound on a '/*', '*/' style comment!");
+        return false;
       }
-      auto remove = AddBack( removespans );
-      remove->l = pos;
-      remove->r = pos + offset + 1;
-      pos += offset + 1;
+      removes.emplace_back(i, j + 1);
+      i = j + 1;
       continue;
     }
 
-    // remove eol sequences.
-    if( tkns[0].type == tokentype_t::eol ) {
-      idx_t offset = 1;
-      while( pos + offset < tokens->len  &&  tkns[offset].type == tokentype_t::eol ) {
-        offset += 1;
-      }
-      if( pos + offset >= tokens->len ) {
-        // eol sequence at eof.
-        tokens->len = pos;
-        break;
-      }
-      auto remove = AddBack( removespans );
-      remove->l = pos;
-      remove->r = pos + offset;
-      pos += offset;
-      continue;
-    }
+    ++i;
+	}
 
-    // replace ( doublequote , ..., doublequote ) by string and remove the extra tokens.
-    // note we can't handle nested quotes, since the end token is the same as the start token.
-    // TODO: escaped quotes.
-    if( tkns[0].type == tokentype_t::doublequote ) {
-      idx_t offset = 1;
-      while( pos + offset < tokens->len  &&  tkns[offset].type != tokentype_t::doublequote ) {
-        offset += 1;
-      }
-      if( pos + offset >= tokens->len ) {
-        Error(
-          ctx,
-          tkns + 0,
-          "missing a right bound on a '\"', '\"' string literal!"
-          );
-        return;
-      }
-      tkns[0].len = tkns[offset].len; // TODO: this looks wrong...
-      tkns[0].type = tokentype_t::string_;
-      auto remove = AddBack( removespans );
-      remove->l = pos + 1;
-      remove->r = pos + offset + 1;
-      pos += offset + 1;
-      continue;
-    }
-
-    // replace( singlequote, ..., singlequote ) by char and remove the extra tokens.
-    // note we can't handle nested quotes, since the end token is the same as the start token.
-    // TODO: escaped quotes.
-    if( tkns[0].type == tokentype_t::singlequote ) {
-      idx_t offset = 1;
-      while( pos + offset < tokens->len  &&  tkns[offset].type != tokentype_t::singlequote ) {
-        offset += 1;
-      }
-      if( pos + offset >= tokens->len ) {
-        Error(
-          ctx,
-          tkns + 0,
-          "missing a right bound on a '\'', '\'' char literal!"
-          );
-        return;
-      }
-      tkns[0].len = tkns[offset].len; // TODO: this looks wrong...
-      tkns[0].type = tokentype_t::string_;
-      auto remove = AddBack( removespans );
-      remove->l = pos + 1;
-      remove->r = pos + offset + 1;
-      pos += offset + 1;
-      continue;
-    }
-
-    pos += 1;
+  // optimal ordered re-contiguoize.
+  const auto cr = removes.size();
+  vector<tokenspan_t> keeps;
+  if (cr > 0 and removes[0].l > 0) {
+    keeps.emplace_back(0, removes[0].l);
   }
-
-  // TODO: optimal ordered re-contiguouize.
-  auto i = removespans.len;
-  while( i ) {
-    i -= 1;
-    auto span = removespans.mem + i;
-    auto spanlen = span->r - span->l;
-    RemAt( *tokens, span->l, spanlen );
+  for (size_t i = 1; i < cr; ++i) {
+    keeps.emplace_back(removes[i-1].r, removes[i].l);
   }
+  if (cr > 0 and removes.back().r != ct) {
+    keeps.emplace_back(removes.back().r, ct);
+  }
+  
+  
 
-  Free( removespans );
+	return true;
 }
 
 
