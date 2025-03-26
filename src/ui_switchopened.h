@@ -94,6 +94,8 @@ switchopened_t
 void
 Init( switchopened_t& so )
 {
+  Init( so.opened );
+  Init( so.openedmru );
   Alloc( so.search_matches, 128 );
   Init( so.opened_search );
   TxtLoadEmpty( so.opened_search );
@@ -105,12 +107,32 @@ Init( switchopened_t& so )
 void
 Kill( switchopened_t& so )
 {
+  ForList( elem, so.opened ) {
+    Kill( elem->value.txt );
+  }
+  Kill( so.opened );
+  Kill( so.openedmru );
   Free( so.search_matches );
   Kill( so.opened_search );
   so.opened_cursor = 0;
   so.opened_scroll_start = 0;
   so.opened_scroll_end = 0;
   so.nlines_screen = 0;
+}
+
+Inl void
+MoveOpenedToFrontOfMru( switchopened_t& so, edittxtopen_t* open )
+{
+  ForList( elem, so.openedmru ) {
+    if( elem->value == open ) {
+      Rem( so.openedmru, elem );
+      InsertFirst( so.openedmru, elem );
+      AssertCrash( so.openedmru.len == so.opened.len );
+      return;
+    }
+  }
+  AssertCrash( so.openedmru.len == so.opened.len );
+  UnreachableCrash();
 }
 
 Inl edittxtopen_t*
@@ -207,76 +229,6 @@ SwitchopenedGetSelection( switchopened_t& so )
   AssertCrash( so.opened_cursor < so.search_matches.len );
   auto open = so.search_matches.mem[so.opened_cursor];
   return &open->txt.filename;
-}
-
-#define __SwitchopenedOpenFileForChoose( name )   void ( name )( idx_t misc, slice_t filename, bool* loaded )
-typedef __SwitchopenedOpenFileForChoose( *FnSOOpenFileForChoose ); // TODO: rename to snake case.
-
-__SwitchopenedCmd( CmdSwitchopenedChoose )
-{
-  ProfFunc();
-  if( !so.search_matches.len ) {
-    return;
-  }
-  auto fnSOOpenFileForChoose = Cast( FnSOOpenFileForChoose, misc );
-  auto obj = SwitchopenedGetSelection( so );
-  if( obj ) {
-    bool loaded;
-    auto filename = SliceFromArray( *obj );
-    fnSOOpenFileForChoose( misc2, filename, &loaded );
-    if( !loaded ) {
-      auto cstr = AllocCstr( filename );
-      LogUI( "[EDIT] SwithopenedChoose couldn't load file: \"%s\"", cstr );
-      MemHeapFree( cstr );
-      return;
-    }
-  }
-}
-
-__SwitchopenedCmd( CmdSwitchopenedCloseFile )
-{
-  ProfFunc();
-  if( !so.search_matches.len ) {
-    return;
-  }
-  auto file = SwitchopenedGetSelection( so );
-  AssertCrash( file );
-  auto open = EditGetOpenedFile( so, file->mem, file->len );
-  AssertCrash( open );
-  Save( open );
-  if( !open->unsaved ) {
-    bool mruremoved = 0;
-    ForList( elem, so.openedmru ) {
-      if( elem->value == open ) {
-        Rem( so.openedmru, elem );
-        mruremoved = 1;
-        break;
-      }
-    }
-    AssertCrash( mruremoved );
-    Kill( open->txt );
-    bool removed = 0;
-    ForList( elem, so.opened ) {
-      if( &elem->value == open ) {
-        Rem( so.opened, elem );
-        removed = 1;
-        break;
-      }
-    }
-    AssertCrash( removed );
-    For( i, 0, 2 ) {
-      if( edit.active[i] == open ) {
-        auto elem = so.openedmru.first;
-        edit.active[i] = elem  ?  elem->value  :  0;
-      }
-    }
-    if( !so.opened.len ) {
-      CmdMode_fileopener_from_switchopened( edit );
-    } else {
-      CmdUpdateSearchMatches( edit );
-    }
-  }
-  AssertCrash( so.openedmru.len == so.opened.len );
 }
 
 void
@@ -463,7 +415,7 @@ ExecuteCmdMap(
   For( i, 0, table_len ) {
     auto entry = table + i;
     if( GlwKeybind( key, entry->keybind ) ) {
-      entry->fn( edit, entry->misc, entry->misc2 );
+      entry->fn( so, entry->misc, entry->misc2 );
       target_valid = 0;
       ran_cmd = 1;
     }
@@ -486,17 +438,11 @@ SwitchopenedControlKeyboard(
   if( kb_command ) {
     switch( type ) {
       case glwkeyevent_t::dn: {
-        // edit level commands
-        switchopened_cmdmap_t table[] = {
-          _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_choose             ), CmdSwitchopenedChoose              ),
-        };
-        ExecuteCmdMap( edit, AL( table ), key, target_valid, ran_cmd );
       } __fallthrough;
 
       case glwkeyevent_t::repeat: {
         // edit level commands
         switchopened_cmdmap_t table[] = {
-          _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_closefile           ), CmdSwitchopenedCloseFile         ),
           _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_u            ), CmdSwitchopenedCursorU           ),
           _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_d            ), CmdSwitchopenedCursorD           ),
           _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_cursor_page_u       ), CmdSwitchopenedCursorU           , so.nlines_screen ),
@@ -507,7 +453,7 @@ SwitchopenedControlKeyboard(
           _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_scroll_page_d       ), CmdSwitchopenedScrollD           , so.nlines_screen ),
           _switchopenedcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_make_cursor_present ), CmdSwitchopenedMakeCursorPresent ),
         };
-        ExecuteCmdMap( edit, AL( table ), key, target_valid, ran_cmd );
+        ExecuteCmdMap( so, AL( table ), key, target_valid, ran_cmd );
       } break;
 
       case glwkeyevent_t::up: {
@@ -531,7 +477,7 @@ SwitchopenedControlKeyboard(
       );
     // auto-update the matches, since it's pretty fast.
     if( content_changed ) {
-      CmdUpdateSearchMatches( edit );
+      CmdUpdateSearchMatches( so );
     }
   }
 }

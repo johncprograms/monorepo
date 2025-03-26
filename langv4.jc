@@ -47,7 +47,9 @@ union
 // Or can we do enum reflection?
 // Or can disc. unions support this case?
 
-// TODO: allow eliding braces around slice defn?
+// QUESTION: allow eliding braces around slice defn?
+//   Fairly hard to parse... 
+
 // TODO: which kind of braces? [] {} () <>
 
 let tokens_variable slice(ident) =
@@ -142,12 +144,17 @@ TokenType
 {
   var e enum(u4)
   for id in tokens_variable {
-    EnumAddField e id
+    EnumAddField
+      e
+      id
   }
   for t in tokens_fixed {
-    EnumAddField e t.id t.token
+    EnumAddField
+      e
+      t.id
+      t.token
   }
-  r = e;
+  r = e
 }
 
 TokenType out tokentype
@@ -164,9 +171,9 @@ StringOfTokenType
 Token
   type tokentype
   text string
-  uint bol
-  uint lineno
-  uint indent
+  bol uint
+  lineno uint
+  indent uint
 struct
 
 PrintTokens

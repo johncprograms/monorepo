@@ -107,21 +107,6 @@ typedef __EditCmdDef( *pfn_editcmd_t );
 
 
 Inl void
-MoveOpenedToFrontOfMru( edit_t& edit, edittxtopen_t* open )
-{
-  ForList( elem, edit.openedmru ) {
-    if( elem->value == open ) {
-      Rem( edit.openedmru, elem );
-      InsertFirst( edit.openedmru, elem );
-      AssertCrash( edit.openedmru.len == edit.opened.len );
-      return;
-    }
-  }
-  AssertCrash( edit.openedmru.len == edit.opened.len );
-  UnreachableCrash();
-}
-
-Inl void
 OnFileOpen( edit_t& edit, edittxtopen_t* open )
 {
   auto allowed = GetPropFromDb( bool, bool_run_on_open_allowed );
@@ -168,14 +153,14 @@ void
 EditOpen( edit_t& edit, file_t& file, edittxtopen_t** opened, bool* opened_existing )
 {
   // detect files we already have open.
-  auto open = EditGetOpenedFile( edit.so, ML( file.obj ) );
+  auto open = EditGetOpenedFile( edit.switchopened, ML( file.obj ) );
   if( open ) {
     *opened_existing = 1;
 
   } else {
     *opened_existing = 0;
 
-    auto elem = AddLast( edit.opened );
+    auto elem = AddLast( edit.switchopened.opened );
     open = &elem->value;
     open->unsaved = 0;
     open->horz_l = edit.horzfocus_l;
@@ -183,9 +168,9 @@ EditOpen( edit_t& edit, file_t& file, edittxtopen_t** opened, bool* opened_exist
     TxtLoad( open->txt, file );
     open->time_lastwrite = file.time_lastwrite;
 
-    auto mruelem = AddLast( edit.openedmru );
+    auto mruelem = AddLast( edit.switchopened.openedmru );
     mruelem->value = open;
-    AssertCrash( edit.openedmru.len == edit.opened.len );
+    AssertCrash( edit.switchopened.openedmru.len == edit.switchopened.opened.len );
 
     OnFileOpen( edit, open );
   }
@@ -198,7 +183,7 @@ EditSetActiveTxt( edit_t& edit, edittxtopen_t* open )
   AssertCrash( open );
   edit.horzfocus_l = open->horz_l;
   edit.active[edit.horzfocus_l] = open;
-  MoveOpenedToFrontOfMru( edit, open );
+  MoveOpenedToFrontOfMru( edit.switchopened, open );
 }
 
 
@@ -212,7 +197,7 @@ __EditCmd( CmdMode_editfile_from_fileopener )
 {
   AssertCrash( edit.mode == editmode_t::fileopener );
   fileopener_t& fo = edit.fileopener;
-  if( !edit.opened.len ) {
+  if( !edit.switchopened.opened.len ) {
     return;
   }
   edit.mode = editmode_t::editfile;
@@ -286,9 +271,7 @@ EditInit( edit_t& edit )
 
   // default to fileopener; the caller will change this if we open to file.
   edit.mode = editmode_t::fileopener;
-  Init( edit.opened, allocator_pagelist_t{ &edit.mem } );
-
-  Init( edit.openedmru, allocator_pagelist_t{ &edit.mem } );
+  Init( edit.switchopened );
 
   edit.active[0] = 0;
   edit.active[1] = 0;
@@ -296,14 +279,6 @@ EditInit( edit_t& edit )
   edit.horzfocus_l = 0;
   edit.rect_statusbar[0] = {};
   edit.rect_statusbar[1] = {};
-
-  Alloc( edit.search_matches, 128 );
-  Init( edit.opened_search );
-  TxtLoadEmpty( edit.opened_search );
-  edit.opened_cursor = 0;
-  edit.opened_scroll_start = 0;
-  edit.opened_scroll_end = 0;
-  edit.nlines_screen = 0;
 
   Init( edit.findinfiles );
 
@@ -328,19 +303,7 @@ void
 EditKill( edit_t& edit )
 {
   edit.mode = editmode_t::fileopener;
-  ForList( elem, edit.opened ) {
-    Kill( elem->value.txt );
-  }
-  Kill( edit.opened );
-
-  Kill( edit.openedmru );
-
-  Free( edit.search_matches );
-  Kill( edit.opened_search );
-  edit.opened_cursor = 0;
-  edit.opened_scroll_start = 0;
-  edit.opened_scroll_end = 0;
-  edit.nlines_screen = 0;
+  Kill( edit.switchopened );
 
   Kill( edit.findinfiles );
 
@@ -411,7 +374,7 @@ __EditCmd( CmdMode_editfile_from_findinfiles )
 __EditCmd( CmdMode_editfile_or_fileopener_from_findinfiles )
 {
   AssertCrash( edit.mode == editmode_t::findinfiles );
-  if( !edit.opened.len ) {
+  if( !edit.switchopened.opened.len ) {
     _SwitchToFileopener( edit );
   }
   else {
@@ -458,7 +421,7 @@ __FindinfilesOpenFileForChoose( EditOpenFileForChoose )
 __FindinfilesOpenFileForReplace( EditOpenFileForReplace )
 {
   auto edit = Cast( edit_t*, misc );
-  auto open = EditGetOpenedFile( edit->so, ML( filename ) );
+  auto open = EditGetOpenedFile( edit->switchopened, ML( filename ) );
   *opened_existing = 0;
   if( open ) {
     *opened_existing = 1;
@@ -527,7 +490,7 @@ __EditCmd( CmdSave )
 __EditCmd( CmdSaveAll )
 {
   ProfFunc();
-  ForList( elem, edit.opened ) {
+  ForList( elem, edit.switchopened.opened ) {
     auto open = &elem->value;
     Save( open );
   }
@@ -680,7 +643,7 @@ __EditCmd( CmdEditfileSwapHorzFocus )
   edit.horzfocus_l = !edit.horzfocus_l;
   auto open = edit.active[edit.horzfocus_l];
   if( open ) {
-    MoveOpenedToFrontOfMru( edit, open );
+    MoveOpenedToFrontOfMru( edit.switchopened, open );
   }
 }
 
@@ -729,15 +692,15 @@ __EditCmd( CmdMode_switchopened_from_editfile )
 {
   AssertCrash( edit.mode == editmode_t::editfile );
   edit.mode = editmode_t::switchopened;
-  CmdUpdateSearchMatches( edit );
-  edit.opened_scroll_start = 0;
-  edit.opened_cursor = 0;
+  CmdUpdateSearchMatches( edit.switchopened );
+  edit.switchopened.opened_scroll_start = 0;
+  edit.switchopened.opened_cursor = 0;
 
   // since the search_matches list is populated from openedmru, it's in mru order.
   // to allow quick change to the second mru entry ( the first is already the active txt ),
   // put the cursor over the second mru entry.
-  if( edit.search_matches.len > 1 ) {
-    edit.opened_cursor += 1;
+  if( edit.switchopened.search_matches.len > 1 ) {
+    edit.switchopened.opened_cursor += 1;
   }
 }
 
@@ -745,30 +708,94 @@ __EditCmd( CmdMode_editfile_from_switchopened )
 {
   AssertCrash( edit.mode == editmode_t::switchopened );
   edit.mode = editmode_t::editfile;
-  edit.search_matches.len = 0;
-  CmdSelectAll( edit.opened_search );
-  CmdRemChL( edit.opened_search );
+  edit.switchopened.search_matches.len = 0;
+  CmdSelectAll( edit.switchopened.opened_search );
+  CmdRemChL( edit.switchopened.opened_search );
 }
 
-__SwitchopenedOpenFileForChoose( EditSOOpenFileForChoose )
+__EditCmd( CmdSwitchopenedChoose )
 {
-  auto edit = Cast( edit_t*, misc );
-#if USE_FILEMAPPED_OPEN
-  auto file = FileOpenMappedExistingReadShareRead( ML( filename ) );
-#else
-  auto file = FileOpen( ML( filename ), fileopen_t::only_existing, fileop_t::R, fileop_t::R );
-#endif
-  if( file.loaded ) {
-    edittxtopen_t* open = 0;
-    bool opened_existing = 0;
-    EditOpen( edit, file, &open, &opened_existing );
-    AssertCrash( open );
-    EditSetActiveTxt( edit, open );
-    CmdMode_editfile_from_switchopened( edit );
+  ProfFunc();
+  auto& so = edit.switchopened;
+  if( !so.search_matches.len ) {
+    return;
   }
-#if !USE_FILEMAPPED_OPEN
-  FileFree( file );
+  auto obj = SwitchopenedGetSelection( so );
+  if( obj ) {
+    auto filename = SliceFromArray( *obj );
+
+#if USE_FILEMAPPED_OPEN
+    auto file = FileOpenMappedExistingReadShareRead( ML( filename ) );
+#else
+    auto file = FileOpen( ML( filename ), fileopen_t::only_existing, fileop_t::R, fileop_t::R );
 #endif
+    const bool loaded = file.loaded;
+    if( loaded ) {
+      edittxtopen_t* open = 0;
+      bool opened_existing = 0;
+      EditOpen( edit, file, &open, &opened_existing );
+      AssertCrash( open );
+      EditSetActiveTxt( edit, open );
+      CmdMode_editfile_from_switchopened( edit );
+    }
+#if !USE_FILEMAPPED_OPEN
+    FileFree( file );
+#endif
+
+    if( !loaded ) {
+      auto cstr = AllocCstr( filename );
+      LogUI( "[EDIT] SwitchopenedChoose couldn't load file: \"%s\"", cstr );
+      MemHeapFree( cstr );
+      return;
+    }
+  }
+}
+
+__EditCmd( CmdSwitchopenedCloseFile )
+{
+  ProfFunc();
+  auto& so = edit.switchopened;
+  if( !so.search_matches.len ) {
+    return;
+  }
+  auto file = SwitchopenedGetSelection( so );
+  AssertCrash( file );
+  auto open = EditGetOpenedFile( so, file->mem, file->len );
+  AssertCrash( open );
+  Save( open );
+  if( !open->unsaved ) {
+    bool mruremoved = 0;
+    ForList( elem, so.openedmru ) {
+      if( elem->value == open ) {
+        Rem( so.openedmru, elem );
+        mruremoved = 1;
+        break;
+      }
+    }
+    AssertCrash( mruremoved );
+    Kill( open->txt );
+    bool removed = 0;
+    ForList( elem, so.opened ) {
+      if( &elem->value == open ) {
+        Rem( so.opened, elem );
+        removed = 1;
+        break;
+      }
+    }
+    AssertCrash( removed );
+    For( i, 0, 2 ) {
+      if( edit.active[i] == open ) {
+        auto elem = so.openedmru.first;
+        edit.active[i] = elem  ?  elem->value  :  0;
+      }
+    }
+    if( !so.opened.len ) {
+      CmdMode_fileopener_from_switchopened( edit );
+    } else {
+      CmdUpdateSearchMatches( edit.switchopened );
+    }
+  }
+  AssertCrash( so.openedmru.len == so.opened.len );
 }
 
 
@@ -779,7 +806,7 @@ Inl void
 CmdCheckForExternalChanges( edit_t& edit )
 {
   ProfFunc();
-  ForList( elem, edit.opened ) {
+  ForList( elem, edit.switchopened.opened ) {
     auto open = &elem->value;
     edit.file_externalmerge = FileOpen( ML( open->txt.filename ), fileopen_t::only_existing, fileop_t::R, fileop_t::R );
     if( edit.file_externalmerge.loaded  &&  open->time_lastwrite != edit.file_externalmerge.time_lastwrite ) {
@@ -1169,6 +1196,7 @@ EditRender(
     case editmode_t::switchopened: {
       static const auto header = Str( "SWITCH TO FILE ( MRU ):" );
       static const auto header_len = CstrLength( header );
+      auto& so = edit.switchopened;
       auto header_w = LayoutString( font, spaces_per_tab, header, header_len );
       DrawString(
         stream,
@@ -1182,15 +1210,15 @@ EditRender(
         );
       bounds.p0.y = MIN( bounds.p0.y + line_h, bounds.p1.y );
 
-      edit.opened_scroll_start = MIN( edit.opened_scroll_start, MAX( edit.search_matches.len, 1 ) - 1 );
-      edit.opened_cursor = MIN( edit.opened_cursor, MAX( edit.search_matches.len, 1 ) - 1 );
+      so.opened_scroll_start = MIN( so.opened_scroll_start, MAX( so.search_matches.len, 1 ) - 1 );
+      so.opened_cursor = MIN( so.opened_cursor, MAX( so.search_matches.len, 1 ) - 1 );
 
       auto nlines_screen_max = Cast( idx_t, ( bounds.p1.y - bounds.p0.y ) / line_h );
       if( nlines_screen_max ) {
         nlines_screen_max -= 1; // for search bar.
       }
-      edit.nlines_screen = MIN( nlines_screen_max, edit.search_matches.len - edit.opened_scroll_start );
-      edit.opened_scroll_end = edit.opened_scroll_start + edit.nlines_screen;
+      so.nlines_screen = MIN( nlines_screen_max, so.search_matches.len - so.opened_scroll_start );
+      so.opened_scroll_end = so.opened_scroll_start + so.nlines_screen;
 
       // render search bar.
       static const auto search = Str( "Search: " );
@@ -1208,7 +1236,7 @@ EditRender(
         );
 
       TxtRenderSingleLineSubset(
-        edit.opened_search,
+        so.opened_search,
         stream,
         font,
         0,
@@ -1222,8 +1250,8 @@ EditRender(
       bounds.p0.y = MIN( bounds.p0.y + line_h, bounds.p1.y );
 
       // render current cursor.
-      if( edit.opened_scroll_start <= edit.opened_cursor  &&  edit.opened_cursor < edit.opened_scroll_end ) {
-        auto p0 = bounds.p0 + _vec2( 0.0f, line_h * ( edit.opened_cursor - edit.opened_scroll_start ) );
+      if( so.opened_scroll_start <= so.opened_cursor  &&  so.opened_cursor < so.opened_scroll_end ) {
+        auto p0 = bounds.p0 + _vec2( 0.0f, line_h * ( so.opened_cursor - so.opened_scroll_start ) );
         auto p1 = _vec2( bounds.p1.x, p0.y + line_h );
         RenderQuad(
           stream,
@@ -1237,13 +1265,13 @@ EditRender(
       static const auto unsaved = Str( " unsaved " );
       static const auto unsaved_len = CstrLength( unsaved );
       auto unsaved_w = LayoutString( font, spaces_per_tab, unsaved, unsaved_len );
-      For( i, 0, edit.nlines_screen ) {
-        idx_t rowidx = ( i + edit.opened_scroll_start );
-        if( rowidx >= edit.search_matches.len ) {
+      For( i, 0, so.nlines_screen ) {
+        idx_t rowidx = ( i + so.opened_scroll_start );
+        if( rowidx >= so.search_matches.len ) {
           break;
         }
 
-        auto open = edit.search_matches.mem[rowidx];
+        auto open = so.search_matches.mem[rowidx];
         auto row_origin = bounds.p0 + _vec2( 0.0f, line_h * i );
 
         if( open->unsaved ) {
@@ -1909,6 +1937,7 @@ EditControlKeyboard(
             edit_cmdmap_t table[] = {
               _editcmdmap( GetPropFromDb( glwkeybind_t, keybind_mode_editfile_from_switchopened ), CmdMode_editfile_from_switchopened ),
               _editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_choose             ), CmdSwitchopenedChoose              ),
+              _editcmdmap( GetPropFromDb( glwkeybind_t, keybind_switchopened_closefile          ), CmdSwitchopenedCloseFile         ),
               _editcmdmap( GetPropFromDb( glwkeybind_t, keybind_save    ), CmdSave    ),
               _editcmdmap( GetPropFromDb( glwkeybind_t, keybind_saveall ), CmdSaveAll ),
             };
@@ -1927,7 +1956,7 @@ EditControlKeyboard(
 
       if( !ran_cmd ) {
         SwitchopenedControlKeyboard(
-          edit.so,
+          edit.switchopened,
           kb_command,
           target_valid,
           ran_cmd,

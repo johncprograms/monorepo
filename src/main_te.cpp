@@ -1,5 +1,5 @@
-// build:window_x64_debug
 // build:window_x64_optimized
+// build:window_x64_debug
 // build:window_x64_releaseversion
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 
@@ -61,6 +61,7 @@ LogUI( const void* cstr ... );
 #include "ds_hashset_complexkey.h"
 #include "text_parsing.h"
 #include "ds_stack_resizeable_cont_addbacks.h"
+#include "asserts_ship.h"
 
 #define RENDER_UNPACKED   0
 
@@ -96,7 +97,7 @@ struct
 notifyui_t
 {
   pagelist_t mem;
-  listwalloc_t<notify_t, allocator_pagelist_t, allocation_pagelist_t> msgs;
+  listwalloc_t<notify_t> msgs;
   pagelist_t lmem; // TODO: why do we crash w/ 1 pagelist?
   bool fadedin;
 };
@@ -106,7 +107,7 @@ Init( notifyui_t& ui )
 {
   Init( ui.mem, 65536 );
   Init( ui.lmem, 65536 );
-  Init( ui.msgs, allocator_pagelist_t{ &ui.lmem } );
+  Init( ui.msgs );
   ui.fadedin = 0;
 }
 

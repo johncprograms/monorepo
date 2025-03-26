@@ -489,7 +489,7 @@ StringOfTokenType( tokentype_t type )
 }
 
 struct
-num_t
+numliteral_t
 {
   size_t before;
   size_t before_len;
@@ -559,7 +559,7 @@ compilefile_t
   vector<token_t> tokens;
 
   string nums_digits;
-  vector<num_t> nums;
+  vector<numliteral_t> nums;
 };
 
 Inl void
@@ -724,7 +724,7 @@ Tokenize(compilefile_t& file, string_view in) {
       auto& digits = file.nums_digits;
       auto& nums = file.nums;
 
-      num_t n = { 0 };
+      numliteral_t n = { 0 };
       n.before = digits.size();
       digits += c;
       auto j = ich + 1;
@@ -849,172 +849,26 @@ Tokenize(compilefile_t& file, string_view in) {
   if (cr > 0 and removes.back().r != ct) {
     keeps.emplace_back(removes.back().r, ct);
   }
-  
-  
+
+  {
+    size_t i = 0;
+    auto data = tokens.data();
+    for (const auto& keep : keeps) {
+      const size_t cKeep = keep.r - keep.l;
+      Memmove(
+        data + i,
+        data + keep.l,
+        cKeep
+        );
+      i += cKeep;
+    }
+    tokens.resize(i);
+  }
 
 	return true;
 }
 
 
-
-struct expr_t;
-struct scope_t;
-struct statement_t;
-
-// TODO: go harder on optional parens/braces. those take shifttyping time, which is slow / not fun.
-//   should be able to just remove some paren-expects for cblock.expr, since expr allows parens.
-//   might be able to do the same with all scopes, since statement can be a scope.
-//     the extra passthru node isn't great. maybe we should inline scope_t into statement_t?
-//   optional parens on fncall is probably the hardest, but could be good too.
-
-// TODO: modify ret to be:
-//     ret_elem = expr  |  type
-//     ret = "ret"  ,-list of ret_elem
-//   so we can pass types as rets.
-//   do the same for declassign_const
-
-// TODO: keyword 'type_t' which denotes passing types as args/rets, e.g. 'Foo(type_t int_kind)'
-//   maybe use 'auto' or 'any' or 'var' or something else, if this system extends to support fndecl type inference.
-
-// TODO: syntax for fndecl polymorph
-//   pass as arg, and use directly: 'Foo(foo_t type_t, foo foo_t)'
-//     what about out of order?     'Foo(foo foo_t, foo_t type_t)'
-//       probably look for type_t first, then process other args.
-//     what about type inference in the fncall?
-//       we could first check the explicit type_t-passing version, then the version where all type_t are dropped.
-//   inline name:                   'Foo(foo $foo_t)'
-//     what about duplicates?       'Foo(foo $foo_t, bar * foo_t, clu [] $foo_t)'
-//       probably treat all duplicates as the same type, so they don't matter.
-
-// TODO: extend binassign syntax to allow list of expr as the rhs.
-
-// TODO: collect 'fndefn -> list of fncall' dependency info, probably during typing.
-//   we'll need that for recursive call graph analysis.
-
-// TODO: more serious array syntax.
-//   syntax for making a slice from an array/slice, i.e. bar := foo[2,*,5..10];
-
-// TODO: implement arrays as struct stack_resizeable_cont_t { T* mem, idx_t len };
-//   the capacity is implicit; round the len to the next higher power of 2, and that's the current capacity.
-//   this makes for a size-efficient array, which i expect we'll be passing around everywhere.
-//   this also does exponential size growth, which is req'd for O(1) amortized insert.
-//   we'll probably get very creative when it comes to implementing arrays, since we can have arbitrary
-//   dimensions, arbitrary dynamic dimensions, etc.
-
-// TODO: simplify binop code by just converting them to functions, and rely on function overloading
-//   to pick the appropriate one to use. as long as we define all appropriate combos, this'll work nicely.
-//   can probably do the same for most binassign types.
-
-// TODO: simplify binassign code by unpacking most types into a simple eq during parse?
-//   would that cause problems with e.g. foo[Blah()] += 17; ?
-//   presumably we only want to run Blah() once, not twice as in: foo[Blah()] = foo[Blah()] + 17;
-//   doing this too early in the pipe may introduce this problem.
-//   looks like we won't know about this until typing, so we have to do the binassign work.
-
-// TODO: function overloading.
-//   when we lookup a fndecl for deduping ( see AddFndecltype ), check that the args/rets types match.
-//   if they don't, make a new overload of that same fn name.
-//   fncall typing also needs to loop over that list of overloads of the given fn name.
-
-// TODO: IER/IER0 isn't quite right for continued processing after an error.
-//   we need some kind of bool new_error, and reset of that bool, for error-skipping to work.
-//   the error-skip locations are marked with '// intentionally no IER'
-
-// TODO: eliminate string type, and just use [] u8 ?
-//   string literals can become '[N] u8' since len is known.
-
-// TODO: constants of enum type won't always work right now.
-//   we currently process all enums first, and declassign_const after.
-//   that won't work, for: 'c_which foo_t = foo_t.blah;  foo_t enum { blah }'
-//   maybe we do the same thing for enums that we do for structs:
-//     add the all the enumdecltypes first, but don't fill them in until later.
-//   that won't really work here, since declassign_const needs access to the enum values.
-//   and, consider: 'c_which foo_t = foo_t.blah;  foo_t enum { blah=c_blah }  c_blah u32 = 17;'
-//   we need to process the c_blah declassign_const, then the foo_t enum, then the c_which declassign_const.
-//   not sure how we're going to do this.
-
-// TODO: EvalExprConst for arbitrary types, so we can do declassign_const.
-//   maybe we should just wait until we can execute our IR. otherwise, we'd dupe a bunch of typing code for this.
-//   i'll do the codegen code first, and see if that's actually a reasonable thing to do.
-
-// TODO: defer_code should be per vartable, not one for the whole function.
-//   we'll have defers executing past their scopes, which is strange.
-
-// XXXXXXXXXXXXX
-// TODO: in the bc layer, we could eliminate stack frame offsets if we just pass things as pointer values.
-//   we could use the existence of a tvars array to hold the actual vars, and just point into it.
-//   this would make shuffling vars around easier, which we'll want to do.
-
-// TODO: can we eliminate the bc layer?
-//   current benefits:
-//   - eliminates dead code not reachable from the entry point
-//   - verifies entry point is singular and has the right signature.
-//   - linearizes all the code, jumps, calls, etc.
-//
-//   responses:
-//   - in our actual endpoint code generators, we can do similar logic. e.g. executables want that, but
-//     modules/libraries don't want that, since it's up to the external callers to use things.
-//   - we can do this trivially at the end of typing.
-//   - fully-linear representation, esp. for calls, isn't really necessary in an in-memory IR.
-//     e.g. for VM execution, we can iterate instructions however we want.
-//     but doing this was good practice for other kinds of endpoint code generation.
-//
-//   looks like we can eliminate it, or at least leave it alone for now.
-//   writing a replacement tc execution function is probably next up.
-
-// TODO: C++ code generation from the tc layer.
-
-// TODO: how do we do struct dereferencing?
-//   in regular expressions, not too bad. just emit struct_field_from_struct for a stackvar holding the value.
-//   in binassigns, more complicated.
-//   e.g.
-//     foo ptrtype_t;
-//     foo.iszero = y;               // (1)
-//     foo.ptrlevel[0] = y;          // (2)
-//     foo.ptrlevel[foo.iszero] = y; // (3)
-//     a := foo.iszero;
-//     b := foo.ptrlevel[0];
-//     c := foo.ptrlevel[foo.iszero];
-//   when the struct deref is on the rhs, relatively easy. struct_field_from_struct to make a stackvar holding the value.
-//   when it's on the lhs, sometimes we want something else.
-//   in (3), we want foo.iszero as a value, but we want to assign to the foo.ptrlevel field as an address.
-//   if we treat foo.ptrlevel as a value, we'll just be assigning to a temporary stackvar, which we don't want.
-//   since our syntax for expr_assignable is restrictive, we can limit what we want to:
-//     "treat only the first deref in the lhs as an address, not a value."
-//   so basically, our soln would be to have a special version of TypeExprAssignable which does that special
-//   treatment of the first deref in the lhs.
-//
-//   is this the best line we can draw ?
-//   i.e. is there something better than this expr_assignable boundary ?
-//   what happens if we want to allow more complicated lhs ?
-//   e.g. "AddBack( foo ) <- bar;", maybe we use "=" here instead.
-//   we basically just want a pointer on the lhs, doesn't have to be named.
-//   well none of that solves the original problem, consider e.g. "foo.bar[foo.car] + i = 10;"
-//   if we allow that kind of pointer arith in the lhs, we still have the first deref problem.
-//   so it's probably best to solve it on it's own, and stay with the simplified lhs syntax for now.
-//   this first lhs vs. later lhs or rhs problem is just something we have to deal with.
-//
-//   what about "a := addrof foo.bar;" ?
-//   this breaks that first-lhs rule, since i'd expect it to just return the pointer, and addrof is a no-op.
-//   this is also a more general expr, so you could do "Foo( addrof foo.bar );".
-//   but we also want be able to pass the field value, not the address: "Foo( foo.bar );".
-//   i'd bet we can handle this the same way as for binassign.
-//   just use the same special version of TypeExprAssignable in the addrof cases. not too bad.
-//
-//   what if we did some syntax desugaring to help out here?
-//   the code for singular vars is relatively simple.
-//   could we do some intermediate rewriting of struct derefs into separate stackvars for each field?
-//   that would help out for addrof cases, but not for the first-lhs binassign problem.
-//   there'd also be extra book-keeping for tracking which vars were fields.
-//   on balance so far, not a good solution.
-//
-//   note that we'll likely disallow arrayidx/brace syntax for raw pointers, since they're not all that necessary.
-//   i usually do an "x = array_mem + idx;" syntax in C++ anyways.
-//   i also want to experiment with array syntaxes, and including pointers only makes things more complicated.
-//   e.g. syntax for a builtin stack_resizeable_cont_t, list_t, stack_resizeable_pagelist_t, pagelist_t, stack_implicitcapacity_t, maybe even hashset_t, etc.
-//   maybe that won't be all that fruitful, since i get by just fine with functions in C++.
-//   should probably do a fncall count in existing code, and just optimize syntax for that.
-//
 
 
 Templ struct
@@ -1025,27 +879,218 @@ opt_t
 };
 
 
-//
-//  GRAMMAR:
-//  note that { x } means 0 or more of x repeated.
-//  note that [ x ] means 0 or 1 of x.
-//  "foo" means the literal contents foo in the sourcefile
-//
-//  sep =
-//    ";" | ","
-//
-//  list of X =
-//    { X  sep { sep } } [ X { sep } ]
-//      list_t<X>
-//
+
+
+#if 0
+
+  GRAMMAR:
+  note that { x }  means 0 or more of x repeated.
+  note that { x }+ means 1 or more of x repeated.
+  note that [ x ]  means 0 or 1 of x.
+  'foo' means the literal contents foo in the sourcefile
+  indent(+1) means we expect a +1 indent from the previous line.
+
+  global_statement =
+    const_defn
+    struct_defn
+    union_defn
+    fn_defn
+    const_fn_call
+
+  const_defn =
+    'let' ident [ type ] = const_expr_or_table
+
+  const_expr_or_table =
+    '{' eol [ indent(+1) { {const_expr}+ eol } ] '}' eol
+    const_expr
+
+  struct_defn =
+    ident eol { indent(+1) struct_field_defn eol } 'struct' eol
+
+  struct_field_defn =
+    '\' ident type
+    ident type
+
+  const_fn_call =
+    ident eol
+    ident const_expr eol
+    ident const_expr const_expr eol
+    ident eol [ indent(+1) { const_expr eol }+ ]
+
+  fn_defn =
+    ident eol [ indent(+1) { arg_defn eol }+ ] eol '{' { statement eol } {eol} '}'
+
+  statement =
+    
+
+
+ arrayidx =
+   expr_const
+   "*"
+
+ qualifier =
+   "*"
+   "[" list of arrayidx "]"
+
+ type =
+   { qualifier }  ident
+
+ decl =
+   ident  type
+
+ declassign =
+   ident  type  "="  expr
+   ident  ":"  "="  expr
+
+ fndecl =
+   ident  "("  list of decl  ")"  list of type
+
+ fndefn =
+   ident  "("  list of decl  ")"  list of type  scope
+
+ structdecl =
+   ident  "struct"  "("  list of decl  ")"
+
+ enumdecl =
+   ident  "enum"  "("  list of ident [ "="  expr_const ]  ")"
+
+note we don't allow decl or declassign in global scope, since i plan to do an explicit, named
+'globals' struct that you can define, and implicitly access with a keyword.
+this removes the need for "fn" prefix syntax, since we don't have a conflict with fncall anymore.
+it's also a global-non-proliferation strategy. or at least a centralization strategy.
+note that we need to allow constants to be defn'd in global scope, since that's a common pattern.
+
+
+ global_statement =
+   fndecl
+   fndefn
+   structdecl
+   enumdecl
+   declassign_const
+
+ fncall =
+   ident  "("  list of expr  ")"
+
+ ret =
+   "ret"  ,-list of expr
+
+ whileloop =
+   "while"  expr  scope
+
+ ifchain =
+   "if"  expr  scope  { "elif"  expr  scope }  [ "else"  scope ]
+
+ defer =
+   "defer"  statement
+
+i.e. "," sep not allowed here
+ scope =
+   "{"  ;-list of statement  "}"
+
+i.e. "," sep not allowed here
+ global_scope =
+   "{"  ;-list of global_statement  "}"
+
+a = 2;                  a = 2
+a.foo = 2;              a + offsetof( a, foo ) <- 2
+a[1] = 4;               a.mem + 1 * elementsizeof( a ) <- 4
+a[2].foo = 5;           a.mem + 2 * elementsizeof( a ) + offsetof( a, foo ) <- 5
+a.foo[2] = 3;           a + offsetof( a, foo ) + 2 * elementsizeof( a.foo ) <- 3
+AddBack( &a ) <- foo;   we'll disallow this for now, and tell people to make a var for this. improved strings/arrays should make this less common.
+
+ expr_assignable =
+   ident
+   ident  "."  expr_assignable
+   ident  "["  list of expr  "]"
+   ident  "["  list of expr  "]"  "."  expr_assignable
+
+* int is an addressof int, pointer to int, however you want to think about it.
+[] int is a slice of ints, meaning a fixed-size array.
+[] * int is a slice of addresses of int. you'd write the ints with foo[1] <- 2;
+** int is an address of an address of an int.
+  you'd write the address of an int with foo <- &bar;
+  you'd write the int with foo <-<- bar;
+
+foo int = 5;
+
+bar *int;
+bar = *foo;
+bar <- 4;
+
+baz **int;
+baz = *bar;
+baz <- *foo;
+baz <-<- 5;
+
+is this a step backwards from the C style **foo = 5 syntax?
+
+ binassignop =
+   "="
+   "<-"  { "<-" }
+   "+=" | "-="
+   "*=" | "/=" | "%="
+   "&=" | "|=" | "^="
+   "<<=" | ">>="
+
+ binassign =
+   expr_assignable  binassignop  expr
+   "("  list of expr_assignable  ")"  binassignop  expr
+
+ statement =
+   fncall
+   decl
+   declassign
+   binassign
+   ret
+   defer
+   // TODO: continue/break secondary outer loop? something like break(1) to skip 1 loop, and break the next one.
+   // i.e. break(0) would be the same as break
+   "continue"
+   "break"
+   whileloop
+   ifchain
+   // TODO: switch/case syntax, with "case;" meaning default, and "case expr;" meaning the usual.
+   scope
+
+ unop =
+   "deref" | "-" | "!"
+
+ unop_addrof =
+   "addrof"
+
+note that addrof is treated separately, since it doesn't accept a general expr, unlike the other unops.
+so we make that a parse distinction, to make typing much easier.
+
+WARNING: ParseExprNotBinop is hardcoded to look for these tokens
+
+ binop =
+   "*" | "/" | "%"
+   "+" | "-"
+   "&" | "|" | "^"
+   "==" | "!=" | ">" | ">=" | "<" | "<="
+
+ expr_notbinop =
+   fncall
+   expr_assignable
+   unop  expr
+   unop_addrof  expr_assignable
+   "("  expr  ")"
+   num
+   str
+   chr
+
+ expr =
+   expr_notbinop  [ binop  expr ]
+
+note we merge expr and expr_notbinop in the datastructs, for simpler code.
+the grammar is a little clearer to define how we parse, but storage is simpler as one type.
+
+#endif
+
 
 
 enum num_type_t { unsigned_, signed_, float_ };
 
-//  num =
-//    [ "-" ]  digit  { digit }  [ "."  digit  { digit } ]  [ "e"  [ "-" ]  digit  { digit } ]
-//    0x  digit  { digit }
-//    0b  "0" | "1"  { "0" | "1" }
 struct
 num_t
 {
@@ -1058,52 +1103,22 @@ num_t
   f32 value_f32;
 };
 
-//  str =
-//    """  { ascii }  """
 struct str_t { token_t* literal; };
 
-//  chr =
-//    "'"  ascii  "'"
 struct chr_t { token_t* literal; };
 
-//  ident =
-//    "_" | alpha  { "_" | alpha | digit }
 struct ident_t { slice_t text;  token_t* literal; };
 
-// the "*" signifies a dynamic size for that idx
-// for example, [*,*] int is a 2-dimensional array with dynamic sizes in both dimensions.
-// [200,*,200] int is 3-dimensional, with the second idx allowing dynamic sizing.
-//  arrayidx =
-//    expr_const
-//    "*"
 Enumc( typedecl_arrayidx_type_t ) { expr_const, star };
 struct typedecl_arrayidx_t { typedecl_arrayidx_type_t type;  expr_t* expr_const; };
 
-//
-// [] signifies a slice of an array, i.e. you can't modify the owner array metadata from a slice.
-// it's just a duplicate metadata of { mem, len } that points somewhere inside the array.
-//
-//  qualifier =
-//    "*"
-//    "[" list of arrayidx "]"
 Enumc( typedecl_qualifier_type_t ) { star, array };
 struct typedecl_qualifier_t { typedecl_qualifier_type_t type;  list_t<typedecl_arrayidx_t> arrayidxs; };
 
-//  type =
-//    { qualifier }  ident
 struct typedecl_t { ident_t ident;  list_t<typedecl_qualifier_t> qualifiers; };
 
-
-
-
-
-//  decl =
-//    ident  type
 struct decl_t { ident_t ident;  typedecl_t typedecl; };
 
-//  declassign =
-//    ident  type  "="  expr
-//    ident  ":"  "="  expr
 Enumc( declassign_type_t ) { explicit_, implicit_ };
 struct declassign_t {
   declassign_type_t type;
@@ -1112,38 +1127,16 @@ struct declassign_t {
   expr_t* expr;
 };
 
-//  fndecl =
-//    ident  "("  list of decl  ")"  list of type
 struct fndecl_t { ident_t ident;  list_t<decl_t> decl_args;  list_t<typedecl_t> typedecl_rets; };
 
-//  fndefn =
-//    ident  "("  list of decl  ")"  list of type  scope
 struct fndefn_t { fndecl_t* fndecl;  scope_t* scope; };
 
-//  structdecl =
-//    ident  "struct"  "("  list of decl  ")"
 struct structdecl_t { ident_t ident;  list_t<decl_t> decl_fields; };
 
-//  enumdecl =
-//    ident  "enum"  "("  list of ident [ "="  expr_const ]  ")"
 Enumc( enumdecl_entry_type_t ) { ident, identassign };
 struct enumdecl_entry_t { enumdecl_entry_type_t type;  ident_t ident;  expr_t* expr; };
 struct enumdecl_t { ident_t ident;  list_t<enumdecl_entry_t> enumdecl_entries; };
 
-//
-// note we don't allow decl or declassign in global scope, since i plan to do an explicit, named
-// 'globals' struct that you can define, and implicitly access with a keyword.
-// this removes the need for "fn" prefix syntax, since we don't have a conflict with fncall anymore.
-// it's also a global-non-proliferation strategy. or at least a centralization strategy.
-// note that we need to allow constants to be defn'd in global scope, since that's a common pattern.
-//
-//
-//  global_statement =
-//    fndecl
-//    fndefn
-//    structdecl
-//    enumdecl
-//    declassign_const
 Enumc( global_statement_type_t ) { fndecl, fndefn, structdecl, enumdecl, declassign_const, };
 struct global_statement_t {
   global_statement_type_t type;
@@ -1156,81 +1149,24 @@ struct global_statement_t {
   };
 };
 
-//  fncall =
-//    ident  "("  list of expr  ")"
 struct fncall_t { ident_t ident;  list_t<expr_t*> expr_args; };
 
-//  ret =
-//    "ret"  ,-list of expr
 struct ret_t { list_t<expr_t*> exprs; };
 
-//  whileloop =
-//    "while"  expr  scope
 struct cond_scope_t { expr_t* expr;  scope_t* scope; };
 struct whileloop_t { cond_scope_t cblock; };
 
-//  ifchain =
-//    "if"  expr  scope  { "elif"  expr  scope }  [ "else"  scope ]
 struct ifchain_t { cond_scope_t cblock_if;  list_t<cond_scope_t> cblock_elifs;  opt_t<scope_t*> scope_else; };
 
-//  defer =
-//    "defer"  statement
 struct defer_t { statement_t* statement; };
 
-// i.e. "," sep not allowed here
-//  scope =
-//    "{"  ;-list of statement  "}"
 struct scope_t { list_t<statement_t> statements; };
 
-// i.e. "," sep not allowed here
-//  global_scope =
-//    "{"  ;-list of global_statement  "}"
 struct global_scope_t { list_t<global_statement_t> global_statements; };
 
-//
-// a = 2;                  a = 2
-// a.foo = 2;              a + offsetof( a, foo ) <- 2
-// a[1] = 4;               a.mem + 1 * elementsizeof( a ) <- 4
-// a[2].foo = 5;           a.mem + 2 * elementsizeof( a ) + offsetof( a, foo ) <- 5
-// a.foo[2] = 3;           a + offsetof( a, foo ) + 2 * elementsizeof( a.foo ) <- 3
-// AddBack( &a ) <- foo;   we'll disallow this for now, and tell people to make a var for this. improved strings/arrays should make this less common.
-//
-//  expr_assignable =
-//    ident
-//    ident  "."  expr_assignable
-//    ident  "["  list of expr  "]"
-//    ident  "["  list of expr  "]"  "."  expr_assignable
 struct expr_assignable_entry_t { ident_t ident;  list_t<expr_t*> expr_arrayidxs; };
 struct expr_assignable_t { list_t<expr_assignable_entry_t> expr_assignable_entries; }; // subsequent entries are dot-accesses.
 
-//
-// * int is an addressof int, pointer to int, however you want to think about it.
-// [] int is a slice of ints, meaning a fixed-size array.
-// [] * int is a slice of addresses of int. you'd write the ints with foo[1] <- 2;
-// ** int is an address of an address of an int.
-//   you'd write the address of an int with foo <- &bar;
-//   you'd write the int with foo <-<- bar;
-//
-// foo int = 5;
-//
-// bar *int;
-// bar = *foo;
-// bar <- 4;
-//
-// baz **int;
-// baz = *bar;
-// baz <- *foo;
-// baz <-<- 5;
-//
-// is this a step backwards from the C style **foo = 5 syntax?
-//
-//  binassignop =
-//    "="
-//    "<-"  { "<-" }
-//    "+=" | "-="
-//    "*=" | "/=" | "%="
-//    "&=" | "|=" | "^="
-//    "<<=" | ">>="
 Enumc( binassignop_t ) { eq, arrow_l, addeq, subeq, muleq, diveq, modeq, andeq, oreq, poweq };
 static tokentype_t c_binassignop_tokens[] = {
   tokentype_t::eq,
@@ -1262,26 +1198,8 @@ BinassignopFromTokentype( tokentype_t type )
   }
 }
 
-//  binassign =
-//    expr_assignable  binassignop  expr
-//    "("  list of expr_assignable  ")"  binassignop  expr
 struct binassign_t { binassignop_t type;  list_t<expr_assignable_t> expr_assignables;   expr_t* expr; };
 
-//  statement =
-//    fncall
-//    decl
-//    declassign
-//    binassign
-//    ret
-//    defer
-//    // TODO: continue/break secondary outer loop? something like break(1) to skip 1 loop, and break the next one.
-//    // i.e. break(0) would be the same as break
-//    "continue"
-//    "break"
-//    whileloop
-//    ifchain
-//    // TODO: switch/case syntax, with "case;" meaning default, and "case expr;" meaning the usual.
-//    scope
 Enumc( statement_type_t ) { fncall, decl, declassign, binassign, ret, defer, continue_, break_, whileloop, ifchain, scope };
 struct statement_t {
   statement_type_t type;
@@ -1298,17 +1216,6 @@ struct statement_t {
   };
 };
 
-//  unop =
-//    "deref" | "-" | "!"
-//
-//  unop_addrof =
-//    "addrof"
-//
-// note that addrof is treated separately, since it doesn't accept a general expr, unlike the other unops.
-// so we make that a parse distinction, to make typing much easier.
-//
-// WARNING: ParseExprNotBinop is hardcoded to look for these tokens
-//
 Enumc( unoptype_t ) { deref, negate_num, negate_bool };
 Inl slice_t
 StringFromUnoptype( unoptype_t type )
@@ -1332,11 +1239,6 @@ UnopFromTokentype( tokentype_t type )
 }
 struct expr_unop_t { unoptype_t type;  expr_t* expr; };
 
-//  binop =
-//    "*" | "/" | "%"
-//    "+" | "-"
-//    "&" | "|" | "^"
-//    "==" | "!=" | ">" | ">=" | "<" | "<="
 Enumc( binoptype_t ) { mul, div, mod, add, sub, and_, or_, pow_, eqeq, noteq, gt, gteq, lt, lteq };
 Inl slice_t
 StringFromBinoptype( binoptype_t type )
@@ -1438,22 +1340,6 @@ BinoptypeFromBinassigntype( binassignop_t type )
 
 struct expr_binop_t { binoptype_t type;  expr_t* expr_l;  expr_t* expr_r; };
 
-//  expr_notbinop =
-//    fncall
-//    expr_assignable
-//    unop  expr
-//    unop_addrof  expr_assignable
-//    "("  expr  ")"
-//    num
-//    str
-//    chr
-//
-//  expr =
-//    expr_notbinop  [ binop  expr ]
-//
-// note we merge expr and expr_notbinop in the datastructs, for simpler code.
-// the grammar is a little clearer to define how we parse, but storage is simpler as one type.
-//
 Enumc( expr_type_t ) { fncall, expr_assignable, unop, unop_addrof, binop, num, str, chr };
 struct expr_t {
   expr_type_t type;
