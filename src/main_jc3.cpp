@@ -488,6 +488,13 @@ StringOfTokenType( tokentype_t type )
   return {};
 }
 
+Enumc( numliteral_suffix_t )
+{
+  none = 0,
+  binary,
+  hex,
+};
+// zero-initialized
 struct
 numliteral_t
 {
@@ -497,6 +504,7 @@ numliteral_t
   size_t after_len;
   size_t exp;
   size_t exp_len;
+  numliteral_suffix_t suffix;
   bool exp_negative;
 };
 
@@ -756,6 +764,14 @@ Tokenize(compilefile_t& file, string_view in) {
         ScanDigits();
         n.exp_len = digits.size() - n.exp;
       }
+      elif (j < cch and rgch[j] == 'b') {
+        ++j;
+        n.suffix = numliteral_suffix_t::binary;
+      }
+      elif (j < cch and rgch[j] == 'h') {
+        ++j;
+        n.suffix = numliteral_suffix_t::hex;
+      }
 
       const auto inum = nums.size();
       nums.emplace_back(move(n));
@@ -904,6 +920,28 @@ opt_t
     '{' eol [ indent(+1) { {const_expr}+ eol } ] '}' eol
     const_expr
 
+  expr_or_table =
+    '{' eol [ indent(+1) { {expr}+ eol } ] '}' eol
+    expr
+
+  binop =
+    "*" | "/" | "%"
+    "+" | "-"
+    "&" | "|" | "^"
+    "==" | "!=" | ">" | ">=" | "<" | "<="
+
+  expr =
+    expr_notbinop  [ binop  expr ]
+
+  expr_notbinop =
+    fn_call
+    unop expr
+    '(' expr ')'
+    numliteral
+    stringliteral
+    TODO
+      expr_assignable
+
   struct_defn =
     ident eol { indent(+1) struct_field_defn eol } 'struct' eol
 
@@ -911,85 +949,59 @@ opt_t
     '\' ident type
     ident type
 
+  union_defn =
+    TODO
+      ident  "enum"  "("  list of ident [ "="  expr_const ]  ")"
+
   const_fn_call =
     ident eol
-    ident const_expr eol
-    ident const_expr const_expr eol
-    ident eol [ indent(+1) { const_expr eol }+ ]
+    ident [inout|out] const_expr eol
+    ident [inout|out] const_expr [inout|out] const_expr eol
+    ident eol [ indent(+1) { [inout|out] const_expr eol }+ ]
+
+  fn_call =
+    ident eol
+    ident [inout|out] expr eol
+    ident [inout|out] expr [inout|out] expr eol
+    ident eol [ indent(+1) { [inout|out] expr eol }+ ]
+
+  scope =
+    '{' { statement eol } {eol} '}'
 
   fn_defn =
-    ident eol [ indent(+1) { arg_defn eol }+ ] eol '{' { statement eol } {eol} '}'
+    ident eol [ indent(+1) { arg_defn eol }+ ] eol scope
+
+  var_defn =
+    'var' ident [ type ] '=' expr_or_table
 
   statement =
-    
+    fn_call
+    const_defn
+    var_defn
+    'ret'
+    for_loop
+    if_chain
+    defer
+    TODO
+
+  for_loop =
+    'for'|'revfor' ident 'in' '['|'(' expr ',' expr ']'|')' scope eol
+    'for'|'revfor' ident 'in' expr scope eol
+
+  if_chain =
+    'if' expr scope { 'elif' expr scope } [ 'else' scope ]
+
+  defer =
+    'defer' scope|statement
 
 
- arrayidx =
-   expr_const
-   "*"
+qualifier =
+  "*"
+  "[" list of arrayidx "]"
 
- qualifier =
-   "*"
-   "[" list of arrayidx "]"
+type =
+  { qualifier }  ident
 
- type =
-   { qualifier }  ident
-
- decl =
-   ident  type
-
- declassign =
-   ident  type  "="  expr
-   ident  ":"  "="  expr
-
- fndecl =
-   ident  "("  list of decl  ")"  list of type
-
- fndefn =
-   ident  "("  list of decl  ")"  list of type  scope
-
- structdecl =
-   ident  "struct"  "("  list of decl  ")"
-
- enumdecl =
-   ident  "enum"  "("  list of ident [ "="  expr_const ]  ")"
-
-note we don't allow decl or declassign in global scope, since i plan to do an explicit, named
-'globals' struct that you can define, and implicitly access with a keyword.
-this removes the need for "fn" prefix syntax, since we don't have a conflict with fncall anymore.
-it's also a global-non-proliferation strategy. or at least a centralization strategy.
-note that we need to allow constants to be defn'd in global scope, since that's a common pattern.
-
-
- global_statement =
-   fndecl
-   fndefn
-   structdecl
-   enumdecl
-   declassign_const
-
- fncall =
-   ident  "("  list of expr  ")"
-
- ret =
-   "ret"  ,-list of expr
-
- whileloop =
-   "while"  expr  scope
-
- ifchain =
-   "if"  expr  scope  { "elif"  expr  scope }  [ "else"  scope ]
-
- defer =
-   "defer"  statement
-
-i.e. "," sep not allowed here
- scope =
-   "{"  ;-list of statement  "}"
-
-i.e. "," sep not allowed here
- global_scope =
-   "{"  ;-list of global_statement  "}"
 
 a = 2;                  a = 2
 a.foo = 2;              a + offsetof( a, foo ) <- 2
@@ -998,92 +1010,48 @@ a[2].foo = 5;           a.mem + 2 * elementsizeof( a ) + offsetof( a, foo ) <- 5
 a.foo[2] = 3;           a + offsetof( a, foo ) + 2 * elementsizeof( a.foo ) <- 3
 AddBack( &a ) <- foo;   we'll disallow this for now, and tell people to make a var for this. improved strings/arrays should make this less common.
 
- expr_assignable =
-   ident
-   ident  "."  expr_assignable
-   ident  "["  list of expr  "]"
-   ident  "["  list of expr  "]"  "."  expr_assignable
+expr_assignable =
+  ident
+  ident  "."  expr_assignable
+  ident  "["  list of expr  "]"
+  ident  "["  list of expr  "]"  "."  expr_assignable
 
-* int is an addressof int, pointer to int, however you want to think about it.
-[] int is a slice of ints, meaning a fixed-size array.
-[] * int is a slice of addresses of int. you'd write the ints with foo[1] <- 2;
-** int is an address of an address of an int.
-  you'd write the address of an int with foo <- &bar;
-  you'd write the int with foo <-<- bar;
+binassignop =
+  "="
+  "<-"  { "<-" }
+  "+=" | "-="
+  "*=" | "/=" | "%="
+  "&=" | "|=" | "^="
+  "<<=" | ">>="
 
-foo int = 5;
+binassign =
+  expr_assignable  binassignop  expr
+  "("  list of expr_assignable  ")"  binassignop  expr
 
-bar *int;
-bar = *foo;
-bar <- 4;
+statement =
+  binassign
+  // TODO: continue/break secondary outer loop? something like break(1) to skip 1 loop, and break the next one.
+  // i.e. break(0) would be the same as break
+  "continue"
+  "break"
+  whileloop
+  ifchain
+  // TODO: switch/case syntax, with "case;" meaning default, and "case expr;" meaning the usual.
+  scope
 
-baz **int;
-baz = *bar;
-baz <- *foo;
-baz <-<- 5;
+unop =
+  "deref" | "-" | "!"
 
-is this a step backwards from the C style **foo = 5 syntax?
 
- binassignop =
-   "="
-   "<-"  { "<-" }
-   "+=" | "-="
-   "*=" | "/=" | "%="
-   "&=" | "|=" | "^="
-   "<<=" | ">>="
+// note we merge expr and expr_notbinop in the datastructs, for simpler code.
+// the grammar is a little clearer to define how we parse, but storage is simpler as one type.
 
- binassign =
-   expr_assignable  binassignop  expr
-   "("  list of expr_assignable  ")"  binassignop  expr
+note we don't allow decl or declassign in global scope, since i plan to do an explicit, named
+'globals' struct that you can define, and implicitly access with a keyword.
+this removes the need for "fn" prefix syntax, since we don't have a conflict with fncall anymore.
+it's also a global-non-proliferation strategy. or at least a centralization strategy.
+note that we need to allow constants to be defn'd in global scope, since that's a common pattern.
 
- statement =
-   fncall
-   decl
-   declassign
-   binassign
-   ret
-   defer
-   // TODO: continue/break secondary outer loop? something like break(1) to skip 1 loop, and break the next one.
-   // i.e. break(0) would be the same as break
-   "continue"
-   "break"
-   whileloop
-   ifchain
-   // TODO: switch/case syntax, with "case;" meaning default, and "case expr;" meaning the usual.
-   scope
-
- unop =
-   "deref" | "-" | "!"
-
- unop_addrof =
-   "addrof"
-
-note that addrof is treated separately, since it doesn't accept a general expr, unlike the other unops.
-so we make that a parse distinction, to make typing much easier.
-
-WARNING: ParseExprNotBinop is hardcoded to look for these tokens
-
- binop =
-   "*" | "/" | "%"
-   "+" | "-"
-   "&" | "|" | "^"
-   "==" | "!=" | ">" | ">=" | "<" | "<="
-
- expr_notbinop =
-   fncall
-   expr_assignable
-   unop  expr
-   unop_addrof  expr_assignable
-   "("  expr  ")"
-   num
-   str
-   chr
-
- expr =
-   expr_notbinop  [ binop  expr ]
-
-note we merge expr and expr_notbinop in the datastructs, for simpler code.
-the grammar is a little clearer to define how we parse, but storage is simpler as one type.
 
 #endif
 
