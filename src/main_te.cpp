@@ -1,5 +1,5 @@
-// build:window_x64_optimized
 // build:window_x64_debug
+// build:window_x64_optimized
 // build:window_x64_releaseversion
 // Copyright (c) John A. Carlos Jr., all rights reserved.
 

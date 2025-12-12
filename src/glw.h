@@ -66,7 +66,7 @@ glwkeybind_t
   _x( m   , 3, MK_MBUTTON , VK_MBUTTON  ) \
   _x( b4  , 4, MK_XBUTTON1, VK_XBUTTON1 ) \
   _x( b5  , 5, MK_XBUTTON2, VK_XBUTTON2 ) \
-  
+
 Enumc( glwmousebtn_t )
 {
 #define ENTRY( _name, _val, _win_mk, _win_vk ) _name = _val,
@@ -715,7 +715,7 @@ glwclient_t
   #if RENDER_UNPACKED
     __m128* fullscreen_bitmap_argb_unpacked;
   #endif
-  
+
 #if defined(WIN)
   HDC window_dc; // handle to display context.
   #if OPENGL_INSTEAD_OF_SOFTWARE
@@ -2357,7 +2357,7 @@ GlwInitWindow(
   client.dim = dim_windowed;
   client.dimf.x = Cast( f32, client.dim.x );
   client.dimf.y = Cast( f32, client.dim.y );
-  
+
 #if defined(WIN)
   // WARNING!!!
   // this triggers a WM_SIZE message, which we also use for handling resize.
@@ -2594,6 +2594,7 @@ GlwMainLoop( glwclient_t& client )
     bool do_queue = 0;
     bool do_render = 0;
     bool do_asynctaskscompleted = 0;
+//    bool do_apc = 0;
 
     {
       Prof( MainWait );
@@ -2602,13 +2603,17 @@ GlwMainLoop( glwclient_t& client )
         wait_timers,
         INFINITE,
         QS_ALLINPUT,
-        0
+        MWMO_ALERTABLE
         );
       switch( waitres ) {
         case WAIT_FAILED:
         case WAIT_TIMEOUT: {
           AssertWarn( 0 );
         } break;
+//        case WAIT_IO_COMPLETION: {
+//          do_apc = 1;
+////          Log( "mainwake: apc" );
+//        } break;
         case WAIT_OBJECT_0 + 0: { // client.timer_anim
           if( !client.target_valid ) {
             do_render = 1;
@@ -2666,6 +2671,10 @@ GlwMainLoop( glwclient_t& client )
         }
       }
     }
+
+//    if( do_apc ) {
+//
+//    }
 
     do_render &= ( client.dim.x != 0 );
     do_render &= ( client.dim.y != 0 );

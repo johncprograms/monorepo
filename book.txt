@@ -1,0 +1,1093 @@
+
+What is a computer?
+
+	memory as an array
+	What's an array?
+	condo/apartment mailboxes, addressable slots. Fixed number of slots. Each slot can contain a fixed size of something.
+	By numbering each slot, giving them a fixed address, we can identify and remember what was put where.
+	Set of slots, s = { 1, 2, ..., S }
+	Value at each slot, m is a configurable function from s to the set of numbers.
+	Say with S = 3, we can store 3 numbers, change them via address, read them back, and the array will remember.
+	Initial state:
+	  m[1] = 0
+	  m[2] = 0
+	  m[3] = 7
+  Change m[2] to 6.
+  Change m[3] to 12.
+  Then we can read the memory again and it will reflect the updated values:
+	  m[1] = 0
+	  m[2] = 6
+	  m[3] = 12
+  The fundamental idea of computer memory is that it's a configurable number to number map.
+
+Memory cell
+	In modern computers, it's a voltage potential; either high or low. Mapping to a binary number 1 or 0.
+	Number systems
+		Decimal numbers
+			234 = 2 * 100 + 3 * 10 + 4 * 1
+			d = d_100 d_10 d_1 = d_100 * 100 + d_10 * 10 + d_1 * 1
+			d = d_10^2 d_10^1 d_10^0 = d_10^2 * 10^2 + d_10^1 * 10^1 + d_10^0 * 10^0
+			d = sum of d_10^k * 10^k, for k = 0, 1, 2, ...
+			We can let k go on as far as we want, and just assume there are implicit leading zeros so eventually it will converge.
+		We can generalize to arbitrary bases:
+			Binary (base 2): d = sum of d_2^k * 2^k, for k = 0, 1, 2, ...
+			Octal (base 8): d = sum of d_8^k * 8^k, for k = 0, 1, 2, ...
+			Hexadecimal (base 16): d = sum of d_16^k * 16^k, for k = 0, 1, 2, ...
+			Arbitrary base: d = sum of d_base^k * base^k, for k = 0, 1, 2, ...
+				where base is any positive integer.
+		Computer hardware is generally base 2, because we can set up electronic circuits where the the voltage potential is either high (mapping to 1) or low (mapping to 0). Digital logic latches and flip-flops are basic circuitry constructs that allow for storing a single bit of memory, which can be either 0 or 1.
+	Computer memory is finite, so how do we deal with arbitrarily large numbers? Modulo arithmetic.
+		We pick a maximum number of digits. And hence a maximum number we can represent.
+		With higher-level constructions, you can build arbitrarily large numbers based on smaller fixed-size numbers.
+			See [Arbitrary size integers] section.
+		Say we pick base 10, and maximum number of digits is 3. Valid range of numbers is 0 (aka 000) up to 999.
+		d = sum of d_10^2 * 10^2 + d_10^1 * 10^1 + d_10^0 * 10^0
+		d = sum of d_10^k * 10^k, for k = 0, 1, 2.
+		Notice how k is bounded to be less than 3, our maximum number of digits. Now we have a finite set of numbers.
+		Overflow
+			500 + 555 would be 1005, but that's not a valid number in our system.
+			The modulo comes in, which is that we divide what would be the result by the maximum number plus one, and take the remainder. So,
+				(500 + 555) mod 1000
+				1055 mod 1000
+				5 mod 1000
+			Because, 1055 / 1000 = 1 with remainder 55.
+			So in this kind of system, 500 + 555 = 5. It looks wrong, but in this modulo space it's the truth.
+			Since most integer math in most programming languages happens in some modulo space (usually 2^32 or 2^64 is the maximum number plus one), the `mod N+1` mathematical notation is dropped for convenience. But it's implicitly there in those languages.
+		Underflow
+			Same ideas apply for subtraction, the inverse of addition.
+				(500 - 555) mod 1000
+				(-55) mod 1000
+				945 mod 1000
+			The modulus (x mod y) is defined as: there exists some integer multiple of y, call it q, such that x + q * y lies within [0, y). The result of the modulus is x + q * y. Note that q can be any positive, negative or zero integer, it just has to get us to the [0, y) range.
+			So if x is less than 0, add multiples of y until you put the result into [0, y) range. That's your result.
+			Else if x is greater than or equal to y, subtract multiples of y until you put the result in [0, y) range.
+			Otherwise x is already in the [0, y) range, and the result is x. You can think of it as q = 0.
+		Multiplication
+
+		Division
+
+		Detecting overflow
+
+		Base conversions
+			Given a sequence of digits in some given base, convert to another base.
+
+			// Converts base 2 strings: "0" up to "11...11" (length 64) into uint64_t form.
+			uint64_t u64FromBase2(string_view s) {
+				PRECONDITION(1 <= s.size() && s.size() <= 64);
+				uint64_t result = 0;
+				for (size_t i = 0; i < s.size(); ++i) {
+					const auto c = s[i];
+					PRECONDITION(c == '0' || c == '1');
+					result |= (c == '1' ? 1ULL : 0ULL) << (s.size() - i - 1);
+				}
+				return result;
+			}
+			// Converts uint64_t into base 2 string form: "0" up to "11...11" (length 64)
+			string base2FromU64(uint64_t u) {
+				// If u is zero, emit a single '0'.
+				const size_t count = max(1ULL, 64ULL - countl_zero(u));
+				string result;
+				result.resize(count);
+				for (size_t i = 0; i < count; ++i) {
+					const auto bit = (u >> (count - i - 1)) & 1ULL;
+					result[i] = (bit ? '1' : '0');
+				}
+				return result;
+			}
+
+			// Converts base 10 strings: "0" up to "18446744073709551616" (2^64 - 1) into uint64_t form.
+			uint64_t u64FromBase10(string_view s) {
+				PRECONDITION(1 <= s.size());
+				uint64_t result = 0;
+				for (size_t i = 0; i < s.size(); ++i) {
+					const uint64_t c = s[i];
+					PRECONDITION('0' <= c && c <= '9');
+					const auto digit = c - '0';
+					const auto result10 = result * 10;
+					PRECONDITION(result10 >= result); // No overflow.
+					const auto result10plusDigit = result10 + digit;
+					PRECONDITION(result10plusDigit >= result10); // No overflow.
+					result = result10plusDigit;
+				}
+				return result;
+			}
+			// Converts uint64_t into base 10 string form: "0" up to "18446744073709551616" (2^64 - 1)
+			string base10FromU64(uint64_t u) {
+				if (u == 0) return "0";
+				string result;
+				while (u > 0) {
+					const auto digit = u % 10;
+					u /= 10;
+					result += (char)(digit + '0');
+				}
+				reverse(begin(result), end(result));
+				return result;
+			}
+
+			uint64_t u64FromBase16(string_view s) {
+				PRECONDITION(1 <= s.size() && s.size() <= 16);
+				uint64_t result = 0;
+				for (size_t i = 0; i < s.size(); ++i) {
+					const uint64_t c = s[i];
+					uint64_t digit = 0;
+					if ('0' <= c && c <= '9') {
+						digit = c - '0';
+					}
+					else if ('a' <= c && c <= 'f') {
+						digit = c - 'a' + 10;
+					}
+					else if ('A' <= c && c <= 'F') {
+						digit = c - 'A' + 10;
+					}
+					else {
+						PRECONDITION(false); // Invalid character.
+					}
+					result |= digit << (s.size() - i - 1) * 4;
+				}
+				return result;
+			}
+			string base16FromU64(uint64_t u) {
+				// If u is zero, emit a single '0'.
+				const size_t count = max(1ULL, 16ULL - countl_zero(u) / 4);
+				string result;
+				result.resize(count);
+				for (size_t i = 0; i < count; ++i) {
+					const auto digit = (u >> ((count - i - 1) * 4)) & 0xF;
+					result[i] = (char)(digit + ((digit < 10) ? '0' : 'A' - 10));
+				}
+				return result;
+			}
+
+
+	Operations unique to base 2
+		And
+			and(0,0) = 0
+			and(0,1) = 0
+			and(1,0) = 0
+			and(1,1) = 1
+			result = a & b
+		Or
+			or(0,0) = 0
+			or(0,1) = 1
+			or(1,0) = 1
+			or(1,1) = 1
+			result = a | b
+		Xor
+			xor(0,0) = 0
+			xor(0,1) = 1
+			xor(1,0) = 1
+			xor(1,1) = 0
+			result = a ^ b
+		Not (aka flip bit)
+			not(0) = 1
+			not(1) = 0
+			result = ~b
+		Set bit
+			By 'set' most programmers mean 'set to 1' in a base 2 context. This is a trivial set to 1.
+			result = 1
+		Clear (or reset) bit
+			By 'clear' or 'reset', most programmers mean 'set to 0' in a base 2 context. This is a trivial set to 0.
+			result = 0
+		Conditional not
+			cnot(b,value) means: if value is true, flip b. Otherwise return b.
+			cnot(0,0) = 0
+			cnot(0,1) = 1
+			cnot(1,0) = 1
+			cnot(1,1) = 0
+			Note this is the same as xor(b,value). So you can write this in code as:
+			result = b ^ value
+		Conditional set
+			cset(b,value) means:
+				If value is 0, we want to leave b alone.
+				Else value is 1, we're setting b to 1.
+			result = b | value
+		Conditional clear
+			cclear(b,value) means:
+				If value is 0, we want to leave b alone.
+				Else value is 1, we're setting b to 0.
+			result = b & ~value
+		Bitmap
+			You can use a single bit to represent True/False, and densely pack them together. A bitmap is just an array of booleans, densely packed. Setting, clearing, flipping bits all turn into efficient bit operations.
+			In digital logic design, flip-flops get stamped together in arrays to form a bitmap of a fixed size. Like uint32 meaning 32 bits packed together, or uint64 meaning 64 bits. These are exposed to software as `registers`, and to programming languages as fixed-width integer types, like uint32, uint64, etc.
+			All of the above bit-wise operations work in parallel on all bits in a bitmap. This is just more efficient to build in hardware; if you need to route one circuit around a chip, may as well lay down a bunch of parallel cables and build parallel circuits all taking the same route.
+			Say we had a bitmap of length 4, holding 4 bits.
+			and(0110,1010) = and(0,1) and(1,0) and(1,1) and(0,0) = 0010
+			That is, the operation is defined bit-wise across the bitmaps.
+			and({...a_i...},{...b_i...}) = and(a_1,b_1) and(a_2,b_2) ... and(a_K,b_K)
+			where K is the maximum number of binary digits.
+			We can trivially map all of the above single-bit operations to operate on bitmaps in this same way.
+			The only caveat is that for operations that take multiple bitmaps, we assume they all have the same number of bits. So and(uint8,uint64) doesn't make sense; which 8 bits of the 64 are we applying the `and` to?
+			Some highly specialized bit operations do define what should happen, but those usually aren't exposed at a programming language level.
+
+			With a fixed number of bits, there are some operations that do work across bits, not in an entirely parallel fashion.
+				Population count
+					Counts the number of bits set to 1 in the bitmap.
+					result = popcount(b)
+				Shift
+					Shifts the bits by a specified number of bits, adding in zeros (or ones) as needed to fill the rest.
+					Once you run up against the limits of the bitmap size, bits shift off the end. Say we're in uint8.
+					Left Logical 0:
+						shiftLeftLogical0(1111,0) =     1111
+						shiftLeftLogical0(1111,1) =    11110
+						shiftLeftLogical0(1111,2) =   111100
+						shiftLeftLogical0(1111,3) =  1111000
+						shiftLeftLogical0(1111,4) = 11110000
+						shiftLeftLogical0(1111,5) = 11100000
+						shiftLeftLogical0(1111,6) = 11000000
+						shiftLeftLogical0(1111,7) = 10000000
+						shiftLeftLogical0(1111,8) = 00000000
+						Any higher shift values give 0.
+						a << b
+					Right Logical 0:
+						Same concept as for Left Logical 0, but shifts in the other direction.
+						shiftRightLogical0(11110000,0) = 11110000
+						shiftRightLogical0(11110000,1) = 01111000
+						shiftRightLogical0(11110000,2) = 00111100
+						shiftRightLogical0(11110000,3) = 00011110
+						shiftRightLogical0(11110000,4) = 00001111
+						shiftRightLogical0(11110000,5) = 00000111
+						shiftRightLogical0(11110000,6) = 00000011
+						shiftRightLogical0(11110000,7) = 00000001
+						shiftRightLogical0(11110000,8) = 00000000
+						Any higher shift values give 0.
+						a >> b
+					Left Logical 1:
+						Same concept as for Left Logical 0, but shifts in 1 bits instead of 0 bits.
+						shiftLeftLogical1(11110000,0) =     1111
+						shiftLeftLogical1(11110000,1) =    11111
+						shiftLeftLogical1(11110000,2) =   111111
+						shiftLeftLogical1(11110000,3) =  1111111
+						shiftLeftLogical1(11110000,4) = 11111111
+						shiftLeftLogical1(11110000,5) = 11111111
+						shiftLeftLogical1(11110000,6) = 11111111
+						shiftLeftLogical1(11110000,7) = 11111111
+						shiftLeftLogical1(11110000,8) = 11111111
+						...
+						Generally there's no intrinsic for this.
+						TODO
+					Right Logical 1:
+						Same concept as for Right Logical 0, but shifts in 1 bits instead of 0 bits.
+						shiftRightLogical1(11110000,0) = 11110000
+						shiftRightLogical1(11110000,1) = 11111000
+						shiftRightLogical1(11110000,2) = 11111100
+						shiftRightLogical1(11110000,3) = 11111110
+						shiftRightLogical1(11110000,4) = 11111111
+						shiftRightLogical1(11110000,5) = 11111111
+						shiftRightLogical1(11110000,6) = 11111111
+						shiftRightLogical1(11110000,7) = 11111111
+						shiftRightLogical1(11110000,8) = 11111111
+						...
+						Generally there's no intrinsic for this.
+						TODO
+
+				Rotate (aka circular shift)
+					Rotates the bits by a specified number of bits.
+					rotateLeft(1100,0) = 1100
+					rotateLeft(1100,1) = 1001
+					rotateLeft(1100,2) = 0011
+					rotateLeft(1100,3) = 0110
+					rotateLeft(1100,4) = 1100
+					...the cycling continues.
+					Intrinsic:
+						result = rotl(b,count)
+					For uint64, it would look like:
+						uint64_t rotl(uint64_t b, uint64_t count) {
+							count = count % 64;
+							return count == 0 ? b : (b << count) | (b >> (64 - count));
+						}
+
+					rotateRight(1100,0) = 1100
+					rotateRight(1100,1) = 0110
+					rotateRight(1100,2) = 0011
+					rotateRight(1100,3) = 1001
+					rotateRight(1100,4) = 1100
+					...the cycling continues.
+					Intrinsic:
+						result = rotr(b,count)
+					For uint64, it would look like:
+						uint64_t rotr(uint64_t b, uint64_t count) {
+							count = count % 64;
+							return count == 0 ? b : (b >> count) | (b << (64 - count));
+						}
+
+				Reverse
+					Reverses the order of bits.
+					result[i] = b[b.size()-1 - i] for all i in [0, K).
+					There's not usually a built-in intrinsic to do this. You can implement it as a swap network.
+						abcd
+						cdab, swap first half and second half
+						dcba, swap within each half
+					For uint8, it would look like:
+						uint8_t reverse(uint8_t b) {
+							b = (b & 0b11110000) >> 4 | (b & 0b00001111) << 4;
+							b = (b & 0b11001100) >> 2 | (b & 0b00110011) << 2;
+							b = (b & 0b10101010) >> 1 | (b & 0b01010101) << 1;
+							return b;
+						}
+					You can trivially extended further to larger bitmap size.
+
+				Count leading/trailing bits
+					Count leading 0s
+					Count leading 1s
+					Count trailing 0s
+					Count trailing 1s
+
+	Signed integers
+		Sign bit
+			Take a bitmap, choose one bit to represent + or -, and leave the rest for representing the value.
+			Say we have a 3-bit bitmap:
+				000 0
+				001 1
+				010 2
+				011 3
+				100 -0
+				101 -1
+				110 -2
+				111 -3
+			There's two things to notice here:
+				Mathematically, 0 = -0, but they have different bitmap representations. This complicates equality checks.
+				Ordering is strange: it increments positively until 3, where it jumps down and then increments negatively.
+			void deconstructSignedInteger(uint64_t bitmap, uint64_t& u, bool& positive) {
+				if (bitmap & (1ULL << 63)) {
+					positive = true;
+					u = bitmap;
+				}
+				else {
+					positive = false;
+					u = (bitmap & ~(1ULL << 63));
+				}
+			}
+
+		1's complement
+			Take a bitmap, choose the highest bit to signal + or -, and flip negative bitmaps to recover the value.
+				000 0
+				001 1
+				010 2
+				011 3
+				100 011 -3
+				101 010 -2
+				110 001 -1
+				111 000 -0
+			This also has the 0 = -0 but not in bitmap form issue.
+			Note there's a discontinuity jumping from 3 to -3, but otherwise the ordering is always increasing. This makes ordering slightly easier.
+			void deconstructSignedInteger(uint64_t bitmap, uint64_t& u, bool& positive) {
+				if (bitmap & (1ULL << 63)) {
+					positive = true;
+					u = bitmap;
+				}
+				else {
+					positive = false;
+					u = ~bitmap;
+				}
+			}
+
+		2's complement
+			Choose the highest bit to signal + or -, flip negative bitmaps and add one to recover the value.
+				000 0
+				001 1
+				010 2
+				011 3
+				100 011 100 -4
+				101 010 011 -3
+				110 001 010 -2
+				111 000 001 -1
+			Notice this representation doesn't have two representations of mathematical zero.
+			It also has only the single jump discontinuity, but otherwise maintains an increasing order.
+			void deconstructSignedInteger(uint64_t bitmap, uint64_t& u, bool& positive) {
+				if (bitmap & (1ULL << 63)) {
+					positive = true;
+					u = bitmap;
+				}
+				else {
+					positive = false;
+					u = ~bitmap + 1ULL;
+				}
+			}
+
+		Offset binary
+			Eliminates the jump discontinuity.
+				000 -4
+				001 -3
+				010 -2
+				011 -1
+				100 0
+				101 1
+				110 2
+				111 3
+			void deconstructSignedInteger(uint64_t bitmap, uint64_t& u, bool& positive) {
+				if (bitmap & (1ULL << 63)) {
+					positive = true;
+					u = bitmap & ~(1ULL << 63);
+				}
+				else {
+					positive = false;
+					u = (~bitmap) & ~(1ULL << 63) + 1ULL;
+				}
+			}
+
+		Zig Zag
+			Optimizes the number of bits required for small absolute values. Uses the least significant bit as an indicator of + or -.
+				000  0
+				001 -1
+				010  1
+				011 -2
+				100  2
+				101 -3
+				110  3
+				111 -4
+			void deconstructSignedInteger(uint64_t bitmap, uint64_t& u, bool& positive) {
+				if (bitmap & 1ULL) {
+					positive = false;
+					u = (bitmap >> 1) + 1;
+				}
+				else {
+					positive = true;
+					u = bitmap >> 1;
+				}
+			}
+
+		Arithmetic Shift:
+			TODO
+
+Self-referential memory
+  Recall that memory is a configurable number to number map. The reason to use numbers on both sides is so we can store references to memory slots within the slots themselves.
+	So with one fixed size array of numbers, we can store sets of numbers, as well as arbitrary links between numbers.
+	It's this arbitrary link storage mechanism that makes memory actually powerful.
+
+	Linked list fundamentals
+	  TODO
+
+  This extends indefinitely; we can store arbitrarily-nested maps of maps of maps of ... maps to numbers. This combinatorial power is why we can encode really complicated things in a single set of numbers.
+
+Dynamic memory allocation
+  Every computer has a ceiling to the amount of memory onboard. That is, the memory array has a fixed upper limit. In order to write software programs that can run on various computers with different amounts of memory, we need a dynamic addressing scheme.
+  The other major constraint is that very often the input to a computer program is user-generated (or at least influenced), and so it will be variable-length. Meaning, we need an addressing scheme that adjusts for variable-length things we want to store.
+
+  TODO: stack top, partitioning a fixed-size array into two intervals: variable data, and empty space.
+    {variable1, ..., variableN, empty1, ..., emptyE}
+  Note we can run out of space if the variable data grows too long.
+  Also note that for other things we want to store in memory, now the problem is worse. Instead of trying to come up with address schemes for a fixed size array, now we have to generate address schemes for the empty space interval, which is now variable size.
+  If our only other storage requirement is one more variable-length data, we could reverse the order and have a symmetric stack for the second variable-length data. That way both variable-length data streams can shrink/grow, and we'll avoid overlaps unless we're really out of space.
+    {variable1, ..., variableN, empty1, ..., emptyE, varSecondM, ..., varSecond1}
+  However, notice that if we have 3 or more variable-length data streams to store, now we've got issues. We'll need to consistently move interior data streams around to make room as the first and second variable data changes length, or choose some other strategy. Like a variable list storing addresses of other variable streams.
+  The key thing to notice is that we need some kind of indirection layer here to manage addressing of variable-length data. Effectively, turn the variable-length stream into a fixed-length reference, so the variable-length stream can be managed by a memory subsystem. Dynamic memory allocation does precisely this.
+  The standardized interface for managing variable-length data storage is an acquire/release pair. Also known as allocate/free, new/delete, etc.
+    T* allocate(size_t count);
+    void free(T* reference);
+  The key thing here is that allocation can fail, due to running out of memory. We're requesting some dynamic size, and only when there's sufficient room will we get an interval of writeable memory back.
+
+	Directed lists
+	  Also known as singly-linked lists
+
+  Fixed size array
+  Variable size array
+    template<typename T> struct Array
+    {
+      T* mem = nullptr;
+      size_t len = 0; // # of elements in mem.
+
+      Array() = default;
+      Array(size_t lenInitial) {
+        mem = new T[lenInitial];
+        len = lenInitial;
+      }
+      Array(size_t lenInitial, const T& valueInitial) {
+        mem = new T[lenInitial];
+        for (size_t i = 0; i < lenInitial; ++i)
+          mem[i] = valueInitial;
+        len = lenInitial;
+      }
+      ~Array() noexcept {
+        if (mem)
+          delete [] mem;
+        mem = nullptr;
+        len = 0;
+      }
+      __forceinline size_t size() const noexcept { return len; }
+      __forceinline bool empty() const noexcept { return len == 0; }
+      __forceinline void resize(size_t lenNew) {
+        if (len == lenNew)
+          return;
+        auto memNew = new T[lenNew];
+        const auto lenCopy = min<size_t>(len, lenNew);
+        for (size_t i = 0; i < lenCopy; ++i)
+          memNew[i] = std::move(mem[i]);
+        delete [] mem;
+        mem = memNew;
+        len = lenNew;
+      }
+      __forceinline const T& operator[](size_t i) const {
+        PRECONDITION(i < len);
+        return mem[i];
+      }
+      __forceinline T& operator[](size_t i) {
+        PRECONDITION(i < len);
+        return mem[i];
+      }
+    };
+
+	Directed trees
+	Directed forests
+  Directed acyclic graphs
+  Directed graphs
+	Directed multigraphs
+
+	Undirected lists
+	Undirected trees
+	Undirected forests
+  Undirected acyclic graphs
+  Undirected graphs
+  Undirected multigraphs
+
+  Fixed size bitmap
+	Variable size bitmap
+		Also known as: table, variable length array, vector
+
+    struct Bitmap
+    {
+    	vector<uint64_t> m_v;
+    	size_t m_cBits = 0;
+
+    	__forceinline size_t size() const noexcept { return m_cBits; }
+    	__forceinline bool empty() const noexcept { return m_cBits == 0; }
+    	__forceinline void clear() noexcept
+    	{
+    		m_cBits = 0;
+    		m_v.clear();
+    	}
+    	__forceinline void resize(size_t cBits)
+    	{
+    		m_cBits = cBits;
+    		m_v.resize((cBits + 63) / 64);
+
+    		// Reset the trailing bits in the last word.
+    		if (cBits)
+    		{
+    			const size_t j = cBits - 1;
+    			const size_t j64 = j / 64;
+    			const size_t jbit = j % 64;
+    			const uint64_t jmask = jbit == 63 ? ~0ULL : (1ULL << (jbit + 1)) - 1;
+    			m_v[j64] &= jmask;
+    		}
+    	}
+    	__forceinline bool get(size_t i) const noexcept
+    	{
+    		VEC(i < m_cBits);
+    		const size_t i64 = i / 64;
+    		const size_t ibit = i % 64;
+    		return (m_v[i64] & (1ULL << ibit)) != 0;
+    	}
+    	__forceinline void set(size_t i, bool f) noexcept
+    	{
+    		VEC(i < m_cBits);
+    		const size_t i64 = i / 64;
+    		const size_t ibit = i % 64;
+    		if (f)
+    			m_v[i64] |= (1ULL << ibit);
+    		else
+    			m_v[i64] &= ~(1ULL << ibit);
+    	}
+    	__forceinline void set(size_t i) noexcept
+    	{
+    		VEC(i < m_cBits);
+    		const size_t i64 = i / 64;
+    		const size_t ibit = i % 64;
+    		m_v[i64] |= (1ULL << ibit);
+    	}
+    	__forceinline void reset(size_t i) noexcept
+    	{
+    		VEC(i < m_cBits);
+    		const size_t i64 = i / 64;
+    		const size_t ibit = i % 64;
+    		m_v[i64] &= ~(1ULL << ibit);
+    	}
+    	// Sets the range [i, j] to 1.
+    	__forceinline void setRange(size_t i, size_t j) noexcept
+    	{
+    		VEC(i <= j);
+    		VEC(j < m_cBits);
+    		const size_t i64 = i / 64;
+    		const size_t j64 = j / 64;
+    		const size_t ibit = i % 64;
+    		const size_t jbit = j % 64;
+    		const uint64_t imask = ((1ULL << ibit) - 1);
+    		const uint64_t jmask = jbit == 63 ? ~0ULL : (1ULL << (jbit + 1)) - 1;
+    		if (i64 == j64)
+    		{
+    			// All bits are in the same 64-bit word.
+    			const uint64_t mask = imask ^ jmask;
+    			m_v[i64] |= mask;
+    		}
+    		else
+    		{
+    			// Set the bits in the first word.
+    			m_v[i64] |= ~imask;
+    			// Set the bits in the middle words.
+    			for (size_t k = i64 + 1; k < j64; ++k)
+    				m_v[k] = ~0ULL;
+    			// Set the bits in the last word.
+    			m_v[j64] |= jmask;
+    		}
+    	}
+    	// Resets the range [i, j] to 0.
+    	__forceinline void resetRange(size_t i, size_t j) noexcept
+    	{
+    		VEC(i <= j);
+    		VEC(j < m_cBits);
+    		const size_t i64 = i / 64;
+    		const size_t j64 = j / 64;
+    		const size_t ibit = i % 64;
+    		const size_t jbit = j % 64;
+    		const uint64_t imask = ((1ULL << ibit) - 1);
+    		const uint64_t jmask = jbit == 63 ? ~0ULL : (1ULL << (jbit + 1)) - 1;
+    		if (i64 == j64)
+    		{
+    			// All bits are in the same 64-bit word.
+    			const uint64_t mask = imask ^ jmask;
+    			m_v[i64] &= ~mask;
+    		}
+    		else
+    		{
+    			// Reset the bits in the first word.
+    			m_v[i64] &= imask;
+    			// Reset the bits in the middle words.
+    			for (size_t k = i64 + 1; k < j64; ++k)
+    				m_v[k] = 0ULL;
+    			// Reset the bits in the last word.
+    			m_v[j64] &= ~jmask;
+    		}
+    	}
+    	// Returns the number of bits set to 1 in the range [i, j].
+    	__forceinline size_t popcount(size_t i, size_t j) const noexcept
+    	{
+    		VEC(i <= j);
+    		VEC(j < m_cBits);
+    		const size_t i64 = i / 64;
+    		const size_t j64 = j / 64;
+    		const size_t ibit = i % 64;
+    		const size_t jbit = j % 64;
+    		const uint64_t imask = ((1ULL << ibit) - 1);
+    		const uint64_t jmask = jbit == 63 ? ~0ULL : (1ULL << (jbit + 1)) - 1;
+    		size_t count = 0;
+    		if (i64 == j64)
+    		{
+    			// All bits are in the same 64-bit word.
+    			const uint64_t mask = imask ^ jmask;
+    			count += std::popcount(m_v[i64] & mask);
+    		}
+    		else
+    		{
+    			// Count the bits in the first word.
+    			count += std::popcount(m_v[i64] & ~imask);
+    			// Count the bits in the middle words.
+    			for (size_t k = i64 + 1; k < j64; ++k)
+    				count += std::popcount(m_v[k]);
+    			// Count the bits in the last word.
+    			count += std::popcount(m_v[j64] & jmask);
+    		}
+    		return count;
+    	}
+    	// Appends the contents of another bitmap to this one.
+    	__forceinline void append(const Bitmap& o)
+    	{
+    		if (o.empty())
+    			return;
+    		if (empty())
+    		{
+    			*this = o;
+    			return;
+    		}
+    		const size_t cold = m_cBits / 64;
+    		const size_t cshift = (m_cBits % 64);
+    		if (!cshift)
+    		{
+    			m_v.insert(end(m_v), begin(o.m_v), end(o.m_v));
+    			m_cBits += o.m_cBits;
+    			return;
+    		}
+    		const size_t calign = 64 - (m_cBits % 64);
+    		const size_t mask = calign == 64 ? ~0ULL : ((1ULL << calign) - 1);
+    		m_v.resize((m_cBits + o.m_cBits + 63) / 64);
+    		m_cBits += o.m_cBits;
+    		// Handle all complete words from source
+    		size_t i = 0;
+    		for (; i < o.m_v.size() - 1; ++i)
+    		{
+    			m_v[cold + i] |= (o.m_v[i] & mask) << cshift;
+    			m_v[cold + i + 1] |= (o.m_v[i] >> calign);
+    		}
+    		// Handle the last word specially to respect o.m_cBits
+    		const size_t crem = o.m_cBits % 64;
+    		const uint64_t lastMask = crem == 0 ? ~0ULL : ((1ULL << crem) - 1);
+    		const uint64_t lastWord = o.m_v[i] & lastMask;
+    		m_v[cold + i] |= (lastWord & mask) << cshift;
+    		if ((cold + i + 1) < m_v.size())
+    			m_v[cold + i + 1] |= (lastWord >> calign);
+    	}
+    	__forceinline void emplace_back(bool f)
+    	{
+    		const size_t i = m_cBits++;
+    		const size_t i64 = i / 64;
+    		const size_t ibit = i % 64;
+    		if (i64 == m_v.size())
+    		{
+    			m_v.push_back(0);
+    		}
+    		m_v[i64] |= (size_t)f << ibit;
+    	}
+
+    	Bitmap() = default;
+    	Bitmap(size_t cBits) : m_cBits(cBits)
+    	{
+    		m_v.resize((cBits + 63) / 64);
+    	}
+    	~Bitmap() noexcept = default;
+    	Bitmap(const Bitmap& o) : m_v(o.m_v), m_cBits(o.m_cBits) {}
+    	Bitmap& operator=(const Bitmap& o)
+    	{
+    		m_v = o.m_v;
+    		m_cBits = o.m_cBits;
+    		return *this;
+    	}
+    	Bitmap(Bitmap&& o) noexcept
+    	{
+    		// clang-format off
+    		m_v = std::move(o.m_v); o.m_v.clear();
+    		m_cBits = std::move(o.m_cBits); o.m_cBits = 0;
+    		// clang-format on
+    	}
+    	Bitmap& operator=(Bitmap&& o) noexcept
+    	{
+    		// clang-format off
+    		m_v = std::move(o.m_v); o.m_v.clear();
+    		m_cBits = std::move(o.m_cBits); o.m_cBits = 0;
+    		// clang-format on
+    		return *this;
+    	}
+    };
+
+    static void VerifyEqual(const Bitmap& b, const vector<bool>& v)
+    {
+    	VEC(b.size() == v.size());
+    	for (size_t i = 0; i < b.size(); ++i)
+    	{
+    		VEC(b.get(i) == v[i]);
+    	}
+
+    	if (b.size())
+    	{
+    		const size_t cB = b.popcount(0, b.size() - 1);
+    		size_t cV = 0;
+    		for (size_t i = 0; i < v.size(); ++i)
+    			cV += (size_t)v[i];
+    		VEC(cB == cV);
+    	}
+    }
+    static void TestBitmap()
+    {
+    	Bitmap b;
+    	vector<bool> v;
+    	minstd_rand gen(1234);
+    	uniform_int_distribution<size_t> dist;
+    	function<void()> rgfn[] = {
+    		[&]()
+    		{
+    			b.clear();
+    			v.clear();
+    			VerifyEqual(b, v);
+    		},
+    		[&]()
+    		{
+    			const size_t cBits = dist(gen) % 1000;
+    			b.resize(cBits);
+    			v.resize(cBits);
+    			VerifyEqual(b, v);
+    		},
+    		[&]()
+    		{
+    			if (b.empty())
+    				return;
+    			const size_t i = dist(gen) % b.size();
+    			const size_t j = dist(gen) % b.size();
+    			b.set(i, true);
+    			b.set(j, false);
+    			v[i] = true;
+    			v[j] = false;
+    			VerifyEqual(b, v);
+    		},
+    		[&]()
+    		{
+    			if (b.empty())
+    				return;
+    			const size_t i = dist(gen) % b.size();
+    			const size_t j = dist(gen) % b.size();
+    			b.set(i);
+    			b.reset(j);
+    			v[i] = true;
+    			v[j] = false;
+    			VerifyEqual(b, v);
+    		},
+    		[&]()
+    		{
+    			if (b.empty())
+    				return;
+    			const size_t i = dist(gen) % b.size();
+    			const size_t j = dist(gen) % b.size();
+    			const size_t s = min<size_t>(i, j);
+    			const size_t t = max<size_t>(i, j);
+    			b.setRange(s, t);
+    			for (size_t k = s; k <= t; ++k)
+    				v[k] = true;
+    			VerifyEqual(b, v);
+    		},
+    		[&]()
+    		{
+    			if (b.empty())
+    				return;
+    			const size_t i = dist(gen) % b.size();
+    			const size_t j = dist(gen) % b.size();
+    			const size_t s = min<size_t>(i, j);
+    			const size_t t = max<size_t>(i, j);
+    			b.resetRange(s, t);
+    			for (size_t k = s; k <= t; ++k)
+    				v[k] = false;
+    			VerifyEqual(b, v);
+    		},
+    		[&]()
+    		{
+    			if (b.empty())
+    				return;
+    			const size_t i = dist(gen) % b.size();
+    			const size_t j = dist(gen) % b.size();
+    			const size_t s = min<size_t>(i, j);
+    			const size_t t = max<size_t>(i, j);
+    			const size_t cB = b.popcount(s, t);
+    			size_t cV = 0;
+    			for (size_t k = s; k <= t; ++k)
+    				cV += (size_t)v[k];
+    			VEC(cB == cV);
+    		},
+    		[&]()
+    		{
+    			const size_t cAppend = dist(gen) % 1000;
+    			Bitmap n { cAppend };
+    			vector<bool> m(cAppend);
+    			for (size_t i = 0; i < cAppend; ++i)
+    			{
+    				const bool f = dist(gen) % 2;
+    				n.set(i, f);
+    				m[i] = f;
+    			}
+    			VerifyEqual(n, m);
+    			b.append(n);
+    			v.insert(end(v), begin(m), end(m));
+    			VerifyEqual(b, v);
+    		},
+    		[&]()
+    		{
+    			const size_t cAppend = dist(gen) % 1000;
+    			for (size_t i = 0; i < cAppend; ++i)
+    			{
+    				const bool f = dist(gen) % 2;
+    				b.emplace_back(f);
+    				v.push_back(f);
+    			}
+    			VerifyEqual(b, v);
+    		},
+    	};
+    	for (size_t i = 0; i < 10000; ++i)
+    	{
+    		const size_t j = dist(gen) % (sizeof(rgfn) / sizeof(rgfn[0]));
+    		const auto& fn = rgfn[j];
+    		fn();
+    	}
+    }
+
+	Arbitrary size integers
+		d = sum of d_base^k * base^k, for k = 0, 1, 2, ...
+		TODO
+
+	Rational numbers
+		The rational numbers are defined as the set of all possible fractions. That is, one integer divided by another, where the denominator cannot be zero.
+		In mathematical set notation,
+			Q = { a / b, where a is an integer and b is an integer not equal to zero }
+
+	Fixed point
+
+	Floating point
+		IEEE754 standard
+		TODO
+
+		Kahan summation
+
+	Sequences / Strings
+		Subsequence / substring
+		Views
+			External length
+			Internal length
+		Contains
+		Count
+		Find
+			Forward
+			Reverse
+		Replace
+
+		Concatenate
+		  template<typename T> void concatenate(const span<const span<T>> spans, vector<T>& result) {
+		    size_t cResult = 0;
+		    for (const auto& s : spans)
+		      cResult += s.size();
+	      result.resize(cResult);
+	      auto r = begin(result);
+	      for (const auto& s : spans) {
+	        for (const auto& e : s) {
+	          *r = e;
+	          ++r;
+	        }
+	      }
+	      PRECONDITION(r == end(result));
+		  }
+
+		Zipper merge
+			Given two sorted sequences, merge them into one sorted sequence.
+
+			template<typename T> void zipperMerge(const span<T> A, const span<T> B, vector<T>& result) {
+			  result.resize(A.size() + B.size());
+			  auto a = begin(A);
+			  const auto a1 = end(A);
+			  auto b = begin(B);
+			  const auto b1 = end(B);
+			  auto r = begin(result);
+			  while (a != a1 && b != b1) {
+			    if (*a <= *b) {
+			      *r = *a;
+		        ++r;
+			      ++a;
+			    }
+			    else {
+			      *r = *b;
+		        ++r;
+			      ++b;
+			    }
+			  }
+			  while (a != a1) {
+		      *r = *a;
+	        ++r;
+		      ++a;
+			  }
+			  while (b != b1) {
+		      *r = *b;
+	        ++r;
+		      ++b;
+			  }
+			  PRECONDITION(a == a1);
+			  PRECONDITION(b == b1);
+			  PRECONDITION(r == end(result));
+			}
+
+	Intervals
+		()
+		[]
+		(]
+		[)
+		  template<typename T> struct IntervalEE { T p0, p1; };
+		  template<typename T> struct IntervalII { T p0, p1; };
+		  template<typename T> struct IntervalEI { T p0, p1; };
+		  template<typename T> struct IntervalIE { T p0, p1; };
+		Discrete vs continuous
+		Tiling
+
+		Overlap
+		  template<typename T> __forceinline bool overlaps(const IntervalII<T>& A, const IntervalII<T>& B) {
+		    // Assume A.p0 <= A.p1, and the same for B.
+		    // There's no overlap when A.p1 < B.p0 (A entirely left of B), or A.p0 > B.p1 (A entirely right of B).
+		    // Negation gives us the final equation.
+		    return !(A.p1 < B.p0 or A.p0 > B.p1);
+		  }
+		  template<typename T> bool intervalsSortedByStart(const span<const IntervalII<T>> intervals) {
+		    const size_t cIntervals = intervals.size();
+		    for (size_t i = 1; i < cIntervals; ++i) {
+		      if (intervals[i-1].p0 > intervals[i].p0) {
+		        return false;
+		      }
+		    }
+		    return true;
+		  }
+		  template<typename T> vector<IntervalII<T>> sortIntervalsByStart(const span<const IntervalII<T>> intervals) {
+	      vector<IntervalII<T>> intervalsS(begin(intervals), end(intervals));
+	      sort(begin(intervalsS), end(intervalsS), [](const IntervalII<T>& A, const IntervalII<T>& B) {
+	        return A.p0 < B.p0;
+	      });
+	      return intervalsS;
+      }
+		  
+		  template<typename T> bool anyOverlap(const span<const IntervalII<T>> intervals) {
+		    // If the intervals list is sorted by interval start, we can compare neighbors instead of doing full all-pairs comparison.
+		    auto anyOverlapSorted = [](const span<const IntervalII<T>> intervalsSorted) {
+		      const size_t cIntervals = intervals.size();
+  		    for (size_t i = 1; i < cIntervals; ++i) {
+  		      if (intervalsSorted[i-1].p1 >= intervalsSorted[i].p0) {
+  		        return true;
+		        }
+		      }
+		      return false;
+		    };
+		    if (intervalsSortedByStart(intervals)) {
+		      return anyOverlapSorted(intervals);
+		    }
+		    else {
+		      return anyOverlapSorted(sortIntervalsByStart(intervals));
+		    }
+		  }
+		  template<typename T> bool allOverlap(const span<const IntervalII<T>> intervals) {
+		    if (!intervals.empty()) {
+		      const auto& A = intervals[0];
+		      const size_t cIntervals = intervals.size();
+		      for (size_t i = 1; i < cIntervals; ++i) {
+		        const auto& B = intervals[i];
+		        if (!overlaps(A, B))
+		          return false;
+		      }
+		    }
+	      return true;
+		  }
+
+		Intersect
+	  Union
+	  Difference
+	  Symmetric difference
+		Contains
+			Given a point and an interval, return if the point is inside the interval.
+			Given a point and a set of intervals, return if the point is inside any interval.
+		Covering
+			Given a set of points and a set of intervals, return if all points are inside any interval.
+		Merging
+			Given a set of intervals, merge them if adjacent/overlapping.
+			  template<typename T> __forceinline bool adjacent(const IntervalII<T>& A, const IntervalII<T>& B) {
+			    return A.p1 + 1 == B.p0 or B.p1 + 1 == A.p0;
+			  }
+			  template<typename T> __forceinline bool adjacentOrOverlap(const IntervalII<T>& A, const IntervalII<T>& B) {
+			    return adjacent(A, B) or overlaps(A, B);
+		    }
+		    template<typename T> void merge(const span<const IntervalII<T>> intervals, vector<IntervalII<T>>& result) {
+		      result.clear();
+		      if (intervalsSortedByStart(intervals)) {
+		        
+		      }
+		      else {
+		      }
+		    }
+		    
+			Given two lists of sorted, non-adjacent/overlapping intervals, merge them into one list.
+
+Beyond one dimension
+  You'll notice memory being a configurable map of numbers to numbers is fundamentally one-dimensional.
+
+  Striping
+    Strides
+    Compressed sparse row
+  Address concatenation
+    Page directories
+    x|y|...|x|y
+  Hashing
+
