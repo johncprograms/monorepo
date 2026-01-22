@@ -64,7 +64,6 @@
 Enumc( target_plat_t )
 {
   x64,
-  x86,
 };
 Enumc( target_type_t )
 {
@@ -144,12 +143,6 @@ Main( stack_resizeable_cont_t<slice_t>& args )
   auto cmd_consol_x64_optimized      = SliceFromCStr( "// build:console_x64_optimized" );
   auto cmd_window_x64_releaseversion = SliceFromCStr( "// build:window_x64_releaseversion" );
   auto cmd_consol_x64_releaseversion = SliceFromCStr( "// build:console_x64_releaseversion" );
-  auto cmd_window_x86_debug          = SliceFromCStr( "// build:window_x86_debug" );
-  auto cmd_consol_x86_debug          = SliceFromCStr( "// build:console_x86_debug" );
-  auto cmd_window_x86_optimized      = SliceFromCStr( "// build:window_x86_optimized" );
-  auto cmd_consol_x86_optimized      = SliceFromCStr( "// build:console_x86_optimized" );
-  auto cmd_window_x86_releaseversion = SliceFromCStr( "// build:window_x86_releaseversion" );
-  auto cmd_consol_x86_releaseversion = SliceFromCStr( "// build:console_x86_releaseversion" );
 
   target_plat_t plat;
   if( EqualContents( firstline, cmd_window_x64_debug          )  ||
@@ -161,15 +154,6 @@ Main( stack_resizeable_cont_t<slice_t>& args )
   {
     plat = target_plat_t::x64;
   }
-  elif( EqualContents( firstline, cmd_window_x86_debug          )  ||
-        EqualContents( firstline, cmd_consol_x86_debug          )  ||
-        EqualContents( firstline, cmd_window_x86_optimized      )  ||
-        EqualContents( firstline, cmd_consol_x86_optimized      )  ||
-        EqualContents( firstline, cmd_window_x86_releaseversion )  ||
-        EqualContents( firstline, cmd_consol_x86_releaseversion ) )
-  {
-    plat = target_plat_t::x86;
-  }
   else {
     printf( "Unrecognized target platform!\n" );
     return 1;
@@ -178,19 +162,13 @@ Main( stack_resizeable_cont_t<slice_t>& args )
   target_type_t type;
   if( EqualContents( firstline, cmd_window_x64_debug          )  ||
       EqualContents( firstline, cmd_window_x64_optimized      )  ||
-      EqualContents( firstline, cmd_window_x64_releaseversion )  ||
-      EqualContents( firstline, cmd_window_x86_debug          )  ||
-      EqualContents( firstline, cmd_window_x86_optimized      )  ||
-      EqualContents( firstline, cmd_window_x86_releaseversion ) )
+      EqualContents( firstline, cmd_window_x64_releaseversion ) )
   {
     type = target_type_t::window;
   }
   elif( EqualContents( firstline, cmd_consol_x64_debug          )  ||
         EqualContents( firstline, cmd_consol_x64_optimized      )  ||
-        EqualContents( firstline, cmd_consol_x64_releaseversion )  ||
-        EqualContents( firstline, cmd_consol_x86_debug          )  ||
-        EqualContents( firstline, cmd_consol_x86_optimized      )  ||
-        EqualContents( firstline, cmd_consol_x86_releaseversion ) )
+        EqualContents( firstline, cmd_consol_x64_releaseversion ) )
   {
     type = target_type_t::console;
   }
@@ -201,23 +179,17 @@ Main( stack_resizeable_cont_t<slice_t>& args )
 
   target_flavor_t flavor;
   if( EqualContents( firstline, cmd_window_x64_debug )  ||
-      EqualContents( firstline, cmd_consol_x64_debug )  ||
-      EqualContents( firstline, cmd_window_x86_debug )  ||
-      EqualContents( firstline, cmd_consol_x86_debug ) )
+      EqualContents( firstline, cmd_consol_x64_debug ) )
   {
     flavor = target_flavor_t::debug;
   }
   elif( EqualContents( firstline, cmd_window_x64_optimized )  ||
-        EqualContents( firstline, cmd_consol_x64_optimized )  ||
-        EqualContents( firstline, cmd_window_x86_optimized )  ||
-        EqualContents( firstline, cmd_consol_x86_optimized ) )
+        EqualContents( firstline, cmd_consol_x64_optimized ) )
   {
     flavor = target_flavor_t::optimized;
   }
   elif( EqualContents( firstline, cmd_window_x64_releaseversion )  ||
-        EqualContents( firstline, cmd_consol_x64_releaseversion )  ||
-        EqualContents( firstline, cmd_window_x86_releaseversion )  ||
-        EqualContents( firstline, cmd_consol_x86_releaseversion ) )
+        EqualContents( firstline, cmd_consol_x64_releaseversion ) )
   {
     flavor = target_flavor_t::releaseversion;
   }
@@ -229,9 +201,9 @@ Main( stack_resizeable_cont_t<slice_t>& args )
   Free( contents );
   FileFree( file );
 
-  auto rc_exe = Str( "C:/Program Files (x86)/Windows Kits/10/bin/10.0.18362.0/x64/rc.exe" );
+  auto rc_exe = Str( "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/rc.exe" );
 
-  auto toolchain_path = Str( "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.29.30133/bin/Hostx64/" );
+  auto toolchain_path = Str( "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/bin/HostX64/" );
 
   stack_resizeable_cont_t<u8> compile;
   Alloc( compile, 64000 );
@@ -239,7 +211,6 @@ Main( stack_resizeable_cont_t<slice_t>& args )
   AddBackCStr( &compile, toolchain_path );
   switch( plat ) {
     case target_plat_t::x64: AddBackCStr( &compile, "x64" ); break;
-    case target_plat_t::x86: AddBackCStr( &compile, "x86" ); break;
     default: UnreachableCrash();
   }
   AddBackCStr( &compile, "/cl.exe" );
@@ -252,7 +223,6 @@ Main( stack_resizeable_cont_t<slice_t>& args )
   AddBackCStr( &link, toolchain_path );
   switch( plat ) {
     case target_plat_t::x64: AddBackCStr( &link, "x64" ); break;
-    case target_plat_t::x86: AddBackCStr( &link, "x86" ); break;
     default: UnreachableCrash();
   }
   AddBackCStr( &link, "/link.exe" );
@@ -281,7 +251,6 @@ Main( stack_resizeable_cont_t<slice_t>& args )
   // since it takes ~1 second to run. super slow and terrible.
   // so we set the equivalent env vars here in the build process, and the compile/links are child processes,
   // which inherit the env vars, and hence will work just fine.
-
   // note we'll have to update these every time we update VS.
   // we could make an automated update script, something that ran set, then vscmd19_64 and set, did the diff,
   // constructed some variable-defn file somewhere. then we could just parse that file here.
@@ -296,41 +265,24 @@ Main( stack_resizeable_cont_t<slice_t>& args )
   switch( plat ) {
     case target_plat_t::x64: {
       path_concat = SliceFromCStr(
-        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/Extensions/Microsoft/IntelliCode/CLI;"
-        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.29.30133/bin/HostX64/x64;"
-        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/VC/VCPackages;"
-        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/TestWindow;"
-        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/TeamFoundation/Team Explorer;"
-        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/MSBuild/Current/bin/Roslyn;"
-        "C:/Program Files (x86)/Microsoft SDKs/Windows/v10.0A/bin/NETFX 4.7.1 Tools/x64/;"
-        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/Tools/devinit;"
-        "C:/Program Files (x86)/Windows Kits/10/bin/10.0.18362.0/x64;"
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/bin/HostX64/x64;"
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/VC/VCPackages;"
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/TestWindow;"
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/TeamFoundation/Team Explorer;"
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/bin/Roslyn;"
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/Team Tools/DiagnosticsHub/Collector;"
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/Llvm/x64/bin;"
+        "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64;"
         "C:/Program Files (x86)/Windows Kits/10/bin/x64;"
-        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/MSBuild/Current/Bin;"
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64;"
         "C:/Windows/Microsoft.NET/Framework64/v4.0.30319;"
-        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/;"
-        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/Tools/;"
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/;"
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/Tools/;"
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin;"
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja;"
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/VC/Linux/bin/ConnectionManagerExe;"
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/vcpkg;"
         );
-    } break;
-    case target_plat_t::x86: {
-      printf( "x86 is deprecated!" );
-      return 1;
-//      path_concat = SliceFromCStr(
-//        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/Extensions/Microsoft/IntelliCode/CLI;"
-//        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.28.29333/bin/HostX64/x86;"
-//        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.28.29333/bin/HostX64/x64;"
-//        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/VC/VCPackages;"
-//        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/TestWindow;"
-//        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/TeamFoundation/Team Explorer;"
-//        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/MSBuild/Current/bin/Roslyn;"
-//        "C:/Program Files (x86)/Microsoft SDKs/Windows/v10.0A/bin/NETFX 4.7.1 Tools/x64/;"
-//        "C:/Program Files (x86)/Windows Kits/10/bin/10.0.18362.0/x64;"
-//        "C:/Program Files (x86)/Windows Kits/10/bin/x64;"
-//        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/MSBuild/Current/Bin;"
-//        "C:/Windows/Microsoft.NET/Framework64/v4.0.30319;"
-//        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/;"
-//        "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/Tools/;"
-//        );
     } break;
     default: UnreachableCrash();
   }
@@ -344,66 +296,47 @@ Main( stack_resizeable_cont_t<slice_t>& args )
     case target_plat_t::x64: {
       envvar_and_value_t vars_and_values[] = {
         { "CommandPromptType", "Native" },
-        { "DevEnvDir", "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/" },
+        { "DevEnvDir", "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/" },
         { "ExtensionSdkDir", "C:/Program Files (x86)/Microsoft SDKs/Windows Kits/10/ExtensionSDKs" },
+        { "EXTERNAL_INCLUDE", "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/include;C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/ATLMFC/include;C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/VS/include;C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/ucrt;C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/um;C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/shared;C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/winrt;C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/cppwinrt" },
         { "Framework40Version", "v4.0" },
         { "FrameworkDir", "C:/Windows/Microsoft.NET/Framework64/" },
-        { "FrameworkDIR64", "C:/Windows/Microsoft.NET/Framework64" },
+        { "FrameworkDir64", "C:/Windows/Microsoft.NET/Framework64" },
         { "FrameworkVersion", "v4.0.30319" },
         { "FrameworkVersion64", "v4.0.30319" },
-        { "INCLUDE",
-          "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.29.30133/include;"
-          "C:/Program Files (x86)/Windows Kits/NETFXSDK/4.7.1/include/um;"
-          "C:/Program Files (x86)/Windows Kits/10/include/10.0.18362.0/ucrt;"
-          "C:/Program Files (x86)/Windows Kits/10/include/10.0.18362.0/shared;"
-          "C:/Program Files (x86)/Windows Kits/10/include/10.0.18362.0/um;"
-          "C:/Program Files (x86)/Windows Kits/10/include/10.0.18362.0/winrt;"
-          "C:/Program Files (x86)/Windows Kits/10/include/10.0.18362.0/cppwinrt"
-          },
-        { "LIB",
-          "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.29.30133/lib/x64;"
-          "C:/Program Files (x86)/Windows Kits/NETFXSDK/4.7.1/lib/um/x64;"
-          "C:/Program Files (x86)/Windows Kits/10/lib/10.0.18362.0/ucrt/x64;"
-          "C:/Program Files (x86)/Windows Kits/10/lib/10.0.18362.0/um/x64"
-          },
-        { "LIBPATH",
-          "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.29.30133/lib/x64;"
-          "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.29.30133/lib/x86/store/references;"
-          "C:/Program Files (x86)/Windows Kits/10/UnionMetadata/10.0.18362.0;"
-          "C:/Program Files (x86)/Windows Kits/10/References/10.0.18362.0;"
-          "C:/Windows/Microsoft.NET/Framework64/v4.0.30319"
-          },
+        { "INCLUDE", "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/include;C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/ATLMFC/include;C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/VS/include;C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/ucrt;C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/um;C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/shared;C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/winrt;C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/cppwinrt" },
+        { "is_x64_arch", "true" },
+        { "LIB", "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/ATLMFC/lib/x64;C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/lib/x64;C:/Program Files (x86)/Windows Kits/10/lib/10.0.26100.0/ucrt/x64;C:/Program Files (x86)/Windows Kits/10/lib/10.0.26100.0/um/x64" },
+        { "LIBPATH", "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/ATLMFC/lib/x64;C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/lib/x64;C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/lib/x86/store/references;C:/Program Files (x86)/Windows Kits/10/UnionMetadata/10.0.26100.0;C:/Program Files (x86)/Windows Kits/10/References/10.0.26100.0;C:/Windows/Microsoft.NET/Framework64/v4.0.30319" },
         { "NETFXSDKDir", "C:/Program Files (x86)/Windows Kits/NETFXSDK/4.7.1/" },
-        { "UCRTVersion", "10.0.18362.0" },
+        { "UCRTVersion", "10.0.26100.0" },
         { "UniversalCRTSdkDir", "C:/Program Files (x86)/Windows Kits/10/" },
-        { "VCIDEInstallDir", "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/VC/" },
-        { "VCINSTALLDIR", "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/" },
-        { "VCToolsInstallDir", "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.29.30133/" },
-        { "VCToolsRedistDir", "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Redist/MSVC/14.29.30133/" },
-        { "VCToolsVersion", "14.29.30133" },
-        { "VisualStudioVersion", "16.0" },
-        { "VS140COMNTOOLS", "C:/Program Files (x86)/Microsoft Visual Studio 14.0/Common7/Tools/" },
-        { "VS160COMNTOOLS", "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/Tools/" },
+        { "VCIDEInstallDir", "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/VC/" },
+        { "VCINSTALLDIR", "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/" },
+        { "VCPKG_ROOT", "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/vcpkg" },
+        { "VCToolsInstallDir", "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/" },
+        { "VCToolsRedistDir", "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Redist/MSVC/14.44.35112/" },
+        { "VCToolsVersion", "14.44.35207" },
+        { "VisualStudioVersion", "17.0" },
+        { "VS170COMNTOOLS", "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/Tools/" },
         { "VSCMD_ARG_app_plat", "Desktop" },
         { "VSCMD_ARG_HOST_ARCH", "x64" },
         { "VSCMD_ARG_no_logo", "1" },
         { "VSCMD_ARG_TGT_ARCH", "x64" },
-        { "VSCMD_VER", "16.11.24" },
-        { "VSINSTALLDIR", "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/" },
-        { "WindowsLibPath",
-          "C:/Program Files (x86)/Windows Kits/10/UnionMetadata/10.0.18362.0;"
-          "C:/Program Files (x86)/Windows Kits/10/References/10.0.18362.0"
-          },
+        { "VSCMD_VER", "17.14.16" },
+        { "VSINSTALLDIR", "C:/Program Files/Microsoft Visual Studio/2022/Community/" },
+        { "WindowsLibPath", "C:/Program Files (x86)/Windows Kits/10/UnionMetadata/10.0.26100.0;C:/Program Files (x86)/Windows Kits/10/References/10.0.26100.0" },
         { "WindowsSdkBinPath", "C:/Program Files (x86)/Windows Kits/10/bin/" },
         { "WindowsSdkDir", "C:/Program Files (x86)/Windows Kits/10/" },
-        { "WindowsSDKLibVersion", "10.0.18362.0/" },
-        { "WindowsSdkVerBinPath", "C:/Program Files (x86)/Windows Kits/10/bin/10.0.18362.0/" },
-        { "WindowsSDKVersion", "10.0.18362.0/" },
+        { "WindowsSDKLibVersion", "10.0.26100.0/" },
+        { "WindowsSdkVerBinPath", "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/" },
+        { "WindowsSDKVersion", "10.0.26100.0/" },
         { "WindowsSDK_ExecutablePath_x64", "C:/Program Files (x86)/Microsoft SDKs/Windows/v10.0A/bin/NETFX 4.7.1 Tools/x64/" },
         { "WindowsSDK_ExecutablePath_x86", "C:/Program Files (x86)/Microsoft SDKs/Windows/v10.0A/bin/NETFX 4.7.1 Tools/" },
         { "__devinit_path", "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/Tools/devinit/devinit.exe" },
         { "__DOTNET_ADD_64BIT", "1" },
         { "__DOTNET_PREFERRED_BITNESS", "64" },
+        { "__VSCMD_PREINIT_PATH", "C:/WINDOWS/system32;C:/WINDOWS;C:/WINDOWS/System32/Wbem;C:/WINDOWS/System32/WindowsPowerShell/v1.0/;C:/WINDOWS/System32/OpenSSH/;C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/;C:/Program Files/Git/cmd;C:/doc/app;C:/Users/admin/AppData/Local/Microsoft/WindowsApps;" },
         };
       ForEach( var_and_value, vars_and_values ) {
         auto var = var_and_value.var;
@@ -413,78 +346,6 @@ Main( stack_resizeable_cont_t<slice_t>& args )
       }
     } break;
 
-    case target_plat_t::x86: {
-      printf( "x86 is deprecated!" );
-      return 1;
-//      envvar_and_value_t vars_and_values[] = {
-//        { "CommandPromptType", "Cross" },
-//        { "DevEnvDir", "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/" },
-//        { "ExtensionSdkDir", "C:/Program Files (x86)/Microsoft SDKs/Windows Kits/10/ExtensionSDKs" },
-//        { "Framework40Version", "v4.0" },
-//        { "FrameworkDir", "C:/Windows/Microsoft.NET/Framework64/" },
-//        { "FrameworkDIR32", "C:/Windows/Microsoft.NET/Framework/" },
-//        { "FrameworkDIR64", "C:/Windows/Microsoft.NET/Framework64" },
-//        { "FrameworkVersion", "v4.0.30319" },
-//        { "FrameworkVersion32", "v4.0.30319" },
-//        { "FrameworkVersion64", "v4.0.30319" },
-//        { "INCLUDE",
-//          "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.28.29333/include;"
-//          "C:/Program Files (x86)/Windows Kits/NETFXSDK/4.7.1/include/um;"
-//          "C:/Program Files (x86)/Windows Kits/10/include/10.0.18362.0/ucrt;"
-//          "C:/Program Files (x86)/Windows Kits/10/include/10.0.18362.0/shared;"
-//          "C:/Program Files (x86)/Windows Kits/10/include/10.0.18362.0/um;"
-//          "C:/Program Files (x86)/Windows Kits/10/include/10.0.18362.0/winrt;"
-//          "C:/Program Files (x86)/Windows Kits/10/include/10.0.18362.0/cppwinrt"
-//          },
-//        { "LIB",
-//          "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.28.29333/lib/x86;"
-//          "C:/Program Files (x86)/Windows Kits/NETFXSDK/4.7.1/lib/um/x86;"
-//          "C:/Program Files (x86)/Windows Kits/10/lib/10.0.18362.0/ucrt/x86;"
-//          "C:/Program Files (x86)/Windows Kits/10/lib/10.0.18362.0/um/x86"
-//          },
-//        { "LIBPATH",
-//          "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.28.29333/lib/x86;"
-//          "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.28.29333/lib/x86/store/references;"
-//          "C:/Program Files (x86)/Windows Kits/10/UnionMetadata/10.0.18362.0;"
-//          "C:/Program Files (x86)/Windows Kits/10/References/10.0.18362.0;"
-//          "C:/Windows/Microsoft.NET/Framework64/v4.0.30319"
-//          },
-//        { "NETFXSDKDir", "C:/Program Files (x86)/Windows Kits/NETFXSDK/4.7.1/" },
-//        { "PreferredToolArchitecture", "x64" },
-//        { "UCRTVersion", "10.0.18362.0" },
-//        { "UniversalCRTSdkDir", "C:/Program Files (x86)/Windows Kits/10/" },
-//        { "VCIDEInstallDir", "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/VC/" },
-//        { "VCINSTALLDIR", "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/" },
-//        { "VCToolsInstallDir", "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.28.29333/" },
-//        { "VCToolsRedistDir", "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Redist/MSVC/14.28.29325/" },
-//        { "VCToolsVersion", "14.28.29333" },
-//        { "VisualStudioVersion", "16.0" },
-//        { "VS160COMNTOOLS", "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/Tools/" },
-//        { "VSCMD_ARG_app_plat", "Desktop" },
-//        { "VSCMD_ARG_HOST_ARCH", "x64" },
-//        { "VSCMD_ARG_no_logo", "1" },
-//        { "VSCMD_ARG_TGT_ARCH", "x86" },
-//        { "VSCMD_VER", "16.8.3" },
-//        { "VSINSTALLDIR", "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/" },
-//        { "WindowsLibPath",
-//          "C:/Program Files (x86)/Windows Kits/10/UnionMetadata/10.0.18362.0;"
-//          "C:/Program Files (x86)/Windows Kits/10/References/10.0.18362.0"
-//          },
-//        { "WindowsSdkBinPath", "C:/Program Files (x86)/Windows Kits/10/bin/" },
-//        { "WindowsSdkDir", "C:/Program Files (x86)/Windows Kits/10/" },
-//        { "WindowsSDKLibVersion", "10.0.18362.0/" },
-//        { "WindowsSdkVerBinPath", "C:/Program Files (x86)/Windows Kits/10/bin/10.0.18362.0/" },
-//        { "WindowsSDKVersion", "10.0.18362.0/" },
-//        { "WindowsSDK_ExecutablePath_x64", "C:/Program Files (x86)/Microsoft SDKs/Windows/v10.0A/bin/NETFX 4.7.1 Tools/x64/" },
-//        { "WindowsSDK_ExecutablePath_x86", "C:/Program Files (x86)/Microsoft SDKs/Windows/v10.0A/bin/NETFX 4.7.1 Tools/" },
-//        };
-//      ForEach( var_and_value, vars_and_values ) {
-//        auto var = var_and_value.var;
-//        auto value = var_and_value.value;
-//        BOOL r2 = SetEnvironmentVariableA( var, value );
-//        AssertCrash( r2 );
-//      }
-    } break;
     default: UnreachableCrash();
   }
 
@@ -677,21 +538,6 @@ Main( stack_resizeable_cont_t<slice_t>& args )
         default: UnreachableCrash();
       }
     } break;
-    case target_plat_t::x86: {
-
-      switch( flavor ) {
-        case target_flavor_t::debug: {
-          rs_filename = SliceFromCStr( "exe/proj32d.rc" );
-          res_filename = SliceFromCStr( "exe/proj32d.res" );
-        } break;
-        case target_flavor_t::optimized:
-        case target_flavor_t::releaseversion: {
-          rs_filename = SliceFromCStr( "exe/proj32s.rc" );
-          res_filename = SliceFromCStr( "exe/proj32s.res" );
-        } break;
-        default: UnreachableCrash();
-      }
-    } break;
     default: UnreachableCrash();
   }
 
@@ -786,10 +632,6 @@ Main( stack_resizeable_cont_t<slice_t>& args )
 //    "/d1reportTime",
     };
 
-  const void* compiler_flags_x86[] = {
-    "/Oy-",
-    };
-
   const void* compiler_flags_debug[] = {
     "/DDBG=1",
     "/MTd",
@@ -823,9 +665,6 @@ Main( stack_resizeable_cont_t<slice_t>& args )
 
   switch( plat ) {
     case target_plat_t::x64: {
-    } break;
-    case target_plat_t::x86: {
-      ADDCOMPILERFLAGS( compiler_flags_x86 );
     } break;
     default: UnreachableCrash();
   }
@@ -900,30 +739,14 @@ Main( stack_resizeable_cont_t<slice_t>& args )
     "/PDB:\"exe/proj64d.pdb\"",
     };
 
-  const void* linker_flags_debug_x86[] = {
-    "/OUT:\"exe/proj32d.exe\"",
-    "/PDB:\"exe/proj32d.pdb\"",
-    };
-
   const void* linker_flags_optimized_and_releaseversion_x64[] = {
     "/OUT:\"exe/proj64s.exe\"",
     "/PDB:\"exe/proj64s.pdb\"",
     };
 
-  const void* linker_flags_optimized_and_releaseversion_x86[] = {
-    "/OUT:\"exe/proj32s.exe\"",
-    "/PDB:\"exe/proj32s.pdb\"",
-    };
-
   const void* linker_flags_x64[] = {
     "/MACHINE:X64",
     "/HIGHENTROPYVA",
-    };
-
-  const void* linker_flags_x86[] = {
-    "/MACHINE:X86",
-    "/LARGEADDRESSAWARE",
-    "/SAFESEH",
     };
 
   const void* linker_flags_window_x64[] = {
@@ -932,14 +755,6 @@ Main( stack_resizeable_cont_t<slice_t>& args )
 
   const void* linker_flags_console_x64[] = {
     "/SUBSYSTEM:CONSOLE\",5.02\"",
-    };
-
-  const void* linker_flags_window_x86[] = {
-    "/SUBSYSTEM:WINDOWS\",5.01\"",
-    };
-
-  const void* linker_flags_console_x86[] = {
-    "/SUBSYSTEM:CONSOLE\",5.01\"",
     };
 
   #define ADDLINKERFLAGS( _flags ) \
@@ -979,26 +794,6 @@ Main( stack_resizeable_cont_t<slice_t>& args )
       switch( type ) {
         case target_type_t::window: ADDLINKERFLAGS( linker_flags_window_x64 ); break;
         case target_type_t::console: ADDLINKERFLAGS( linker_flags_console_x64 ); break;
-        default: UnreachableCrash();
-      }
-    } break;
-    case target_plat_t::x86: {
-      ADDLINKERFLAGS( linker_flags_x86 );
-
-      switch( flavor ) {
-        case target_flavor_t::debug: {
-          ADDLINKERFLAGS( linker_flags_debug_x86 );
-        } break;
-        case target_flavor_t::optimized:
-        case target_flavor_t::releaseversion: {
-          ADDLINKERFLAGS( linker_flags_optimized_and_releaseversion_x86 );
-        } break;
-        default: UnreachableCrash();
-      }
-
-      switch( type ) {
-        case target_type_t::window: ADDLINKERFLAGS( linker_flags_window_x86 ); break;
-        case target_type_t::console: ADDLINKERFLAGS( linker_flags_console_x86 ); break;
         default: UnreachableCrash();
       }
     } break;
@@ -1048,19 +843,6 @@ Main( stack_resizeable_cont_t<slice_t>& args )
         case target_flavor_t::optimized:
         case target_flavor_t::releaseversion: {
           target_filename = SliceFromCStr( "exe/proj64s.config" );
-        } break;
-        default: UnreachableCrash();
-      }
-    } break;
-    case target_plat_t::x86: {
-
-      switch( flavor ) {
-        case target_flavor_t::debug: {
-          target_filename = SliceFromCStr( "exe/proj32d.config" );
-        } break;
-        case target_flavor_t::optimized:
-        case target_flavor_t::releaseversion: {
-          target_filename = SliceFromCStr( "exe/proj32s.config" );
         } break;
         default: UnreachableCrash();
       }
@@ -1149,7 +931,6 @@ Main( stack_resizeable_cont_t<slice_t>& args )
       AddBackCStr( &zip, " " );
       switch( plat ) {
         case target_plat_t::x64: AddBackCStr( &zip, "exe/proj64s.*" ); break;
-        case target_plat_t::x86: AddBackCStr( &zip, "exe/proj32s.*" ); break;
         default: UnreachableCrash();
       }
       AddBackCStr( &zip, " " );
