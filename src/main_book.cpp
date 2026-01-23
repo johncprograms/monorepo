@@ -24,6 +24,7 @@ using ssize_t = ptrdiff_t;
 #define assert(x_) if (!(x_)) { __debugbreak(); }
 
 
+
 // Sequence
 
 template<typename T, typename LessThan> __forceinline void SortInplace(vector<T>& pts, LessThan lessThan) {
@@ -57,9 +58,8 @@ template<typename T> __forceinline bool IsSorted(const span<T> pts) {
 	return true;
 }
 
-template<typename T, typename LessThan> vector<T> ZipperMerge(const span<const T> A, const span<const T> B, LessThan lessThan = std::less{}) {
-	vector<T> R;
-	R.resize(A.size() + B.size());
+template<typename T, typename LessThan> void ZipperMerge(span<T> R, const span<const T> A, const span<const T> B, LessThan lessThan = std::less{}) {
+	assert(R.size() == A.size() + B.size());
 	auto a = begin(A);
 	const auto a1 = end(A);
 	auto b = begin(B);
@@ -87,6 +87,11 @@ template<typename T, typename LessThan> vector<T> ZipperMerge(const span<const T
 	assert(a == a1);
 	assert(b == b1);
 	assert(r == r1);
+}
+template<typename T, typename LessThan> vector<T> ZipperMerge(const span<const T> A, const span<const T> B, LessThan lessThan = std::less{}) {
+	vector<T> R;
+	R.resize(A.size() + B.size());
+	ZipperMerge(R, A, B, lessThan);
 	return R;
 }
 template<typename T, typename LessThan> void ZipperMergeInplace(vector<T>& A, const span<const T> B, LessThan lessThan = std::less{}) {
@@ -119,46 +124,53 @@ template<typename T, typename LessThan> void ZipperMergeInplace(vector<T>& A, co
 	assert(b == b1);
 }
 
-template<typename T> struct Sequence {
+template<typename T> struct SequenceBase {
 	T* memory = nullptr;
 	size_t length = 0;
 
-	Sequence() = default;
-	Sequence(Sequence&& o) noexcept = default;
-	Sequence(const Sequence& o) = default;
-	Sequence<T>& operator=(const Sequence<T>& o) = default;
-	Sequence<T>& operator=(Sequence<T>&& o) = default;
-	Sequence(T* data_, size_t length_) : memory(data_), length(length_) {}
-	Sequence(span<T> s) : memory(s.data()), length(s.size()) {}
-	Sequence(const vector<T>& s) : memory((T*)s.data()), length(s.size()) {}
+	SequenceBase() = default;
+	SequenceBase(SequenceBase&& o) noexcept = default;
+	SequenceBase(const SequenceBase& o) = default;
+	SequenceBase<T>& operator=(const SequenceBase<T>& o) = default;
+	SequenceBase<T>& operator=(SequenceBase<T>&& o) = default;
+	explicit SequenceBase(T* data_, size_t length_) : memory(data_), length(length_) {}
+	explicit SequenceBase(span<T> s) : memory(s.data()), length(s.size()) {}
 
 	__forceinline T* data() const { return memory; }
 	__forceinline size_t size() const { return length; }
 	__forceinline bool empty() const { return !length; }
 	__forceinline const T& front() const { assert(length); return memory[0]; }
 	__forceinline const T& back() const { assert(length); return memory[length-1]; }
-	__forceinline T* begin() const { return memory; }
-	__forceinline T* end() const { return memory + length; }
+	__forceinline T* begin() { return memory; }
+	__forceinline const T* end() { return memory + length; }
 	__forceinline T& operator[](size_t index) { assert(index < length); return memory[index]; }
-	__forceinline const bool operator==(const Sequence<T>& o) {
+	__forceinline const bool operator==(const SequenceBase<T>& o) {
 		if (length != o.length) return false;
 		for (size_t i = 0; i < length; ++i) {
 			if (memory[i] != o.memory[i]) return false;
 		}
 		return true;
 	}
+	__forceinline SequenceBase<T> subseq(size_t offset, size_t count) const {
+		assert(offset + count <= length);
+		return SequenceBase<T>(memory + offset, count);
+	}
+	__forceinline SequenceBase<T> subseq(size_t offset) const {
+		assert(offset <= length);
+		return SequenceBase<T>(memory + offset, length - offset);
+	}
 };
 // Unsorted sequence
-template<typename T> struct SequenceU : public Sequence<T> {};
+template<typename T> struct Sequence : public SequenceBase<T> {};
 // Sorted sequence
-template<typename T> struct SequenceS : public Sequence<T> {};
+template<typename T> struct SortedSequence : public SequenceBase<T> {};
 
 
-template<typename T> bool Contains(SequenceS<T> A, const T& b) {
-	return binary_search<T*>(begin(A), end(A), b);
+template<typename T> bool Contains(SortedSequence<T> A, const T& b) {
+	return binary_search(begin(A), end(A), b);
 }
 
-template<typename T> bool ContainsAny(SequenceS<T> A, const SequenceS<T> B) {
+template<typename T> bool ContainsAny(SortedSequence<T> A, const SortedSequence<T> B) {
 	if (B.empty()) return false;
 	auto a0 = begin(A);
 	const auto a1 = end(A);
@@ -173,13 +185,13 @@ template<typename T> bool ContainsAny(SequenceS<T> A, const SequenceS<T> B) {
 	}
 	return false;
 }
-template<typename T> bool ContainsAny(SequenceS<T> A, const SequenceU<T> B) {
+template<typename T> bool ContainsAny(SortedSequence<T> A, const Sequence<T> B) {
 	vector<T> Bs { begin(B), end(B) };
 	SortInplace(Bs);
-	return ContainsAny(A, SequenceS<T>(Bs));
+	return ContainsAny(A, SortedSequence<T>(Bs));
 }
 
-template<typename T> bool ContainsAll(SequenceS<T> A, const SequenceS<T> B) {
+template<typename T> bool ContainsAll(SortedSequence<T> A, const SortedSequence<T> B) {
 	if (B.empty()) return true;
 	auto a0 = begin(A);
 	const auto a1 = end(A);
@@ -192,14 +204,13 @@ template<typename T> bool ContainsAll(SequenceS<T> A, const SequenceS<T> B) {
 		else if (cmp > 0) return false;
 		else ++b;
 	}
-	return b == b1;
+	return true;
 }
-template<typename T> bool ContainsAll(SequenceS<T> A, const SequenceU<T> B) {
+template<typename T> bool ContainsAll(SortedSequence<T> A, const Sequence<T> B) {
 	vector<T> Bs { begin(B), end(B) };
 	SortInplace(Bs);
-	return ContainsAll(A, SequenceS<T>(Bs));
+	return ContainsAll(A, SortedSequence<T>(Bs));
 }
-
 template<typename T> void DeduplicateSortedInplace(vector<T>& A) {
 	assert(IsSorted<T>(A));
 	if (A.size() <= 1) return;
@@ -219,32 +230,32 @@ template<typename T> void DeduplicateSortedInplace(vector<T>& A) {
 	A.resize(iWrite);
 }
 template<typename T> void DeduplicateInplace(vector<T>& A) {
-	if (!IsSorted<T>(A)) SortInplace(A);
+	if (!IsSorted(A)) SortInplace(A);
 	DeduplicateSortedInplace(A);
 }
-template<typename T> vector<T> Deduplicate(SequenceS<T> A) {
+template<typename T> vector<T> Deduplicate(SortedSequence<T> A) {
 	vector<T> R { begin(A), end(A) };
 	DeduplicateSortedInplace(R);
 	return R;
 }
 
-template<typename T> void UnionInplace(vector<T>& A, const SequenceS<T> B) {
-	if (!IsSorted<T>(A)) SortInplace(A);
-	ZipperMergeInplace<T>(A, B, std::less{});
+template<typename T> void UnionInplace(vector<T>& A, const SortedSequence<T> B) {
+	if (!IsSorted(A)) SortInplace(A);
+	ZipperMergeInplace(A, B);
 	DeduplicateSortedInplace(A);
 }
-template<typename T> vector<T> Union(SequenceS<T> A, const SequenceS<T> B) {
-	vector<T> R = ZipperMerge<T>(A, B, std::less{});
+template<typename T> vector<T> Union(SortedSequence<T> A, const SortedSequence<T> B) {
+	vector<T> R = ZipperMerge(A, B);
 	DeduplicateSortedInplace(R);
 	return R;
 }
-template<typename T> vector<T> Union(SequenceS<T> A, const SequenceU<T> B) {
+template<typename T> vector<T> Union(SortedSequence<T> A, const Sequence<T> B) {
 	vector<T> Bs { begin(B), end(B) };
 	SortInplace(Bs);
-	return Union(A, SequenceS<T>(Bs));
+	return Union(A, SortedSequence<T>(Bs));
 }
 
-template<typename T> void IntersectInplace(vector<T>& A, const SequenceS<T> B) {
+template<typename T> void IntersectInplace(vector<T>& A, const SortedSequence<T> B) {
 	if (!IsSorted<T>(A)) SortInplace(A);
 	const auto a0 = begin(A);
 	auto a = a0;
@@ -270,7 +281,7 @@ template<typename T> void IntersectInplace(vector<T>& A, const SequenceS<T> B) {
 	const size_t cWritten = write - a0;
 	A.resize(cWritten);
 }
-template<typename T> vector<T> Intersect(SequenceS<T> A, const SequenceS<T> B) {
+template<typename T> vector<T> Intersect(SortedSequence<T> A, const SortedSequence<T> B) {
 	// ALTERNATE: Could do the following, but it's less memory efficient for cases where Intersect removes lots of elements.
 	// vector<T> R { begin(A), end(A) };
 	// IntersectInplace(R, B);
@@ -298,13 +309,13 @@ template<typename T> vector<T> Intersect(SequenceS<T> A, const SequenceS<T> B) {
 	}
 	return R;
 }
-template<typename T> vector<T> Intersect(SequenceS<T> A, const SequenceU<T> B) {
+template<typename T> vector<T> Intersect(SortedSequence<T> A, const SequenceU<T> B) {
 	vector<T> Bs { begin(B), end(B) };
 	SortInplace(Bs);
-	return Intersect(A, SequenceS<T>(Bs));
+	return Intersect(A, SortedSequence<T>(Bs));
 }
 
-template<typename T> void SubtractInplace(vector<T>& A, const SequenceS<T> B) {
+template<typename T> void SubtractInplace(vector<T>& A, const SortedSequence<T> B) {
 	if (!IsSorted<T>(A)) SortInplace(A);
 	const auto a0 = begin(A);
 	auto a = a0;
@@ -339,33 +350,33 @@ template<typename T> void SubtractInplace(vector<T>& A, const SequenceS<T> B) {
 	const size_t cWritten = write - a0;
 	A.resize(cWritten);
 }
-template<typename T> vector<T> Subtract(SequenceS<T> A, const SequenceS<T> B) {
+template<typename T> vector<T> Subtract(SortedSequence<T> A, const SortedSequence<T> B) {
 	vector<T> R { begin(A), end(A) };
 	SubtractInplace(R, B);
 	return R;
 }
-template<typename T> vector<T> Subtract(SequenceS<T> A, const SequenceU<T> B) {
+template<typename T> vector<T> Subtract(SortedSequence<T> A, const SequenceU<T> B) {
 	vector<T> Bs { begin(B), end(B) };
 	SortInplace(Bs);
-	return Subtract(A, SequenceS<T>(Bs));
+	return Subtract(A, SortedSequence<T>(Bs));
 }
 
 // Symmetric difference
 //   SymmetricDifference(A,B) = Subtract(Union(A,B), Intersection(A,B))
-template<typename T> vector<T> SymmetricDifference(SequenceS<T> A, const SequenceS<T> B) {
+template<typename T> vector<T> SymmetricDifference(SortedSequence<T> A, const SortedSequence<T> B) {
 	vector<T> U = Union(A, B);
 	vector<T> I = Intersect(A, B);
-	SubtractInplace(U, SequenceS<T>(I));
+	SubtractInplace(U, SortedSequence<T>(I));
 	return U;
 }
-template<typename T> void SymmetricDifferenceInplace(vector<T>& A, const SequenceS<T> B) {
+template<typename T> void SymmetricDifferenceInplace(vector<T>& A, const SortedSequence<T> B) {
 	// IDEA: Union(A, B) - Intersect(A, B)
-	vector<T> I = Intersect(SequenceS<T>(A), B);
+	vector<T> I = Intersect(SortedSequence<T>(A), B);
 	UnionInplace(A, B);
-	SubtractInplace(A, SequenceS<T>(I));
+	SubtractInplace(A, SortedSequence<T>(I));
 }
 
-template<typename T> bool Equal(const SequenceS<T>& A, const SequenceS<T>& B) {
+template<typename T> bool Equal(const SortedSequence<T>& A, const SortedSequence<T>& B) {
 	if (A.size() != B.size()) return false;
 	const auto a = begin(A);
 	const auto a1 = end(A);
@@ -378,47 +389,47 @@ template<typename T> bool Equal(const SequenceS<T>& A, const SequenceS<T>& B) {
 // ============================================================================
 // Unsorted sequence
 
-template<typename T> bool Contains(SequenceU<T> A, const T& b) {
+template<typename T> bool Contains(Sequence<T> A, const T& b) {
 	for (const auto& a : A) {
 		if (a == b) return true;
 	}
 	return false;
 }
 
-template<typename T> bool ContainsAny(SequenceU<T> A, const SequenceS<T> B) {
+template<typename T> bool ContainsAny(Sequence<T> A, const SortedSequence<T> B) {
 	vector<T> As { begin(A), end(A) };
 	SortInplace(As);
-	return ContainsAny(SequenceS<T>(As), B);
+	return ContainsAny(SortedSequence<T>(As), B);
 }
-template<typename T> bool ContainsAny(SequenceU<T> A, const SequenceU<T> B) {
-	vector<T> As { begin(A), end(A) };
-	SortInplace(As);
-	vector<T> Bs { begin(B), end(B) };
-	SortInplace(Bs);
-	return ContainsAny(SequenceS<T>(As), SequenceS<T>(Bs));
-}
-
-template<typename T> bool ContainsAll(SequenceU<T> A, const SequenceS<T> B) {
-	vector<T> As { begin(A), end(A) };
-	SortInplace(As);
-	return ContainsAll(SequenceS<T>(As), B);
-}
-template<typename T> bool ContainsAll(SequenceU<T> A, const SequenceU<T> B) {
+template<typename T> bool ContainsAny(Sequence<T> A, const Sequence<T> B) {
 	vector<T> As { begin(A), end(A) };
 	SortInplace(As);
 	vector<T> Bs { begin(B), end(B) };
 	SortInplace(Bs);
-	return ContainsAll(SequenceS<T>(As), SequenceS<T>(Bs));
+	return ContainsAny(SortedSequence<T>(As), SortedSequence<T>(Bs));
 }
 
-template<typename T> vector<T> DeduplicateSort(SequenceU<T> A) {
+template<typename T> bool ContainsAll(Sequence<T> A, const SortedSequence<T> B) {
+	vector<T> As { begin(A), end(A) };
+	SortInplace(As);
+	return ContainsAll(SortedSequence<T>(As), B);
+}
+template<typename T> bool ContainsAll(Sequence<T> A, const Sequence<T> B) {
+	vector<T> As { begin(A), end(A) };
+	SortInplace(As);
+	vector<T> Bs { begin(B), end(B) };
+	SortInplace(Bs);
+	return ContainsAll(SortedSequence<T>(As), SortedSequence<T>(Bs));
+}
+
+template<typename T> vector<T> DeduplicateSort(Sequence<T> A) {
 	vector<T> R { begin(A), end(A) };
 	SortInplace(R);
 	DeduplicateSortedInplace(R);
 	return R;
 }
-template<typename T> vector<T> Deduplicate(SequenceU<T> A) {
-	// ALTERNATE: Could do the same thing with DeduplicateNonOrderPreserving to make a sorted set, and then Contains(SequenceS<T>, T) loop.
+template<typename T> vector<T> Deduplicate(Sequence<T> A) {
+	// ALTERNATE: Could do the same thing with DeduplicateNonOrderPreserving to make a sorted set, and then Contains(SortedSequence<T>, T) loop.
 	unordered_set<T> D { begin(A), end(A) };
 	vector<T> R;
 	for (const auto& a : A) {
@@ -427,51 +438,733 @@ template<typename T> vector<T> Deduplicate(SequenceU<T> A) {
 	return R;
 }
 
-template<typename T> vector<T> Union(SequenceU<T> A, const SequenceS<T> B) {
+template<typename T> optional<size_t> IFindFirst(Sequence<T> A, const T& b) {
+	const size_t cA = A.size();
+	for (size_t i = 0; i < cA; ++i) {
+		if (A[i] == b) return i;
+	}
+	return nullopt;
+}
+template<typename T> vector<size_t> IFindAll(Sequence<T> A, const T& b) {
+	vector<size_t> R;
+	const size_t cA = A.size();
+	for (size_t i = 0; i < cA; ++i) {
+		if (A[i] == b) R.push_back(i);
+	}
+	return R;
+}
+template<typename T> size_t Count(Sequence<T> A, const T& b) {
+	size_t R = 0;
+	const size_t cA = A.size();
+	for (size_t i = 0; i < cA; ++i) {
+		if (A[i] == b) ++R;
+	}
+	return R;
+}
+template<typename T> optional<size_t> IFindLast(Sequence<T> A, const T& b) {
+	const size_t cA = A.size();
+	for (size_t i = cA; i-- != 0; ) {
+		if (A[i] == b) return i;
+	}
+	return nullopt;
+}
+
+template<typename T> optional<size_t> IFindFirst(SortedSequence<T> A, const T& b) {
+	auto it = lower_bound(begin(A), end(A), b);
+	if (it != end(A) and *it == b) {
+		return it - begin(A);
+	}
+	return nullopt;
+}
+template<typename T> vector<size_t> IFindAll(SortedSequence<T> A, const T& b) {
+	vector<size_t> R;
+	auto it = lower_bound(begin(A), end(A), b);
+	for (; it != end(A) and *it == b; ++it) {
+		const size_t iStart = it - begin(A);
+		R.push_back(iStart);
+	}
+	return R;
+}
+template<typename T> size_t Count(SortedSequence<T> A, const T& b) {
+	size_t R = 0;
+	auto it = lower_bound(begin(A), end(A), b);
+	for (; it != end(A) and *it == b; ++it) {
+		++R;
+	}
+	return R;
+}
+template<typename T> optional<size_t> IFindLast(SortedSequence<T> A, const T& b) {
+	auto it = upper_bound(begin(A), end(A), b);
+	if (it != begin(A)) {
+		--it; // Move to the last occurrence.
+		if (*it == b) {
+			return it - begin(A);
+		}
+	}
+	return nullopt;
+}
+
+template<typename T> optional<size_t> IReplaceFirst(Sequence<T> A, const T& find, const T& replace) {
+	const size_t cA = A.size();
+	for (size_t i = 0; i < cA; ++i) {
+		if (A[i] == find) {
+			A[i] = replace;
+			return i;
+		}
+	}
+	return nullopt;
+}
+template<typename T> bool ReplaceFirst(Sequence<T> A, const T& find, const T& replace) {
+	const size_t cA = A.size();
+	for (size_t i = 0; i < cA; ++i) {
+		if (A[i] == find) {
+			A[i] = replace;
+			return true;
+		}
+	}
+	return false;
+}
+template<typename T> vector<size_t> IReplaceAll(Sequence<T> A, const T& find, const T& replace) {
+	vector<size_t> R;
+	const size_t cA = A.size();
+	for (size_t i = 0; i < cA; ++i) {
+		if (A[i] == find) {
+			A[i] = replace;
+			R.push_back(i);
+		}
+	}
+	return R;
+}
+template<typename T> bool ReplaceAll(Sequence<T> A, const T& find, const T& replace) {
+	bool R = false;
+	const size_t cA = A.size();
+	for (size_t i = 0; i < cA; ++i) {
+		if (A[i] == find) {
+			A[i] = replace;
+			R = true;
+		}
+	}
+	return R;
+}
+template<typename T> optional<size_t> IReplaceLast(Sequence<T> A, const T& find, const T& replace) {
+	const size_t cA = A.size();
+	for (size_t i = cA; i-- != 0; ) {
+		if (A[i] == find) {
+			A[i] = replace;
+			return i;
+		}
+	}
+	return nullopt;
+}
+template<typename T> bool ReplaceLast(Sequence<T> A, const T& find, const T& replace) {
+	const size_t cA = A.size();
+	for (size_t i = cA; i-- != 0; ) {
+		if (A[i] == find) {
+			A[i] = replace;
+			return true;
+		}
+	}
+	return false;
+}
+
+// Returns the first index where the B sequence appears in A, or nullopt if not found.
+template<typename T> optional<size_t> IFindFirst(Sequence<T> A, const Sequence<T>& B) {
+	const size_t cA = A.size();
+	const size_t cB = B.size();
+	if (cB > cA) return nullopt; // B is longer than A, so it cannot be found.
+	if (!cB) return nullopt; // Empty sequence is never found; arbitrary API choice.
+	// IDEA: We can skip cAdvance forward after every partial match. E.g. searching for "abcabc", cAdvance=3.
+	size_t cAdvance = 1;
+	while (cAdvance < cB and B[0] != B[cAdvance]) {
+		++cAdvance; // Advance until we find a duplicate, or reach the end of B.
+	}
+	const size_t iEnd = cA - cB;
+	for (size_t iStart = 0; iStart <= iEnd; ) {
+		if (A[iStart] != B[0]) {
+			++iStart;
+			continue;
+		}
+		bool found = true;
+		for (size_t iB = 1; iB < cB; ++iB) {
+			if (A[iStart + iB] != B[iB]) {
+				found = false;
+				break;
+			}
+		}
+		if (found) return iStart;
+		iStart += cAdvance;
+	}
+	return nullopt;
+}
+// Returns all indices where the B sequence appears in A, or empty if not found.
+template<typename T> vector<size_t> IFindAll(Sequence<T> A, const Sequence<T>& B) {
+	vector<size_t> R;
+	const size_t cA = A.size();
+	const size_t cB = B.size();
+	if (cB > cA) return R; // B is longer than A, so it cannot be found.
+	if (!cB) return R; // Empty sequence is never found; arbitrary API choice.
+	// IDEA: We can skip cAdvance forward after every partial match. E.g. searching for "abcabc", cAdvance=3.
+	size_t cAdvance = 1;
+	while (cAdvance < cB and B[0] != B[cAdvance]) {
+		++cAdvance; // Advance until we find a duplicate, or reach the end of B.
+	}
+	const size_t iEnd = cA - cB;
+	for (size_t iStart = 0; iStart <= iEnd; ) {
+		if (A[iStart] != B[0]) {
+			++iStart;
+			continue;
+		}
+		bool found = true;
+		for (size_t iB = 1; iB < cB; ++iB) {
+			if (A[iStart + iB] != B[iB]) {
+				found = false;
+				break;
+			}
+		}
+		if (found) R.push_back(iStart);
+		iStart += cAdvance;
+	}
+	return R;
+}
+// Returns the number of times where the B sequence appears in A.
+template<typename T> size_t Count(Sequence<T> A, const Sequence<T>& B) {
+	size_t R = 0;
+	const size_t cA = A.size();
+	const size_t cB = B.size();
+	if (cB > cA) return R; // B is longer than A, so it cannot be found.
+	if (!cB) return R; // Empty sequence is never found; arbitrary API choice.
+	// IDEA: We can skip cAdvance forward after every partial match. E.g. searching for "abcabc", cAdvance=3.
+	size_t cAdvance = 1;
+	while (cAdvance < cB and B[0] != B[cAdvance]) {
+		++cAdvance; // Advance until we find a duplicate, or reach the end of B.
+	}
+	const size_t iEnd = cA - cB;
+	for (size_t iStart = 0; iStart <= iEnd; ) {
+		if (A[iStart] != B[0]) {
+			++iStart;
+			continue;
+		}
+		bool found = true;
+		for (size_t iB = 1; iB < cB; ++iB) {
+			if (A[iStart + iB] != B[iB]) {
+				found = false;
+				break;
+			}
+		}
+		if (found) ++R;
+		iStart += cAdvance;
+	}
+	return R;
+}
+// Returns the last index where the B sequence appears in A, or nullopt if not found.
+template<typename T> optional<size_t> IFindLast(Sequence<T> A, const Sequence<T>& B) {
+	const size_t cA = A.size();
+	const size_t cB = B.size();
+	if (cB > cA) return nullopt; // B is longer than A, so it cannot be found.
+	if (!cB) return nullopt; // Empty sequence is never found; arbitrary API choice.
+	// IDEA: We can skip cAdvance backward after every partial match. E.g. searching for "abcabc", cAdvance=3.
+	size_t cAdvance = 1;
+	while (cAdvance < cB and B[cB - 1] != B[cB - 1 - cAdvance]) {
+		++cAdvance; // Advance until we find a duplicate, or reach the end of B.
+	}
+	const size_t iFirst = cA - cB;
+	for (size_t iA = iFirst; iA-- != 0; ) {
+		if (A[iA] != B[cB - 1]) {
+			continue;
+		}
+		bool found = true;
+		for (size_t iB = 1; iB < cB; ++iB) {
+			if (A[iA - iB] != B[cB - 1 - iB]) {
+				found = false;
+				break;
+			}
+		}
+		if (found) return iA;
+		iA = iA - (cAdvance - 1); // NOTE: Loop will decrement by additional 1.
+	}
+	return nullopt;
+}
+
+// TODO: IFind*(SortedSequence<T>, Sequence<T> B) - use binary search for the first element, then linear search for the rest.
+// TODO: IFind*(SortedSequence<T>, SortedSequence<T> B) - use binary search for the first element, then linear search for the rest.
+
+
+template<typename T> optional<T> Min(Sequence<T> A) {
+	const size_t cA = A.size();
+	if (!cA) return nullopt;
+	T m = A[0];
+	for (const size_t i = 1; i < cA; ++i) {
+		if (A[i] < m) m = A[i];
+	}
+	return m;
+}
+template<typename T> optional<T> Max(Sequence<T> A) {
+	const size_t cA = A.size();
+	if (!cA) return nullopt;
+	T m = A[0];
+	for (const size_t i = 1; i < cA; ++i) {
+		if (A[i] > m) m = A[i];
+	}
+	return m;
+}
+template<typename T> optional<size_t> IMinFirst(Sequence<T> A) {
+	const size_t cA = A.size();
+	if (!cA) return nullopt;
+	size_t iMin = 0;
+	T m = A[0];
+	for (size_t i = 1; i < cA; ++i) {
+		if (A[i] < m) {
+			m = A[i];
+			iMin = i;
+		}
+	}
+	return iMin;
+}
+template<typename T> optional<size_t> IMaxFirst(Sequence<T> A) {
+	const size_t cA = A.size();
+	if (!cA) return nullopt;
+	size_t iMax = 0;
+	T m = A[0];
+	for (size_t i = 1; i < cA; ++i) {
+		if (A[i] > m) {
+			m = A[i];
+			iMax = i;
+		}
+	}
+	return iMax;
+}
+template<typename T> vector<size_t> IMinAll(Sequence<T> A) {
+	const auto m = Min(A);
+	if (!m.has_value()) return {}; // Empty sequence.
+	return IFindAll(A, *m);
+}
+template<typename T> vector<size_t> IMaxAll(Sequence<T> A) {
+	const auto m = Max(A);
+	if (!m.has_value()) return {}; // Empty sequence.
+	return IFindAll(A, *m);
+}
+
+template<typename T> optional<T> Min(SortedSequence<T> A) {
+	return A.empty() ? nullopt : A[0];
+}
+template<typename T> optional<T> Max(SortedSequence<T> A) {
+	return A.empty() ? nullopt : A[A.size() - 1];
+}
+template<typename T> optional<size_t> IMinFirst(SortedSequence<T> A) {
+	return A.empty() ? nullopt : 0;
+}
+template<typename T> optional<size_t> IMaxLast(SortedSequence<T> A) {
+	return A.empty() ? nullopt : A.size() - 1;
+}
+// Returns the indices of all minimum elements in A (duplicates implies multiple minimums), sorted ascending.
+template<typename T> vector<size_t> IMinAll(SortedSequence<T> A) {
+	if (A.empty()) return {}; // Empty sequence.
+	const size_t cA = A.size();
+	const T& a0 = A[0];
+	size_t cEqual = 1;
+	while (cEqual < cA and a0 == A[cEqual]) {
+		++cEqual;
+	}
+	vector<size_t> R(cEqual);
+	iota(begin(R), end(R), 0);
+	return R;
+}
+// Returns the indices of all maximum elements in A (duplicates implies multiple maximums), sorted descending.
+template<typename T> vector<size_t> IMaxAll(SortedSequence<T> A) {
+	if (A.empty()) return {}; // Empty sequence.
+	const size_t cA = A.size();
+	const T& a1 = A[cA - 1];
+	size_t cEqual = 1;
+	while (cEqual < cA and a1 == A[cA - 1 - cEqual]) {
+		++cEqual;
+	}
+	vector<size_t> R(cEqual);
+	iota(rbegin(R), rend(R), cA - cEqual);
+	return R;
+}
+
+// Returns the k smallest elements in A, sorted ascending.
+template<typename T> vector<T> MinK(Sequence<T> A, size_t k) {
+	vector<T> R(k);
+	partial_sort_copy(begin(A), end(A), begin(R), end(R));
+	return R;
+}
+// Returns the k largest elements in A, sorted descending.
+template<typename T> vector<T> MaxK(Sequence<T> A, size_t k) {
+	vector<T> R(k);
+	partial_sort_copy(begin(A), end(A), begin(R), end(R), greater<T>{});
+	return R;
+}
+// Returns the indices of the k smallest elements in A, sorted ascending.
+template<typename T> vector<size_t> IMinK(Sequence<T> A, size_t k) {
+	// IDEA: Use a max-heap to keep the k smallest elements, so we can replace the largest of the smallest.
+	const size_t cA = A.size();
+	assert(k <= cA);
+	vector<size_t> R;
+	if (!k) return R; // Empty result.
+	if (!cA) return R;
+	priority_queue<pair<T, size_t>, vector<pair<T, size_t>>, greater<pair<T, size_t>>> pq;
+	for (size_t i = 0; i < k; ++i) {
+		pq.push({A[i], i});
+	}
+	for (size_t i = k; i < cA; ++i) {
+		if (A[i] < pq.top().first) {
+			pq.pop();
+			pq.push({A[i], i});
+		}
+	}
+	R.resize(k);
+	for (size_t i = 0; i < k; ++i) {
+		R[k - 1 - i] = pq.top().second;
+		pq.pop();
+	}
+	return R;
+}
+// Returns the indices of the k largest elements in A, sorted descending.
+template<typename T> vector<size_t> IMaxK(Sequence<T> A, size_t k) {
+	// IDEA: Use a min-heap to keep the k largest elements, so we can replace the smallest of the largest.
+	const size_t cA = A.size();
+	assert(k <= cA);
+	vector<size_t> R;
+	if (!k) return R; // Empty result.
+	if (!cA) return R;
+	priority_queue<pair<T, size_t>> pq;
+	for (size_t i = 0; i < k; ++i) {
+		pq.push({A[i], i});
+	}
+	for (size_t i = k; i < cA; ++i) {
+		if (A[i] > pq.top().first) {
+			pq.pop();
+			pq.push({A[i], i});
+		}
+	}
+	R.resize(k);
+	for (size_t i = 0; i < k; ++i) {
+		R[k - 1 - i] = pq.top().second;
+		pq.pop();
+	}
+	return R;
+}
+
+// Returns the order statistic for the given index k. E.g. k=0 means min, k=|A|-1 means max, k=|A|/2 means median.
+// Time complexity O(|A|)
+template<typename T> optional<T> KthOrderStatistic(Sequence<T> A, size_t k) {
+	// IDEA: Quickselect in a copy of the sequence.
+	const size_t cA = A.size();
+	if (!cA) return nullopt;
+	assert(k < cA);
+	vector<T> As(begin(A), end(A));
+	SortInplace(As);
+	nth_element(begin(As), begin(As) + k, end(As));
+	return As[k];
+}
+
+// TODO: RMQ
+
+
+template<typename T> bool Overlaps(const Sequence<T>& A, const Sequence<T>& B) {
+	const size_t a0 = static_cast<size_t>(begin(A));
+	const size_t a1 = static_cast<size_t>(end(A));
+	const size_t b0 = static_cast<size_t>(begin(B));
+	const size_t b1 = static_cast<size_t>(end(B));
+	// Assume a0 <= a1, b0 <= b1.
+	// There's no overlap when a1 <= b0 (A entirely left of B), or a0 >= b1 (A entirely right of B).
+	// Negation gives us the final equation.
+	return !(a1 <= b0 or a0 >= b1);
+}
+template<typename T> void OverlapsAndStartsGreater(const Sequence<T>& A, const Sequence<T>& B) {
+	const size_t a0 = static_cast<size_t>(begin(A));
+	const size_t a1 = static_cast<size_t>(end(A));
+	const size_t b0 = static_cast<size_t>(begin(B));
+	const size_t b1 = static_cast<size_t>(end(B));
+	return !(a1 <= b0 or a0 >= b1) and a0 > b0;
+}
+// Copies entire sequence src into dst. MUST have same length. Can overlap.
+template<typename T> void Copy(Sequence<T> dst, const Sequence<T>& src) {
+	assert(dst.size() == src.size());
+	const size_t cA = src.size();
+	if (dst.data() == src.data()) return; // No need to copy if the same.
+	if (OverlapsAndStartsGreater(dst, src)) {
+		// When dst > src, we must copy backwards, to preserve all values.
+		for (size_t i = cA; i-- != 0; ) {
+			dst[i] = src[i];
+		}
+	}
+	else {
+		for (size_t i = 0; i < cA; ++i) {
+			dst[i] = src[i];
+		}
+	}
+}
+// Moves entire sequence src into dst. MUST have same length. Can overlap.
+template<typename T> void Move(Sequence<T> dst, const Sequence<T>& src) {
+	assert(dst.size() == src.size());
+	const size_t cA = src.size();
+	if (dst.data() == src.data()) return; // No need to move if the same.
+	if (OverlapsAndStartsGreater(dst, src)) {
+		// When dst > src, we must move backwards, to preserve all values.
+		for (size_t i = cA; i-- != 0; ) {
+			dst[i] = std::move(src[i]);
+		}
+	}
+	else {
+		for (size_t i = 0; i < cA; ++i) {
+			dst[i] = std::move(src[i]);
+		}
+	}
+}
+// Swaps contents of two sequences. MUST have same length. MUST NOT overlap.
+template<typename T> void Swap(Sequence<T> A, Sequence<T> B) {
+	assert(A.size() == B.size());
+	assert(!Overlaps(A, B)); // NOTE: Cannot swap overlapping sequences.
+	// [0 1 2 3 4 5 6] src
+	//      aaaaa      A
+	//        bbbbb    B1
+	// [0 1 3 ? ? 4 6]
+	const size_t cA = A.size();
+	for (size_t i = 0; i < cA; ++i) {
+		swap(A[i], B[i]);
+	}
+}
+
+template<typename T> void Set(Sequence<T> A, const T& b) {
+	const size_t cA = A.size();
+	for (size_t i = 0; i < cA; ++i) {
+		A[i] = b;
+	}
+}
+
+template<typename T> void ReverseInplace(Sequence<T> A) {
+	// IDEA: Swap the first and last elements, then the second and second-last, etc.
+	const size_t cA = A.size();
+	for (size_t i = 0; i < cA / 2; ++i) {
+		swap(A[i], A[cA - 1 - i]);
+	}
+}
+template<typename T> void Reverse(Sequence<T> dst, const Sequence<T>& src) {
+	assert(dst.size() == src.size());
+	// IDEA: We can handle overlaps:
+	// - dst > src: backwards iterate
+	// - dst < src: forwards iterate
+	// - dst == src: reverse in place
+	// [0 1 2 3 4 5 6] src
+	//      xxxxx      X
+	//        yyyyy    Y1
+	// [0 1 2 4 3 2 6] Reverse(Y1, X)
+	//    yyyyy        Y2
+	// [0 4 3 2 4 5 6] Reverse(Y2, X)
+	const size_t cA = src.size();
+	if (dst.data() == src.data()) {
+		ReverseInplace(dst);
+	}
+	else if (OverlapsAndStartsGreater(dst, src)) {
+		// When dst > src, we must copy backwards, to preserve all values.
+		for (size_t i = cA; i-- != 0; ) {
+			dst[i] = src[cA - 1 - i];
+		}
+	}
+	else {
+		for (size_t i = 0; i < cA; ++i) {
+			dst[i] = src[cA - 1 - i];
+		}
+	}
+}
+
+template<typename T> void RotateLeftInplace(Sequence<T> A, size_t cRotate) {
+#if 0
+	// IDEA: Follow the unique cycle path generated by the rotation permutation.
+	// [0 1 2 3 4]
+	// [2 3 4 0 1] cRotate=2
+	// pi(i) = (cA + i - cRotate) % cA
+	// pi(0) = 3
+	// pi(3) = 1
+	// pi(1) = 4
+	// pi(4) = 2
+	// pi(2) = 0
+	const size_t cA = A.size();
+	if (!cA) return;
+	cRotate %= cA;
+	if (!cRotate) return;
+	size_t i = 0;
+	T tmp = std::move(A[0]);
+	for (size_t iter = 0; iter < cA; ++iter) {
+		const size_t iNext = (cA + i - cRotate) % cA;
+		swap(tmp, A[iNext]);
+		i = iNext;
+	}
+	assert(iNext == 0);
+	swap(tmp, A[0]); // Swap the last element back to the first position.
+#else
+	// IDEA: Iterated reverse.
+	// [0 1 2 3 4] given cRotate=2
+	// [1 0 4 3 2] after ReverseInplace([0, cRotate)) and ReverseInplace([cRotate, cA))
+	// [2 3 4 0 1] after ReverseInplace([0, cA))
+	const size_t cA = A.size();
+	if (!cA) return;
+	cRotate %= cA;
+	if (!cRotate) return;
+	ReverseInplace(A.subseq(0, cRotate));
+	ReverseInplace(A.subseq(cRotate));
+	ReverseInplace(A);
+#endif
+}
+template<typename T> void RotateRightInplace(Sequence<T> A, size_t cRotate) {
+	// IDEA: Follow the unique cycle path generated by the rotation permutation.
+	// [0 1 2 3 4]
+	// [3 4 0 1 2] cRotate=2
+	// pi(i) = (i + cRotate) % cA
+	// pi(0) = 2
+	// pi(2) = 4
+	// pi(4) = 1
+	// pi(1) = 3
+	// pi(3) = 0
+	const size_t cA = A.size();
+	if (!cA) return;
+	cRotate %= cA;
+	if (!cRotate) return;
+	size_t i = 0;
+	T tmp = std::move(A[0]);
+	for (size_t iter = 0; iter < cA; ++iter) {
+		const size_t iNext = (i + cRotate) % cA;
+		swap(tmp, A[iNext]);
+		i = iNext;
+	}
+	assert(iNext == 0);
+	swap(tmp, A[0]); // Swap the last element back to the first position.
+}
+template<typename T> void RotateLeft(Sequence<T> dst, const Sequence<T>& src, size_t cRotate) {
+	assert(dst.size() == src.size());
+	const size_t cA = src.size();
+	if (!cA) return;
+	cRotate %= cA;
+	if (!cRotate) {
+		Copy(dst, src);
+		return;
+	}
+	Copy(dst.subseq(0, cA - cRotate), src.subseq(cRotate));
+	Copy(dst.subseq(cA - cRotate), src.subseq(0, cRotate));
+}
+template<typename T> void RotateRight(Sequence<T> dst, const Sequence<T>& src, size_t cRotate) {
+	assert(dst.size() == src.size());
+	const size_t cA = src.size();
+	if (!cA) return;
+	cRotate %= cA;
+	if (!cRotate) {
+		Copy(dst, src);
+		return;
+	}
+	Copy(dst.subseq(0, cRotate), src.subseq(cA - cRotate));
+	Copy(dst.subseq(cRotate), src.subseq(0, cA - cRotate));
+}
+
+template<typename T, typename FnKeepT> Sequence<T> FilterInplaceNonOrderPreserving(Sequence<T> A, FnKeepT&& fnKeep) {
+	// IDEA: two iterators, one forward looking for !keep, one reverse looking for keep. Move element when both hit.
+	if (A.empty()) return A;
+	auto a = begin(A);
+	auto a1 = end(A);
+	#if 1
+	for (; a != a1; ++a) {
+		const bool keep = fnKeep(*a);
+		if (!keep) {
+			do {
+				--a1;
+				const bool keepEnd = fnKeep(*a1);
+				if (keepEnd) break;
+			} while (a != a1);
+			if (a == a1) break;
+			*a = std::move(*a1);
+		}
+	}
+	#else
+	for (;;) {
+		while (a != a1 and fnKeep(*a)) {
+			++a;
+		}
+		if (a == a1) break;
+		--a1;
+		while (a != a1 and !fnKeep(*a1)) {
+			--a1;
+		}
+		if (a == a1) break;
+		*a = std::move(*a1);
+		++a;
+	}
+	#endif
+	const size_t cNew = a1 - begin(A);
+	return { A.data(), cNew };
+}
+template<typename T, typename FnKeepT> Sequence<T> FilterInplace(Sequence<T> A, FnKeepT&& fnKeep) {
+	// IDEA: two iterators, read and write. Advance read every time, advance write and move when keeps says to.
+	if (A.empty()) return A;
+	auto a = begin(A);
+	auto b = begin(A);
+	auto a1 = end(A);
+	for (; a != a1; ++a) {
+		const bool keep = fnKeep(*a);
+		if (keep) {
+			if (a != b) {
+				*b = std::move(*a);
+			}
+			++b;
+		}
+	}
+	const size_t cNew = b - begin(A);
+	return { A.data(), cNew };
+}
+template<typename T, typename FnKeepT> vector<T> Filter(Sequence<T> A, FnKeepT&& fnKeep) {
+	vector<T> R;
+	for (const auto& a : A) {
+		const bool keep = fnKeep(a);
+		if (keep) R.push_back(a);
+	}
+	return R;
+}
+
+template<typename T> vector<T> Union(Sequence<T> A, const SortedSequence<T> B) {
 	return Union(B, A);
 }
-template<typename T> vector<T> Union(SequenceU<T> A, const SequenceU<T> B) {
+template<typename T> vector<T> Union(Sequence<T> A, const Sequence<T> B) {
 	vector<T> As { begin(A), end(A) };
 	SortInplace(As);
 	return Union(As, B);
 }
 
-template<typename T> vector<T> Intersect(SequenceU<T> A, const SequenceS<T> B) {
+template<typename T> vector<T> Intersect(Sequence<T> A, const SortedSequence<T> B) {
 	return Intersect(B, A);
 }
-template<typename T> vector<T> Intersect(SequenceU<T> A, const SequenceU<T> B) {
+template<typename T> vector<T> Intersect(Sequence<T> A, const Sequence<T> B) {
 	vector<T> As{ begin(A), end(A) };
 	SortInplace(As);
-	return Intersect(SequenceS<T>(As), B);
+	return Intersect(SortedSequence<T>(As), B);
 }
 
-template<typename T> vector<T> Subtract(SequenceU<T> A, const SequenceS<T> B) {
+template<typename T> vector<T> Subtract(Sequence<T> A, const SortedSequence<T> B) {
 	vector<T> As{ begin(A), end(A) };
 	SortInplace(As);
-	return Subtract(SequenceS<T>(As), B);
+	return Subtract(SortedSequence<T>(As), B);
 }
-template<typename T> vector<T> Subtract(SequenceU<T> A, const SequenceU<T> B) {
+template<typename T> vector<T> Subtract(Sequence<T> A, const Sequence<T> B) {
 	vector<T> As{ begin(A), end(A) };
 	SortInplace(As);
 	vector<T> Bs{ begin(B), end(B) };
 	SortInplace(Bs);
-	return Subtract(SequenceS<T>(As), SequenceS<T>(Bs));
+	return Subtract(SortedSequence<T>(As), SortedSequence<T>(Bs));
 }
 
-template<typename T> vector<T> SymmetricDifference(SequenceU<T> A, const SequenceS<T> B) {
+template<typename T> vector<T> SymmetricDifference(Sequence<T> A, const SortedSequence<T> B) {
 	vector<T> As{ begin(A), end(A) };
 	SortInplace(As);
-	return SymmetricDifference(SequenceS<T>(As), B);
+	return SymmetricDifference(SortedSequence<T>(As), B);
 }
-template<typename T> vector<T> SymmetricDifference(SequenceU<T> A, const SequenceU<T> B) {
+template<typename T> vector<T> SymmetricDifference(Sequence<T> A, const Sequence<T> B) {
 	vector<T> As{ begin(A), end(A) };
 	SortInplace(As);
 	vector<T> Bs{ begin(B), end(B) };
 	SortInplace(Bs);
-	return SymmetricDifference(SequenceS<T>(As), SequenceS<T>(Bs));
+	return SymmetricDifference(SortedSequence<T>(As), SortedSequence<T>(Bs));
 }
 
-template<typename T> bool Equal(const SequenceU<T>& A, const SequenceU<T>& B) {
+template<typename T> bool Equal(const Sequence<T>& A, const Sequence<T>& B) {
 	if (A.size() != B.size()) return false;
 	const auto a = begin(A);
 	const auto a1 = end(A);
@@ -579,7 +1272,7 @@ void TestSequences() {
 			vector<int> pts = randomInts();
 			for (const auto& p : pts) {
 				const auto Rc = Contains(R, p);
-				const auto Sc = Contains<int>(SequenceS<int>(S), p);
+				const auto Sc = Contains<int>(SortedSequence<int>(S), p);
 				assert(Rc == Sc);
 			}
 		},
@@ -587,74 +1280,74 @@ void TestSequences() {
 			assert(Equal(S, R));
 			vector<int> pts = randomInts();
 			const auto Rc = ContainsAny(R, pts);
-			const auto Sc = ContainsAny<int>(SequenceS<int>(S), SequenceU<int>(pts));
+			const auto Sc = ContainsAny<int>(SortedSequence<int>(S), Sequence<int>(pts));
 			assert(Rc == Sc);
 		},
 		[&]() {
 			assert(Equal(S, R));
 			vector<int> pts = randomInts();
 			const auto Rc = ContainsAll(R, pts);
-			const auto Sc = ContainsAll<int>(SequenceS<int>(S), SequenceU<int>(pts));
+			const auto Sc = ContainsAll<int>(SortedSequence<int>(S), Sequence<int>(pts));
 			assert(Rc == Sc);
 		},
 		[&]() {
 			// Intersect
 			assert(Equal(S, R));
-			vector<int> SI = Intersect(SequenceS<int>(S), SequenceS<int>(S));
-			assert(Equal(SequenceS<int>(SI), SequenceS<int>(S)));
+			vector<int> SI = Intersect(SortedSequence<int>(S), SortedSequence<int>(S));
+			assert(Equal(SortedSequence<int>(SI), SortedSequence<int>(S)));
 			NaiveSet RI = Intersect(R, R);
 			assert(Equal(RI, R));
 			vector<int> pts = randomInts();
-			vector<int> Sr = DeduplicateSort(SequenceU<int>(pts));
+			vector<int> Sr = DeduplicateSort(Sequence<int>(pts));
 			NaiveSet Rr { pts };
 			assert(Equal(Sr, Rr));
-			auto Sn = Intersect(SequenceS<int>(S), SequenceS<int>(Sr));
+			auto Sn = Intersect(SortedSequence<int>(S), SortedSequence<int>(Sr));
 			auto Rn = Intersect(R, Rr);
 			assert(Equal(Sn, Rn));
-			IntersectInplace(S, SequenceS<int>(Sr));
-			assert(Equal(SequenceS<int>(S), SequenceS<int>(Sn)));
+			IntersectInplace(S, SortedSequence<int>(Sr));
+			assert(Equal(SortedSequence<int>(S), SortedSequence<int>(Sn)));
 			R = Rn;
 		},
 		[&]() {
 			// Subtract
 			assert(Equal(S, R));
 			vector<int> pts = randomInts();
-			vector<int> Sr = DeduplicateSort(SequenceU<int>(pts));
+			vector<int> Sr = DeduplicateSort(Sequence<int>(pts));
 			NaiveSet Rr { pts };
 			assert(Equal(Sr, Rr));
-			auto Sn = Subtract<int>(SequenceS<int>(S), SequenceS<int>(Sr));
+			auto Sn = Subtract<int>(SortedSequence<int>(S), SortedSequence<int>(Sr));
 			auto Rn = Subtract(R, Rr);
 			assert(Equal(Sn, Rn));
-			SubtractInplace(S, SequenceS<int>(Sr));
-			assert(Equal(SequenceS<int>(S), SequenceS<int>(Sn)));
+			SubtractInplace(S, SortedSequence<int>(Sr));
+			assert(Equal(SortedSequence<int>(S), SortedSequence<int>(Sn)));
 			R = Rn;
 		},
 		[&]() {
 			// Union
 			assert(Equal(S, R));
 			vector<int> pts = randomInts();
-			vector<int> Sr = DeduplicateSort(SequenceU<int>(pts));
+			vector<int> Sr = DeduplicateSort(Sequence<int>(pts));
 			NaiveSet Rr { pts };
 			assert(Equal(Sr, Rr));
-			auto Sn = Union<int>(SequenceS<int>(S), SequenceS<int>(Sr));
+			auto Sn = Union<int>(SortedSequence<int>(S), SortedSequence<int>(Sr));
 			auto Rn = Union(R, Rr);
 			assert(Equal(Sn, Rn));
-			UnionInplace<int>(S, SequenceS<int>(Sr));
-			assert(Equal(SequenceS<int>(S), SequenceS<int>(Sn)));
+			UnionInplace<int>(S, SortedSequence<int>(Sr));
+			assert(Equal(SortedSequence<int>(S), SortedSequence<int>(Sn)));
 			R = Rn;
 		},
 		[&]() {
 			// SymmetricDifference
 			assert(Equal(S, R));
 			vector<int> pts = randomInts();
-			vector<int> Sr = DeduplicateSort(SequenceU<int>(pts));
+			vector<int> Sr = DeduplicateSort(Sequence<int>(pts));
 			NaiveSet Rr { pts };
 			assert(Equal(Sr, Rr));
-			auto Sn = SymmetricDifference(SequenceS<int>(S), SequenceS<int>(Sr));
+			auto Sn = SymmetricDifference(SortedSequence<int>(S), SortedSequence<int>(Sr));
 			auto Rn = SymmetricDifference(R, Rr);
 			assert(Equal(Sn, Rn));
-			SymmetricDifferenceInplace<int>(S, SequenceS<int>(Sr));
-			assert(Equal(SequenceS<int>(S), SequenceS<int>(Sn)));
+			SymmetricDifferenceInplace<int>(S, SortedSequence<int>(Sr));
+			assert(Equal(SortedSequence<int>(S), SortedSequence<int>(Sn)));
 			R = Rn;
 		},
 	};
@@ -674,19 +1367,18 @@ template<typename T> __forceinline bool operator==(const IntervalII<T>& A, const
 	return A.p0 == B.p0 and A.p1 == B.p1;
 }
 
-
 template<typename T> struct LessThanStartIntervalII {
 	__forceinline bool operator()(const IntervalII<T>& A, const IntervalII<T>& B) const {
 		return A.p0 < B.p0;
 	}
 };
 
-	template<typename T> __forceinline bool Overlaps(const IntervalII<T>& A, const IntervalII<T>& B) {
-		// Assume A.p0 <= A.p1, and the same for B.
-		// There's no overlap when A.p1 < B.p0 (A entirely left of B), or A.p0 > B.p1 (A entirely right of B).
-		// Negation gives us the final equation.
-		return !(A.p1 < B.p0 or A.p0 > B.p1);
-	}
+template<typename T> __forceinline bool Overlaps(const IntervalII<T>& A, const IntervalII<T>& B) {
+	// Assume A.p0 <= A.p1, and the same for B.
+	// There's no overlap when A.p1 < B.p0 (A entirely left of B), or A.p0 > B.p1 (A entirely right of B).
+	// Negation gives us the final equation.
+	return !(A.p1 < B.p0 or A.p0 > B.p1);
+}
 
 // Interval contains given point.
 template<typename T> __forceinline bool Contains(const IntervalII<T>& A, const T& p) {
@@ -1035,7 +1727,6 @@ template<typename T> void IntersectInplace(IntervalSet<T>& A, const IntervalSet<
 	A.intervals.resize(cWritten);
 }
 
-
 template<typename T> void SubtractPush(vector<IntervalII<T>>& intervals, const IntervalII<T>& A, const IntervalII<T>& B) {
 	if (!Overlaps(A, B)) {
 		intervals.push_back(A); // No overlap, return A as is.
@@ -1213,7 +1904,6 @@ bool Equal(const IntervalSet<int>& A, const NaiveSet& B) {
 	return Equal(B, A);
 }
 
-
 void TestIntervalSet() {
 	assert(Adjacent(IntervalII<int>{1, 2}, IntervalII<int>{3, 4}));
 	assert(!Adjacent(IntervalII<int>{1, 2}, IntervalII<int>{4, 4}));
@@ -1282,7 +1972,7 @@ void TestIntervalSet() {
 			const auto Sc = ContainsAll<int>(S, pts);
 			assert(Rc == Sc);
 		},
-		[&]() {
+		[&]() { 
 			// Intersect
 			assert(Equal(S, R));
 			IntervalSet<int> SI = Intersect(S, S);
@@ -1343,12 +2033,257 @@ void TestIntervalSet() {
 			R = Rn;
 		},
 	};
-	for (size_t i = 0; i < 1000000; ++i) {
+	for (size_t i = 0; i < 1000; ++i) {
 		const size_t idx = distInt(rng) % size(fns);
-		if (i == 14180000) __debugbreak();
+		if (i == 14180) __debugbreak();
 		fns[idx]();
 	}
 }
+
+
+
+struct Bitmap
+{
+	vector<uint64_t> m_v;
+	size_t m_cBits = 0;
+
+	__forceinline size_t size() const noexcept { return m_cBits; }
+	__forceinline bool empty() const noexcept { return m_cBits == 0; }
+	__forceinline void clear() noexcept
+	{
+		m_cBits = 0;
+		m_v.clear();
+	}
+	__forceinline void resize(size_t cBits)
+	{
+		m_cBits = cBits;
+		m_v.resize((cBits + 63) / 64);
+
+		// Reset the trailing bits in the last word.
+		if (cBits)
+		{
+			const size_t j = cBits - 1;
+			const size_t j64 = j / 64;
+			const size_t jbit = j % 64;
+			const uint64_t jmask = jbit == 63 ? ~0ULL : (1ULL << (jbit + 1)) - 1;
+			m_v[j64] &= jmask;
+		}
+	}
+	__forceinline bool get(size_t i) const noexcept
+	{
+		assert(i < m_cBits);
+		const size_t i64 = i / 64;
+		const size_t ibit = i % 64;
+		return (m_v[i64] & (1ULL << ibit)) != 0;
+	}
+	__forceinline void set(size_t i, bool f) noexcept
+	{
+		assert(i < m_cBits);
+		const size_t i64 = i / 64;
+		const size_t ibit = i % 64;
+		if (f)
+			m_v[i64] |= (1ULL << ibit);
+		else
+			m_v[i64] &= ~(1ULL << ibit);
+	}
+	__forceinline void set(size_t i) noexcept
+	{
+		assert(i < m_cBits);
+		const size_t i64 = i / 64;
+		const size_t ibit = i % 64;
+		m_v[i64] |= (1ULL << ibit);
+	}
+	__forceinline void reset(size_t i) noexcept
+	{
+		assert(i < m_cBits);
+		const size_t i64 = i / 64;
+		const size_t ibit = i % 64;
+		m_v[i64] &= ~(1ULL << ibit);
+	}
+	__forceinline bool getThenSet(size_t i) noexcept
+	{
+		assert(i < m_cBits);
+		const size_t i64 = i / 64;
+		const size_t ibit = i % 64;
+		const bool f = (m_v[i64] & (1ULL << ibit)) != 0;
+		m_v[i64] |= (1ULL << ibit);
+		return f;
+	}
+	// Sets the range [i, j] to 1.
+	__forceinline void setRange(size_t i, size_t j) noexcept
+	{
+		assert(i <= j);
+		assert(j < m_cBits);
+		const size_t i64 = i / 64;
+		const size_t j64 = j / 64;
+		const size_t ibit = i % 64;
+		const size_t jbit = j % 64;
+		const uint64_t imask = ((1ULL << ibit) - 1);
+		const uint64_t jmask = jbit == 63 ? ~0ULL : (1ULL << (jbit + 1)) - 1;
+		if (i64 == j64)
+		{
+			// All bits are in the same 64-bit word.
+			const uint64_t mask = imask ^ jmask;
+			m_v[i64] |= mask;
+		}
+		else
+		{
+			// Set the bits in the first word.
+			m_v[i64] |= ~imask;
+			// Set the bits in the middle words.
+			for (size_t k = i64 + 1; k < j64; ++k)
+				m_v[k] = ~0ULL;
+			// Set the bits in the last word.
+			m_v[j64] |= jmask;
+		}
+	}
+	__forceinline void setAll() noexcept
+	{
+		if (m_cBits)
+			setRange(0, m_cBits - 1);
+	}
+	// Resets the range [i, j] to 0.
+	__forceinline void resetRange(size_t i, size_t j) noexcept
+	{
+		assert(i <= j);
+		assert(j < m_cBits);
+		const size_t i64 = i / 64;
+		const size_t j64 = j / 64;
+		const size_t ibit = i % 64;
+		const size_t jbit = j % 64;
+		const uint64_t imask = ((1ULL << ibit) - 1);
+		const uint64_t jmask = jbit == 63 ? ~0ULL : (1ULL << (jbit + 1)) - 1;
+		if (i64 == j64)
+		{
+			// All bits are in the same 64-bit word.
+			const uint64_t mask = imask ^ jmask;
+			m_v[i64] &= ~mask;
+		}
+		else
+		{
+			// Reset the bits in the first word.
+			m_v[i64] &= imask;
+			// Reset the bits in the middle words.
+			for (size_t k = i64 + 1; k < j64; ++k)
+				m_v[k] = 0ULL;
+			// Reset the bits in the last word.
+			m_v[j64] &= ~jmask;
+		}
+	}
+	__forceinline void resetAll() noexcept
+	{
+		if (m_cBits)
+			resetRange(0, m_cBits - 1);
+	}
+	// Returns the number of bits set to 1 in the range [i, j].
+	__forceinline size_t popcount(size_t i, size_t j) const noexcept
+	{
+		assert(i <= j);
+		assert(j < m_cBits);
+		const size_t i64 = i / 64;
+		const size_t j64 = j / 64;
+		const size_t ibit = i % 64;
+		const size_t jbit = j % 64;
+		const uint64_t imask = ((1ULL << ibit) - 1);
+		const uint64_t jmask = jbit == 63 ? ~0ULL : (1ULL << (jbit + 1)) - 1;
+		size_t count = 0;
+		if (i64 == j64)
+		{
+			// All bits are in the same 64-bit word.
+			const uint64_t mask = imask ^ jmask;
+			count += std::popcount(m_v[i64] & mask);
+		}
+		else
+		{
+			// Count the bits in the first word.
+			count += std::popcount(m_v[i64] & ~imask);
+			// Count the bits in the middle words.
+			for (size_t k = i64 + 1; k < j64; ++k)
+				count += std::popcount(m_v[k]);
+			// Count the bits in the last word.
+			count += std::popcount(m_v[j64] & jmask);
+		}
+		return count;
+	}
+	// Appends the contents of another bitmap to this one.
+	__forceinline void append(const Bitmap& o)
+	{
+		if (o.empty())
+			return;
+		if (empty())
+		{
+			*this = o;
+			return;
+		}
+		const size_t cold = m_cBits / 64;
+		const size_t cshift = (m_cBits % 64);
+		if (!cshift)
+		{
+			m_v.insert(end(m_v), begin(o.m_v), end(o.m_v));
+			m_cBits += o.m_cBits;
+			return;
+		}
+		const size_t calign = 64 - (m_cBits % 64);
+		const size_t mask = calign == 64 ? ~0ULL : ((1ULL << calign) - 1);
+		m_v.resize((m_cBits + o.m_cBits + 63) / 64);
+		m_cBits += o.m_cBits;
+		// Handle all complete words from source
+		size_t i = 0;
+		for (; i < o.m_v.size() - 1; ++i)
+		{
+			m_v[cold + i] |= (o.m_v[i] & mask) << cshift;
+			m_v[cold + i + 1] |= (o.m_v[i] >> calign);
+		}
+		// Handle the last word specially to respect o.m_cBits
+		const size_t crem = o.m_cBits % 64;
+		const uint64_t lastMask = crem == 0 ? ~0ULL : ((1ULL << crem) - 1);
+		const uint64_t lastWord = o.m_v[i] & lastMask;
+		m_v[cold + i] |= (lastWord & mask) << cshift;
+		if ((cold + i + 1) < m_v.size())
+			m_v[cold + i + 1] |= (lastWord >> calign);
+	}
+	__forceinline void emplace_back(bool f)
+	{
+		const size_t i = m_cBits++;
+		const size_t i64 = i / 64;
+		const size_t ibit = i % 64;
+		if (i64 == m_v.size())
+		{
+			m_v.push_back(0);
+		}
+		m_v[i64] |= (size_t)f << ibit;
+	}
+
+	Bitmap() = default;
+	Bitmap(size_t cBits) : m_cBits(cBits)
+	{
+		m_v.resize((cBits + 63) / 64);
+	}
+	~Bitmap() noexcept = default;
+	Bitmap(const Bitmap& o) : m_v(o.m_v), m_cBits(o.m_cBits) {}
+	Bitmap& operator=(const Bitmap& o)
+	{
+		m_v = o.m_v;
+		m_cBits = o.m_cBits;
+		return *this;
+	}
+	Bitmap(Bitmap&& o) noexcept
+	{
+		// clang-format off
+		m_v = std::move(o.m_v); o.m_v.clear();
+		m_cBits = std::move(o.m_cBits); o.m_cBits = 0;
+		// clang-format on
+	}
+	Bitmap& operator=(Bitmap&& o) noexcept
+	{
+		// clang-format off
+		m_v = std::move(o.m_v); o.m_v.clear();
+		m_cBits = std::move(o.m_cBits); o.m_cBits = 0;
+		// clang-format on
+		return *this;
+	}
+};
+
 
 
 int

@@ -55,15 +55,35 @@
     - [Hash partitioning](#hash-partitioning)
     - [Rendezvous hashing](#rendezvous-hashing)
 - [Dimensional packing](#dimensional-packing)
-  - [1D from 2D](#1d-from-2d)
-    - [Lower triangular, row-wise](#lower-triangular-row-wise)
-    - [Upper triangular, col-wise](#upper-triangular-col-wise)
-    - [Upper triangular, row-wise](#upper-triangular-row-wise)
-    - [Lower triangular, col-wise](#lower-triangular-col-wise)
-    - [Lower triangular, excluding diagonal, row-wise](#lower-triangular-excluding-diagonal-row-wise)
-    - [Upper triangular, excluding diagonal, col-wise](#upper-triangular-excluding-diagonal-col-wise)
-    - [Upper triangular, excluding diagonal, row-wise](#upper-triangular-excluding-diagonal-row-wise)
+  - [Horizontal stripe](#horizontal-stripe)
+  - [Horizontal striding (sub-stripe)](#horizontal-striding-sub-stripe)
+  - [Vertical stripe](#vertical-stripe)
+  - [Vertical striding (sub-stripe)](#vertical-striding-sub-stripe)
+  - [Lower triangular, row-wise](#lower-triangular-row-wise)
+  - [Upper triangular, col-wise](#upper-triangular-col-wise)
+  - [Upper triangular, row-wise](#upper-triangular-row-wise)
+  - [Lower triangular, col-wise](#lower-triangular-col-wise)
+  - [Lower triangular, excluding diagonal, row-wise](#lower-triangular-excluding-diagonal-row-wise)
+  - [Upper triangular, excluding diagonal, col-wise](#upper-triangular-excluding-diagonal-col-wise)
+  - [Upper triangular, excluding diagonal, row-wise](#upper-triangular-excluding-diagonal-row-wise)
+  - [Hankel matrix](#hankel-matrix)
+  - [Toeplitz matrix](#toeplitz-matrix)
+  - [Compressed sparse row (CSR)](#compressed-sparse-row-csr)
+  - [Compressed sparse column (CSC)](#compressed-sparse-column-csc)
+  - [Page directory 1D](#page-directory-1d)
+  - [Sparse Array Bitmap](#sparse-array-bitmap)
+- [Instructions](#instructions)
+- [Execution state](#execution-state)
+- [Instruction parallelism (SIMD)](#instruction-parallelism-simd)
+- [Execution parallelism](#execution-parallelism)
+  - [Multi-computer parallelism](#multi-computer-parallelism)
+  - [Multi-process parallelism](#multi-process-parallelism)
+  - [Multi-thread parallelism](#multi-thread-parallelism)
+  - [Lockstep parallelism (SIMT)](#lockstep-parallelism-simt)
+    - [Conditionals](#conditionals)
+    - [Dynamic lockstep](#dynamic-lockstep)
 - [SCRATCH](#scratch)
+- [ENDSCRATCH](#endscratch)
 
 
 
@@ -1199,8 +1219,93 @@ The idea is to hash the node, and use the hash code to choose a partition neighb
 The idea is to define a hash combinator function, `h(node1, node2)`, and choose the top K hash codes among all `node2` for a given `node1`. By using a min- or max-heap, this has a time cost of `O(K log N)` per `node1`.
 
 # Dimensional packing
-## 1D from 2D
-### Lower triangular, row-wise
+Memory is fundamentally 1-dimensional. I.e. the set of slots `S = { 0 1 ... N-1 }` requires one number to uniquely identify/address each element. A 2-dimensional index would be 2 numbers, ..., N-dimensional index would be N numbers to uniquely address each element.
+
+So what do we do about data that's higher dimensional?
+
+Common 2D data:
+- Images (grid of pixels)
+- Geographic maps (roads and intersections)
+- Telescope orientation (azimuth and altitude angles)
+
+Common 3D data:
+- Video (time sequence of 2D images)
+- Topographic maps (2D position and elevation)
+- Position data (e.g. 3D models, laser scans)
+- Color spaces (RGB, HSL, Luv)
+
+Common 4D data:
+- Position traces (time sequence of 3D positions)
+- Einstein's space-time positions
+
+Note that it's common to have compound objects of higher dimensions. E.g. images are 2D grids of colors, and each color is usually a 3D RGB point (red, green, blue). So in a sense images are really 3D, `X x Y x ColorChannels` with `ColorChannels=3` for this RGB case. I.e. we can slice the image into 3 images; one red, one green, and one blue. 
+```
+R: X x Y
+G: X x Y
+B: X x Y
+```
+Or, we can slice it as one image where each pixel contains the RGB triple.
+```
+X x Y x (R,G,B)
+```
+So we can partition or slice higher dimensional compound objects into compounds of lower dimensional objects. Specifically, for N dimensions, we can choose any possible partition of the set of size N. Counting these possibilities, combinatorial mathematics calls this the Bell number `B(N)`. Broadly, it's the sum of all possible combinations of recursively computing `B` for the chosen subset. I.e. iterating all possibilities of all subsets and counting them up. This grows really fast.
+
+Also note we can reorder the dimensions arbitrarily, and still represent the same data. For N dimensions, there are `P(N, N) = n!` permutations of the dimensions that are all equivalent. This alone would take us into exponential growth of possible encodings, as the dimensions grow.
+
+Combining both of these, arbitrary partitioning and arbitrary ordering, is the Ordered Bell numbers. Which accounts for both of the above principles at once. This grows faster than each of the above.
+
+So the design space for representing higher dimensional data is exponentially large. Hence, choosing a dimensional encoding to use for your data is incredibly difficult. A lot of it comes down to performance characteristics of your specific data access patterns, and experimentation with various packing techniques to find what works best.
+
+What follows is a collection of useful dimensional encoding techniques, to map higher dimensional data into 1D memory space.
+
+## Horizontal stripe
+Say we have an `X x Y` grid
+```
+0 1 2 3
+4 5 6 7
+```
+```
+index(x, y) = X * y + x
+```
+
+## Horizontal striding (sub-stripe)
+Given an `X x Y` grid
+```
+ 0  1  2  3
+ 4  5  6  7
+ 8  9 10 11
+```
+And a sub-block `offset = (1,1)` and `extent = (2,2)`, we want to index the sub-block:
+```
+ 5  6
+ 9 10
+```
+The idea here is to subtract away the starting offset, and then use the original extent X.
+```
+index(offset, extent, x, y) = (X * offset.y + offset.x) + (X * y + x)
+= X * (offset.y + y) + (offset.x + x)
+for all x,y in [0, extent.x) x [0, extent.y)
+```
+In this way you can index a sub-block of a horizontally striped block.
+
+## Vertical stripe
+```
+0 2 4 6
+1 3 5 7
+```
+This is a complete transpose of horizontal strip, so swap x,y in all cases to get:
+```
+index(x, y) = Y * x + y
+```
+
+## Vertical striding (sub-stripe)
+This is a trivial transpose of the horizontal version.
+```
+index(offset, extent, x, y) = Y * (offset.x + x) + (offset.y + y)
+for all x,y in [0, extent.x) x [0, extent.y)
+```
+
+## Lower triangular, row-wise
 ```
 0
 1 2
@@ -1221,7 +1326,7 @@ It's trivial to then tack on the column indexing, once identifying the start of 
 ```
 index(x,y) = y(y+1)/2 + x
 ```
-### Upper triangular, col-wise
+## Upper triangular, col-wise
 ```
 0 1 3 6
   2 4 7
@@ -1232,7 +1337,7 @@ Note this is the transpose of the above. Just swap x,y and we're done. So the 1D
 ```
 index(x,y) = x(x+1)/2 + y
 ```
-### Upper triangular, row-wise
+## Upper triangular, row-wise
 ```
 0 1 2 3
   4 5 6
@@ -1264,7 +1369,7 @@ Column indexing is again just a trivial tack-on. So the 1D-from-2D mapping is:
 index(x,y) = (2N+1-y)y/2 + x
 ```
 
-### Lower triangular, col-wise
+## Lower triangular, col-wise
 ```
 0
 1 4
@@ -1276,7 +1381,7 @@ Note this is the transpose of the above. Just swap x,y and we're done. So the 1D
 index(x,y) = (2N+1-x)x/2 + y
 ```
 
-### Lower triangular, excluding diagonal, row-wise
+## Lower triangular, excluding diagonal, row-wise
 ```
 -
 0 -
@@ -1288,7 +1393,7 @@ Note this is identical to [Lower triangular, row-wise](#lower-triangular-row-wis
 index(x,y) = (y-1)y/2 + x
 ```
 
-### Upper triangular, excluding diagonal, col-wise
+## Upper triangular, excluding diagonal, col-wise
 ```
 - 0 1 3
   - 2 4
@@ -1300,7 +1405,7 @@ Note this is the transpose of the above. So the 1D-from-2D mapping is:
 index(x,y) = (x-1)x/2 + y
 ```
 
-### Upper triangular, excluding diagonal, row-wise
+## Upper triangular, excluding diagonal, row-wise
 ```
 - 0 1 2
   - 3 4
@@ -1319,6 +1424,185 @@ So the 1D-from-2D mapping is:
 ```
 index(x,y) = (2N-y)(y-1)/2 + x-1
 ```
+
+## Hankel matrix
+A rectangular matrix with skew diagonals (aka right-leaning diagonals) each holding one value.
+```
+0 1 2 3
+1 2 3 4
+2 3 4 5
+3 4 5 6
+```
+The number of such diagonals is `N+(N-1) = 2N-1`. So for 1D storage you need an array of length `2N-1`. To get 1D from 2D indices:
+```
+index(x, y) = x + y
+```
+Note this is one of the unique matrix maps discussed that's not invertible. I.e. given a 1D index, there's no unique map back to 2D.
+
+## Toeplitz matrix
+A rectangular matrix with diagonals(aka left - leaning diagonals) each holding one value. This is the x-mirror of Hankel.
+```
+3 2 1 0
+4 3 2 1
+5 4 3 2
+6 5 4 3
+```
+Storage space required: `2N-1`.
+
+To get from 1D to 2D:
+```
+index(x, y) = (N - 1 - x) + y
+```
+
+## Compressed sparse row (CSR)
+In horizontal stripe (aka row-wise) order, store only the values that are present (often meaning non-zero) in the uncompressed matrix. That is, elide storage of sparse elements, but preserve the row-wise ordering. And, for each value that is stored, store the x index (aka column index) it belongs to.
+
+Then what's left is to identify row boundaries. To do this, keep an array of length `X+1` that stores the starting index of each row in the compressed data / x-index arrays.
+```
+template<typename T> struct CompressedSparseRow {
+vector<T> values;
+	vector<size_t> xIndices; // length values.size()
+	vector<size_t> yStarts; // length X+1, last is end of last row
+	size_t X;
+	size_t Y;
+	// Returns a pointer to the value at (x,y), or nullptr if not present
+	const T* get(size_t x, size_t y) const {
+		if (x >= X || y >= Y) throw out_of_range("Index out of range");
+		auto rowStart = begin(xIndices) + yStarts[y];
+		auto rowEnd = begin(xIndices) + yStarts[y + 1];
+		auto it = lower_bound(rowStart, rowEnd, x);
+		if (it != rowEnd && *it == x) {
+			const size_t index = it - begin(xIndices);
+			return &values[index];
+		}
+		return nullptr;
+	}
+};
+```
+For instance, `X = 5, Y = 2` uncompressed matrix:
+```
+- 0 1 - -
+- 2 - 3 -
+```
+Will have
+```
+CompressedSparseRow<int32_t> csr = {
+	.values = {0, 1, 2, 3},
+	.xIndices = {1, 2, 1, 3},
+	.yStarts = {0, 2, 4},
+	.X = 5,
+	.Y = 2
+};
+```
+## Compressed sparse column (CSC)
+Exactly the same as CSR, but transposed. Trivially swap x,y and you'll have the CSC version.
+
+## Page directory 1D
+First, consider 1D lattice sparsity. If I have `S = { 0 1 ... N-1 }` with some arbitrary subsets present, how do I store the subset efficiently for large N?
+The page idea is to split the `S` space into chunks of size `C` (aka pages). Then I can make one root directory page, which contains the addresses of chunks that are either present or not. There are multiple directory schemes, but this is the simplest.
+```
+template<typename T> struct PageDirectory1D {
+	constexpr size_t C = 1000;
+	using Page = array<T, C>;
+	vector<unique_ptr<Page>> pages;
+	size_t N = 0;
+	PageDirectory1D(size_t N_) : N(N_) {
+		pages.resize((N + C - 1) / C); // Allocate directory, initially no pages.
+	}
+	const T* get(size_t index) const {
+		assert(index < N);
+		const size_t iPage = index / C;
+		const size_t iOffset = index % C;
+		assert(iPage < pages.size());
+		const auto& page = pages[iPage];
+		if (!page) return nullptr; // Page not present
+		return &(*page)[iOffset]; // Return pointer to value
+	}
+	void set(size_t index, const T& value) {
+		assert(index < N);
+		const size_t iPage = index / C;
+		const size_t iOffset = index % C;
+		assert(iPage < pages.size());
+		auto& page = pages[iPage];
+		if (!page) {
+			page = make_unique<Page>();
+		}
+		(*page)[iOffset] = value;
+	}
+};
+```
+## Sparse Array Bitmap
+Idea: use a register-sized bitmap (e.g. uint64_t) to represent presence, and an array of present values (sorted by index order).
+For example, shrinking it down to 8 bits for a moment, we have a universe of indexes `S = { 0 1 ... 7 }`. Say I want to store values corresponding to the sparse subset `s = { 0 1 6 }`.
+```
+bitmap = 01000011
+values = { v0, v1, v6 }
+```
+If I want to retrieve the element at index 6, the bitmap trivially tells me presence information (bit is set or not). That's nice. But note that it also encodes the index into the `values` sorted array. The index into `values` is the number of bits set below bit 6.
+```
+bitmap = 01000011
+		   ^^^^^^
+```
+There are 2 bits set, so the index into `values` is 2. By constructing an appropriate bitmask and using the popcount instruction, we can do this efficiently. Hence we can go from an uncompressed index to a compressed index into `values`.
+```
+index(u) = popcount(bitmap & ((1 << u) - 1))
+```
+Here's the 64bit version of this idea:
+```
+template<typename T> struct SparseArray64 {
+	uint64_t bitmap = 0;
+	vector<T> values;
+	const T* get(size_t index) const {
+		assert(index < 64);
+		const size_t bit = 1ULL << index;
+		if ((bitmap & bit) == 0) return nullptr; // Not present
+		const size_t iValue = popcount(bitmap & (bit - 1));
+		return &values[iValue];
+	}
+	void set(size_t index, const T& value) {
+		assert(index < 64);
+		const size_t bit = 1ULL << index;
+		const size_t iValue = popcount(bitmap & (bit - 1));
+		if ((bitmap & bit) == 0) { // Not present, so insert at appropriate position
+			bitmap |= bit;
+			values.insert(begin(values) + iValue, value);
+		} else { // Already present, so update.
+			values[iValue] = value;
+		}
+	}
+};
+```
+You can extend this to an arbitrary - length bitmap, and I'm sure there's some bitmap tree data structure you could use to compute `iValue` in `O(log N)` popcounts instead of `O(N)` popcounts.
+Also, for repeated `set` calls causing lots of `values` shifting during `insert`, it may be more efficient to use an ordered tree of some kind instead.
+
+# Instructions
+# Execution state
+# Instruction parallelism (SIMD)
+
+# Execution parallelism
+Take the execution state of a computer, stamp out multiple copies of it, fan-out work to them which can be done in parallel, and synchronously join the results back in to one of the instances designated as the `main` thread or sub-computer.
+
+## Multi-computer parallelism
+This is execution parallelism in the most general sense. Take distinct computers that can each run fully independently, wire them up for communication, and pass messages between them with no other sharing. In a sense this is the purest form of computational parallelism, where nothing is shared except for messages passed between distinct computers. This is the model used by distributed systems, where each computer is a node in a cluster, and they communicate over a network. Almost all the effort put into parallelism at this level is in designing message protocols to ensure correct and efficient behavior.
+
+## Multi-process parallelism
+This is execution parallelism at the process level, where multiple processes run on the same computer (sharing an operating system layer), each with its own memory space and execution state. They can communicate via inter-process communication (IPC) mechanisms like pipes, sockets, or shared memory. Each of these are operating systems (OS) capabilities exposed to the process layer. Most of the effort here is in designing message protocols, while taking advantage of shared memory to avoid copying big data into messages.
+
+## Multi-thread parallelism
+This is execution parallelism at the thread level, where multiple threads run within the same process (sharing the same memory space). Each thread has its own execution state, but the primary difference from process parallelism is that the memory space is shared by default. Meaning, everything is shared between threads by default, unless the programmer explicitly uses thread-local storage or other mechanisms to isolate data. Most of the effort here is in building, maintaining, and enforcing thread safety, i.e. preventing threads from accessing memory they shouldn't be.
+
+## Lockstep parallelism (SIMT)
+The idea here is to have a bunch of threads execute the same instruction seqeunce in parallel, in lockstep. In this way they can share instruction decoding, translation, and dispatch logic, i.e. the first phases of instruction processing.
+This is called Single Instruction Multiple Threads (SIMT) in NVIDIA parlance, since one instruction is shared amongst many threads executing it in lockstep.
+
+### Conditionals 
+Won't the lockstep need to break down as soon as some conditional is evaluated? E.g. one thread wants to go into the `if` block and another wants to go into the `else`.
+The key insight here is that we can have all threads execute BOTH the `if` and the `else`, and use a condition bit to signal whether each thread should ignore the current instruction or not. This looks like an extra bit associated with each thread in the computer's execution state, which is set by conditional instructions, and reset when conditional scopes are closed.
+NVIDIA calls these simultaneous thread groups `warps`, AMD calls these `wavefronts`. The masking off is called divergence, and the restoring to all threads enabled is called convergence.
+This was the key insight that allowed GPUs to become massively parallel, and is the basis of all modern GPU architectures.
+
+### Dynamic lockstep
+Modern GPUs allow for dynamic divergence and convergence, even automatically, to try and preserve the speedup of simultaneous instruction execution as much as possible. The idea is to allow for some small amount of divergence, minimizing the amount of time spent on masked off instructions. For example, once a conditional is hit and there's the `if` and `else` blocks, the set of threads in the group can be partitioned into two subgroups, one for each branch. In each subgroup, we can remove the dead instructions from the instruction stream and only execute the live branch. Once both branches are done, we can insert a synchronization point for convergence, which will destroy the two subgroups and return us back to just one group. Note this requires support for two instruction streams, one for each subgroup, and the ability to create and delete them dynamically. More than two if the architecture wants to allow for even more independent scheduling. Modern GPUs do this and more, to maximize the amount of useful parallel work.
 
 
 
@@ -1390,3 +1674,7 @@ Reverse the linear index too:
 = (2N-1)y/2 - y^2/2 + x
 = (2N-1-y)y/2 + x
 ```
+
+# ENDSCRATCH
+
+
