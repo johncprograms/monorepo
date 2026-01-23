@@ -71,7 +71,10 @@
   - [Compressed sparse row (CSR)](#compressed-sparse-row-csr)
   - [Compressed sparse column (CSC)](#compressed-sparse-column-csc)
   - [Page directory 1D](#page-directory-1d)
+  - [Address concatenation](#address-concatenation)
+  - [Morton order](#morton-order)
   - [Sparse Array Bitmap](#sparse-array-bitmap)
+  - [Locality Sensitive Hashing](#locality-sensitive-hashing)
 - [Instructions](#instructions)
 - [Execution state](#execution-state)
 - [Instruction parallelism (SIMD)](#instruction-parallelism-simd)
@@ -1531,6 +1534,12 @@ template<typename T> struct PageDirectory1D {
 	}
 };
 ```
+
+## Address concatenation
+
+## Morton order
+x|y|...|x|y
+
 ## Sparse Array Bitmap
 Idea: use a register-sized bitmap (e.g. uint64_t) to represent presence, and an array of present values (sorted by index order).
 For example, shrinking it down to 8 bits for a moment, we have a universe of indexes `S = { 0 1 ... 7 }`. Say I want to store values corresponding to the sparse subset `s = { 0 1 6 }`.
@@ -1574,6 +1583,9 @@ template<typename T> struct SparseArray64 {
 ```
 You can extend this to an arbitrary - length bitmap, and I'm sure there's some bitmap tree data structure you could use to compute `iValue` in `O(log N)` popcounts instead of `O(N)` popcounts.
 Also, for repeated `set` calls causing lots of `values` shifting during `insert`, it may be more efficient to use an ordered tree of some kind instead.
+
+## Locality Sensitive Hashing
+
 
 # Instructions
 # Execution state

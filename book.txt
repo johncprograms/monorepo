@@ -190,15 +190,3 @@
 		    }
 		    
 			Given two lists of sorted, non-adjacent/overlapping intervals, merge them into one list.
-
-Beyond one dimension
-  You'll notice memory being a configurable map of numbers to numbers is fundamentally one-dimensional.
-
-  Striping
-    Strides
-    Compressed sparse row
-  Address concatenation
-    Page directories
-    x|y|...|x|y
-  Hashing
-
