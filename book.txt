@@ -109,60 +109,6 @@
 		Tiling
 
 		Overlap
-		  template<typename T> __forceinline bool overlaps(const IntervalII<T>& A, const IntervalII<T>& B) {
-		    // Assume A.p0 <= A.p1, and the same for B.
-		    // There's no overlap when A.p1 < B.p0 (A entirely left of B), or A.p0 > B.p1 (A entirely right of B).
-		    // Negation gives us the final equation.
-		    return !(A.p1 < B.p0 or A.p0 > B.p1);
-		  }
-		  template<typename T> bool intervalsSortedByStart(const span<const IntervalII<T>> intervals) {
-		    const size_t cIntervals = intervals.size();
-		    for (size_t i = 1; i < cIntervals; ++i) {
-		      if (intervals[i-1].p0 > intervals[i].p0) {
-		        return false;
-		      }
-		    }
-		    return true;
-		  }
-		  template<typename T> vector<IntervalII<T>> sortIntervalsByStart(const span<const IntervalII<T>> intervals) {
-	      vector<IntervalII<T>> intervalsS(begin(intervals), end(intervals));
-	      sort(begin(intervalsS), end(intervalsS), [](const IntervalII<T>& A, const IntervalII<T>& B) {
-	        return A.p0 < B.p0;
-	      });
-	      return intervalsS;
-      }
-		  
-		  template<typename T> bool anyOverlap(const span<const IntervalII<T>> intervals) {
-		    // If the intervals list is sorted by interval start, we can compare neighbors instead of doing full all-pairs comparison.
-		    auto anyOverlapSorted = [](const span<const IntervalII<T>> intervalsSorted) {
-		      const size_t cIntervals = intervals.size();
-  		    for (size_t i = 1; i < cIntervals; ++i) {
-  		      if (intervalsSorted[i-1].p1 >= intervalsSorted[i].p0) {
-  		        return true;
-		        }
-		      }
-		      return false;
-		    };
-		    if (intervalsSortedByStart(intervals)) {
-		      return anyOverlapSorted(intervals);
-		    }
-		    else {
-		      return anyOverlapSorted(sortIntervalsByStart(intervals));
-		    }
-		  }
-		  template<typename T> bool allOverlap(const span<const IntervalII<T>> intervals) {
-		    if (!intervals.empty()) {
-		      const auto& A = intervals[0];
-		      const size_t cIntervals = intervals.size();
-		      for (size_t i = 1; i < cIntervals; ++i) {
-		        const auto& B = intervals[i];
-		        if (!overlaps(A, B))
-		          return false;
-		      }
-		    }
-	      return true;
-		  }
-
 		Intersect
 	  Union
 	  Difference
@@ -174,19 +120,4 @@
 			Given a set of points and a set of intervals, return if all points are inside any interval.
 		Merging
 			Given a set of intervals, merge them if adjacent/overlapping.
-			  template<typename T> __forceinline bool adjacent(const IntervalII<T>& A, const IntervalII<T>& B) {
-			    return A.p1 + 1 == B.p0 or B.p1 + 1 == A.p0;
-			  }
-			  template<typename T> __forceinline bool adjacentOrOverlap(const IntervalII<T>& A, const IntervalII<T>& B) {
-			    return adjacent(A, B) or overlaps(A, B);
-		    }
-		    template<typename T> void merge(const span<const IntervalII<T>> intervals, vector<IntervalII<T>>& result) {
-		      result.clear();
-		      if (intervalsSortedByStart(intervals)) {
-		        
-		      }
-		      else {
-		      }
-		    }
-		    
 			Given two lists of sorted, non-adjacent/overlapping intervals, merge them into one list.
