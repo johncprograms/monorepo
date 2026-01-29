@@ -45,9 +45,14 @@ template<typename T> struct SequenceBase {
 	__forceinline bool empty() const { return !length; }
 	__forceinline const T& front() const { assert(length); return memory[0]; }
 	__forceinline const T& back() const { assert(length); return memory[length-1]; }
-//	__forceinline T* begin() { return memory; }
-	__forceinline const T* begin() /*const*/ { return memory; }
-	__forceinline const T* end() /*const*/ { return memory + length; }
+	__forceinline const T* begin() { return memory; }
+	__forceinline const T* begin() const { return memory; }
+	__forceinline const T* end() { return memory + length; }
+	__forceinline const T* end() const { return memory + length; }
+	__forceinline const T* rbegin() { return memory + length - 1; }
+	__forceinline const T* rbegin() const { return memory + length - 1; }
+	__forceinline const T* rend() { return memory - 1; }
+	__forceinline const T* rend() const { return memory - 1; }
 	__forceinline T& operator[](size_t index) { assert(index < length); return memory[index]; }
 	__forceinline const T& operator[](size_t index) const { assert(index < length); return memory[index]; }
 	__forceinline const bool operator==(const SequenceBase<T>& o) {
@@ -68,15 +73,20 @@ template<typename T> struct SequenceBase {
 };
 // Unsorted sequence
 template<typename T> struct Sequence : public SequenceBase<T> {
+	Sequence(T* data_, size_t length_) : SequenceBase<T>(data_, length_) {}
+	Sequence(const T* data_, size_t length_) : SequenceBase<T>(data_, length_) {}
 	Sequence(span<T> s) : SequenceBase<T>(s.data(), s.size()) {}
 	Sequence(const vector<T>& v) : SequenceBase<T>(v.data(), v.size()) {}
 	template<size_t N> Sequence(const array<T, N>& a) : SequenceBase<T>(a.data(), a.size()) {}
 };
 // Sorted sequence
 template<typename T> struct SortedSequence : public SequenceBase<T> {
-	SortedSequence(span<T> s) : SequenceBase<T>(s.data(), s.size()) {}
-	SortedSequence(const vector<T>& v) : SequenceBase<T>(v.data(), v.size()) {}
-	template<size_t N> SortedSequence(const array<T, N>& a) : SequenceBase<T>(a.data(), a.size()) {}
+	explicit SortedSequence(T* data_, size_t length_) : SequenceBase<T>(data_, length_) {}
+	explicit SortedSequence(const T* data_, size_t length_) : SequenceBase<T>(data_, length_) {}
+	explicit SortedSequence(Sequence<T> s) : SequenceBase<T>(s.data(), s.size()) {}
+	explicit SortedSequence(span<T> s) : SequenceBase<T>(s.data(), s.size()) {}
+	explicit SortedSequence(const vector<T>& v) : SequenceBase<T>(v.data(), v.size()) {}
+	template<size_t N> explicit SortedSequence(const array<T, N>& a) : SequenceBase<T>(a.data(), a.size()) {}
 };
 
 
@@ -88,12 +98,12 @@ template<typename T> __forceinline void SortInplace(Sequence<T> pts) {
 }
 template<typename T, typename LessThan> __forceinline vector<T> Sort(const Sequence<T> pts, LessThan lessThan) {
 	vector<T> ptsS(begin(pts), end(pts));
-	SortInplace(ptsS, lessThan);
+	SortInplace<T>(ptsS, lessThan);
 	return ptsS;
 }
 template<typename T> __forceinline vector<T> Sort(const Sequence<T> pts) {
 	vector<T> ptsS(begin(pts), end(pts));
-	SortInplace(ptsS);
+	SortInplace<T>(ptsS);
 	return ptsS;
 }
 template<typename T, typename LessThan> __forceinline bool IsSorted(const Sequence<T> pts, LessThan lessThan) {
@@ -113,9 +123,9 @@ template<typename T> __forceinline bool IsSorted(const Sequence<T> pts) {
 
 template<typename T, typename LessThan> void ZipperMerge(Sequence<T> R, const SortedSequence<T> A, const SortedSequence<T> B, LessThan lessThan) {
 	assert(R.size() == A.size() + B.size());
-	auto a = begin(A);
+	const auto a = begin(A);
 	const auto a1 = end(A);
-	auto b = begin(B);
+	const auto b = begin(B);
 	const auto b1 = end(B);
 	auto r = begin(R);
 	const auto r1 = end(R);
@@ -147,13 +157,13 @@ template<typename T> void ZipperMerge(Sequence<T> R, const SortedSequence<T> A, 
 template<typename T, typename LessThan> vector<T> ZipperMerge(const SortedSequence<T> A, const SortedSequence<T> B, LessThan lessThan) {
 	vector<T> R;
 	R.resize(A.size() + B.size());
-	ZipperMerge(R, A, B, lessThan);
+	ZipperMerge<T>(R, A, B, lessThan);
 	return R;
 }
 template<typename T> vector<T> ZipperMerge(const SortedSequence<T> A, const SortedSequence<T> B) {
 	return ZipperMerge(A, B, std::less{});
 }
-template<typename T, typename LessThan> void ZipperMergeInplace(vector<T>& A, const SortedSequence<T> B) {
+template<typename T, typename LessThan> void ZipperMergeInplace(vector<T>& A, const SortedSequence<T> B, LessThan lessThan) {
 	// IDEA: Merge into the end of expanded A, right-to-left.
 	const size_t cA = A.size();
 	const size_t cB = B.size();
@@ -183,7 +193,7 @@ template<typename T, typename LessThan> void ZipperMergeInplace(vector<T>& A, co
 	assert(b == b1);
 }
 template<typename T> void ZipperMergeInplace(vector<T>& A, const SortedSequence<T> B) {
-	ZipperMergeInplace(A, B, std::less{});
+	ZipperMergeInplace<T>(A, B, std::less{});
 }
 
 
@@ -1383,7 +1393,12 @@ void TestSequences() {
 // ============================================================================
 // Intervals
 
-template<typename T> struct IntervalII { T p0, p1; };
+template<typename T> struct IntervalII {
+	T p0, p1;
+
+//	IntervalII(const IntervalII<T>& o) = default;
+//	IntervalII(IntervalII<T>&& o) = default;
+};
 template<typename T> __forceinline bool operator==(const IntervalII<T>& A, const IntervalII<T>& B) {
 	return A.p0 == B.p0 and A.p1 == B.p1;
 }
@@ -1563,27 +1578,28 @@ template<typename T> void UnionInplace(IntervalSet<T>& A, const IntervalII<T>& i
 		}
 	}
 }
-template<typename T> void UnionSortedInplace(IntervalSet<T>& A, const Sequence<IntervalII<T>> toInsert) {
+template<typename T> void UnionInplace(IntervalSet<T>& A, const SortedSequence<IntervalII<T>> toInsert) {
 	if (toInsert.empty()) return;
 	ZipperMergeInplace<IntervalII<T>>(A.intervals, toInsert, LessThanStartIntervalII<T>{});
 	MergeSortedInplace(A.intervals);
 };
 template<typename T> void UnionInplace(IntervalSet<T>& A, const Sequence<IntervalII<T>> toInsert) {
 	if (IsSorted(toInsert, LessThanStartIntervalII<T>{})) {
-		UnionSortedInplace(A, toInsert);
+		UnionInplace(A, SortedSequence<IntervalII<T>>(toInsert));
 	}
 	else {
-		UnionSortedInplace(A, Sort(toInsert, LessThanStartIntervalII<T>{}));
+		auto toInsertS = Sort(toInsert, LessThanStartIntervalII<T>{});
+		UnionInplace(A, SortedSequence<IntervalII<T>>(toInsertS));
 	}
 }
 template<typename T> void UnionInplace(IntervalSet<T>& A, const IntervalSet<T>& B) {
-	UnionSortedInplace<T>(A, B.intervals);
+	UnionInplace<T>(A, B.intervals);
 }
 template<typename T> IntervalSet<T> Union(const IntervalSet<T>& A, const IntervalSet<T>& B) {
 	// IDEA: Zipper merge the two sorted interval sets, then merge adjacents/overlaps.
 	// This is O(|A| + |B|)
 	IntervalSet<T> result;
-	result.intervals = ZipperMerge<IntervalII<T>>(A.intervals, B.intervals, LessThanStartIntervalII<T>{});
+	result.intervals = ZipperMerge<IntervalII<T>>(SortedSequence<IntervalII<T>>(A.intervals), SortedSequence<IntervalII<T>>(B.intervals), LessThanStartIntervalII<T>{});
 	MergeSortedInplace(result.intervals);
 	return result;
 }
