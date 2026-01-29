@@ -45,9 +45,9 @@ template<typename T> struct SequenceBase {
 	__forceinline bool empty() const { return !length; }
 	__forceinline const T& front() const { assert(length); return memory[0]; }
 	__forceinline const T& back() const { assert(length); return memory[length-1]; }
-	__forceinline T* begin() { return memory; }
-	__forceinline const T* begin() const { return memory; }
-	__forceinline const T* end() const { return memory + length; }
+//	__forceinline T* begin() { return memory; }
+	__forceinline const T* begin() /*const*/ { return memory; }
+	__forceinline const T* end() /*const*/ { return memory + length; }
 	__forceinline T& operator[](size_t index) { assert(index < length); return memory[index]; }
 	__forceinline const T& operator[](size_t index) const { assert(index < length); return memory[index]; }
 	__forceinline const bool operator==(const SequenceBase<T>& o) {
