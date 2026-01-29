@@ -38,20 +38,20 @@ template<typename T> struct SequenceBase {
 	SequenceBase<T>& operator=(const SequenceBase<T>& o) = default;
 	SequenceBase<T>& operator=(SequenceBase<T>&& o) = default;
 	SequenceBase(T* data_, size_t length_) : memory(data_), length(length_) {}
-	SequenceBase(const T* data_, size_t length_) : memory(const_cast<T*>(data_)), length(length_) {}
+//	SequenceBase(const T* data_, size_t length_) : memory(const_cast<T*>(data_)), length(length_) {}
 
 	__forceinline T* data() const { return memory; }
 	__forceinline size_t size() const { return length; }
 	__forceinline bool empty() const { return !length; }
-	__forceinline const T& front() const { assert(length); return memory[0]; }
-	__forceinline const T& back() const { assert(length); return memory[length-1]; }
-	__forceinline const T* begin() { return memory; }
+	__forceinline T& front() const { assert(length); return memory[0]; }
+	__forceinline T& back() const { assert(length); return memory[length-1]; }
+	__forceinline T* begin() { return memory; }
 	__forceinline const T* begin() const { return memory; }
-	__forceinline const T* end() { return memory + length; }
+	__forceinline T* end() { return memory + length; }
 	__forceinline const T* end() const { return memory + length; }
-	__forceinline const T* rbegin() { return memory + length - 1; }
+	__forceinline T* rbegin() { return memory + length - 1; }
 	__forceinline const T* rbegin() const { return memory + length - 1; }
-	__forceinline const T* rend() { return memory - 1; }
+	__forceinline T* rend() { return memory - 1; }
 	__forceinline const T* rend() const { return memory - 1; }
 	__forceinline T& operator[](size_t index) { assert(index < length); return memory[index]; }
 	__forceinline const T& operator[](size_t index) const { assert(index < length); return memory[index]; }
