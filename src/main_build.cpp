@@ -599,6 +599,7 @@ Main( stack_resizeable_cont_t<slice_t>& args )
     "/DWIN", // our custom switch to denote windows builds.
     "/D_USING_V110_SDK71_",
     "/D_MBCS",
+    "/EHsc",
     "/errorReport:none",
     "/FAs",
     "/Faexe\\",

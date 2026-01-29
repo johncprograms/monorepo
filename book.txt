@@ -1,123 +1,89 @@
 
 
-	Directed trees
-	Directed forests
-  Directed acyclic graphs
-  Directed graphs
-	Directed multigraphs
+Directed trees
+Directed forests
+Directed acyclic graphs
+Directed graphs
+Directed multigraphs
 
-	Undirected lists
-	Undirected trees
-	Undirected forests
-  Undirected acyclic graphs
-  Undirected graphs
-  Undirected multigraphs
+Undirected lists
+Undirected trees
+Undirected forests
+Undirected acyclic graphs
+Undirected graphs
+Undirected multigraphs
 
 
-	Arbitrary size integers
-		d = sum of d_base^k * base^k, for k = 0, 1, 2, ...
-		TODO
+Arbitrary size integers
+	d = sum of d_base^k * base^k, for k = 0, 1, 2, ...
+	TODO
 
-	Rational numbers
-		The rational numbers are defined as the set of all possible fractions. That is, one integer divided by another, where the denominator cannot be zero.
-		In mathematical set notation,
-			Q = { a / b, where a is an integer and b is an integer not equal to zero }
+Rational numbers
+	The rational numbers are defined as the set of all possible fractions. That is, one integer divided by another, where the denominator cannot be zero.
+	In mathematical set notation,
+		Q = { a / b, where a is an integer and b is an integer not equal to zero }
 
-	Fixed point
+Fixed point
 
-	Floating point
-		IEEE754 standard
-		TODO
+Floating point
+	IEEE754 standard
+	TODO
 
-		Kahan summation
+	Kahan summation
 
-	Sequences / Strings
-		Subsequence / substring
-		Views
-			External length
-			Internal length
-		Contains
-		Count
-		Find
-			Forward
-			Reverse
-		Replace
+Sequences / Strings
+	Subsequence / substring
+	Views
+		External length
+		Internal length
+	Contains
+	Count
+	Find
+		Forward
+		Reverse
+	Replace
 
-		Concatenate
-		  template<typename T> void concatenate(const span<const span<T>> spans, vector<T>& result) {
-		    size_t cResult = 0;
-		    for (const auto& s : spans)
-		      cResult += s.size();
-	      result.resize(cResult);
-	      auto r = begin(result);
-	      for (const auto& s : spans) {
-	        for (const auto& e : s) {
-	          *r = e;
-	          ++r;
-	        }
-	      }
-	      PRECONDITION(r == end(result));
-		  }
+	Concatenate
+	  template<typename T> void concatenate(const span<const span<T>> spans, vector<T>& result) {
+	    size_t cResult = 0;
+	    for (const auto& s : spans)
+	      cResult += s.size();
+      result.resize(cResult);
+      auto r = begin(result);
+      for (const auto& s : spans) {
+        for (const auto& e : s) {
+          *r = e;
+          ++r;
+        }
+      }
+      PRECONDITION(r == end(result));
+	  }
 
-		Zipper merge
-			Given two sorted sequences, merge them into one sorted sequence.
+	Zipper merge
+		Given two sorted sequences, merge them into one sorted sequence.
 
-			template<typename T> void zipperMerge(const span<T> A, const span<T> B, vector<T>& result) {
-			  result.resize(A.size() + B.size());
-			  auto a = begin(A);
-			  const auto a1 = end(A);
-			  auto b = begin(B);
-			  const auto b1 = end(B);
-			  auto r = begin(result);
-			  while (a != a1 && b != b1) {
-			    if (*a <= *b) {
-			      *r = *a;
-		        ++r;
-			      ++a;
-			    }
-			    else {
-			      *r = *b;
-		        ++r;
-			      ++b;
-			    }
-			  }
-			  while (a != a1) {
-		      *r = *a;
-	        ++r;
-		      ++a;
-			  }
-			  while (b != b1) {
-		      *r = *b;
-	        ++r;
-		      ++b;
-			  }
-			  PRECONDITION(a == a1);
-			  PRECONDITION(b == b1);
-			  PRECONDITION(r == end(result));
-			}
+Intervals
+	()
+	[]
+	(]
+	[)
+	  template<typename T> struct IntervalEE { T p0, p1; };
+	  template<typename T> struct IntervalII { T p0, p1; };
+	  template<typename T> struct IntervalEI { T p0, p1; };
+	  template<typename T> struct IntervalIE { T p0, p1; };
+	Discrete vs continuous
+	Tiling
 
-	Intervals
-		()
-		[]
-		(]
-		[)
-		  template<typename T> struct IntervalEE { T p0, p1; };
-		  template<typename T> struct IntervalII { T p0, p1; };
-		  template<typename T> struct IntervalEI { T p0, p1; };
-		  template<typename T> struct IntervalIE { T p0, p1; };
-		Discrete vs continuous
-		Tiling
-
-		Overlap
-		Intersect
-	  Union
-	  Difference
-	  Symmetric difference
-		Contains
-			Given a point and an interval, return if the point is inside the interval.
-			Given a point and a set of intervals, return if the point is inside any interval.
-		Covering
-			Given a set of points and a set of intervals, return if all points are inside any interval.
-		Merging
-			Given a set of intervals, merge them if adjacent/overlapping.
-			Given two lists of sorted, non-adjacent/overlapping intervals, merge them into one list.
+	Overlap
+	Intersect
+  Union
+  Difference
+  Symmetric difference
+	Contains
+		Given a point and an interval, return if the point is inside the interval.
+		Given a point and a set of intervals, return if the point is inside any interval.
+	Covering
+		Given a set of points and a set of intervals, return if all points are inside any interval.
+	Merging
+		Given a set of intervals, merge them if adjacent/overlapping.
+		Given two lists of sorted, non-adjacent/overlapping intervals, merge them into one list.

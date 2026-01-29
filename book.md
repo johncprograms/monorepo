@@ -66,8 +66,8 @@
   - [Lower triangular, excluding diagonal, row-wise](#lower-triangular-excluding-diagonal-row-wise)
   - [Upper triangular, excluding diagonal, col-wise](#upper-triangular-excluding-diagonal-col-wise)
   - [Upper triangular, excluding diagonal, row-wise](#upper-triangular-excluding-diagonal-row-wise)
-  - [Hankel matrix](#hankel-matrix)
-  - [Toeplitz matrix](#toeplitz-matrix)
+  - [Right-leaning diagonal (Hankel matrix)](#right-leaning-diagonal-hankel-matrix)
+  - [Left-leaning diagonal (Toeplitz matrix)](#left-leaning-diagonal-toeplitz-matrix)
   - [Compressed sparse row (CSR)](#compressed-sparse-row-csr)
   - [Compressed sparse column (CSC)](#compressed-sparse-column-csc)
   - [Page directory 1D](#page-directory-1d)
@@ -1428,7 +1428,7 @@ So the 1D-from-2D mapping is:
 index(x,y) = (2N-y)(y-1)/2 + x-1
 ```
 
-## Hankel matrix
+## Right-leaning diagonal (Hankel matrix)
 A rectangular matrix with skew diagonals (aka right-leaning diagonals) each holding one value.
 ```
 0 1 2 3
@@ -1442,8 +1442,8 @@ index(x, y) = x + y
 ```
 Note this is one of the unique matrix maps discussed that's not invertible. I.e. given a 1D index, there's no unique map back to 2D.
 
-## Toeplitz matrix
-A rectangular matrix with diagonals(aka left - leaning diagonals) each holding one value. This is the x-mirror of Hankel.
+## Left-leaning diagonal (Toeplitz matrix)
+A rectangular matrix with diagonals (aka left - leaning diagonals) each holding one value. This is the x-mirror of Hankel.
 ```
 3 2 1 0
 4 3 2 1
