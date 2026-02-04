@@ -11,7 +11,7 @@
 		- [Division](#division)
 		- [Detecting overflow](#detecting-overflow)
 	- [Base conversions](#base-conversions)
-- [Bitmap](#bitmap)
+- [Bit operations](#bit-operations)
 	- [Not (aka flip)](#not-aka-flip)
 	- [And](#and)
 	- [Or](#or)
@@ -30,10 +30,14 @@
 	- [Shift Right Arithmetic](#shift-right-arithmetic)
 	- [Rotate (aka circular shift)](#rotate-aka-circular-shift)
 	- [Reverse](#reverse)
-	- [Count leading 0s](#count-leading-0s)
-	- [Count leading 1s](#count-leading-1s)
-	- [Count trailing 0s](#count-trailing-0s)
+	- [K trailing 1s](#k-trailing-1s)
+	- [K trailing 0s](#k-trailing-0s)
+	- [K leading 1s](#k-leading-1s)
+	- [K leading 0s](#k-leading-0s)
 	- [Count trailing 1s](#count-trailing-1s)
+	- [Count trailing 0s](#count-trailing-0s)
+	- [Count leading 1s](#count-leading-1s)
+	- [Count leading 0s](#count-leading-0s)
 - [Signed integers](#signed-integers)
 	- [Sign bit](#sign-bit)
 	- [1's complement](#1s-complement)
@@ -298,8 +302,8 @@ string base16FromU64(uint64_t u) {
 }
 ```
 
-# Bitmap
-You can use a single bit to represent True/False, and densely pack them together. A bitmap is just an array of booleans, densely packed. Setting, clearing, flipping bits all turn into efficient bit operations.
+# Bit operations
+You can use a single bit to represent a Boolean value: True/False. A bitmap is defined as an array of Booleans, densely packed.
 
 In digital logic design, flip-flops get stamped together in arrays to form a bitmap of a fixed size. Like `uint32` meaning 32 bits packed together, or `uint64` meaning 64 bits. These are exposed to software as `registers`, and to programming languages as fixed-width integer types, like `uint32`, `uint64`, etc.
 
@@ -682,10 +686,167 @@ uint8_t reverse(uint8_t b) {
 ```
 You can trivially extended further to larger bitmap size.
 
-## Count leading 0s
-## Count leading 1s
-## Count trailing 0s
+## K trailing 1s
+Given a bitmap width `N`, and a number `K <= N`, generate a bitmap of `(N-K)` 0s followed by `K` trailing 1s. For instance with `N=4`,
+```
+KTrailingOnes(0) = 0000
+KTrailingOnes(1) = 0001
+KTrailingOnes(2) = 0011
+KTrailingOnes(3) = 0111
+KTrailingOnes(4) = 1111
+```
+
+This came up as a trick in [Shift Left Logical 1](#shift-left-logical-1). The key insight is that a power of two has a single bit set, followed by zeros. And if you then subtract 1, you'll get a sequence of ones.
+```
+  8 = 0b1000
+8-1 = 0b0111
+  8 = 1u << 3
+```
+So note that I can create a mask of K trailing 1s via:
+```
+uint32_t KTrailingOnes(uint32_t k) {
+	assert(k <= numeric_limits<uint32_t>::digits);
+	if (k == numeric_limits<uint32_t>::digits) return numeric_limits<uint32_t>::max();
+	return (1u << k) - 1;
+}
+```
+An alternate strategy is to take all 1s, zero out a number of leading bits via shifting them off, and then shifting back in 0s.
+```
+uint32_t KTrailingOnes(uint32_t k) {
+	assert(k <= numeric_limits<uint32_t>::digits);
+	if (k == 0) return 0;
+	if (k == numeric_limits<uint32_t>::digits) return numeric_limits<uint32_t>::max();
+	return (numeric_limits<uint32_t>::max() << (numeric_limits<uint32_t>::digits - k)) >> k;
+}
+```
+
+## K trailing 0s
+Given a bitmap width `N`, and a number `K <= N`, generate a bitmap of `(N-K)` 1s followed by `K` trailing 0s. For instance with `N=4`,
+```
+KTrailingZeros(0) = 1111
+KTrailingZeros(1) = 1110
+KTrailingZeros(2) = 1100
+KTrailingZeros(3) = 1000
+KTrailingZeros(4) = 0000
+```
+Note we can simply take [K trailing 1s](#k-trailing-1s) and flip the bits.
+```
+uint32_t KTrailingZeros(uint32_t k) {
+	return ~KTrailingOnes(k);
+}
+```
+
+## K leading 1s
+Given a bitmap width `N`, and a number `K <= N`, generate a bitmap of `K` 1s followed by `(N-K)` trailing 0s. For instance with `N=4`,
+```
+KLeadingOnes(0) = 0000
+KLeadingOnes(1) = 1000
+KLeadingOnes(2) = 1100
+KLeadingOnes(3) = 1110
+KLeadingOnes(4) = 1111
+```
+Note we can write this in terms of [K trailing 0s](#k-trailing-0s) by reversing order.
+```
+uint32_t KLeadingOnes(uint32_t k) {
+	return KTrailingZeros(numeric_limits<uint32_t>::digits - k);
+}
+```
+
+## K leading 0s
+Given a bitmap width `N`, and a number `K <= N`, generate a bitmap of `K` 0s followed by `(N-K)` trailing 1s. For instance with `N=4`,
+```
+KLeadingZeros(0) = 1111
+KLeadingZeros(1) = 0111
+KLeadingZeros(2) = 0011
+KLeadingZeros(3) = 0001
+KLeadingZeros(4) = 0000
+```
+Note we can simply take [K leading 1s](#k-leading-1s) and flip the bits.
+```
+uint32_t KLeadingZeros(uint32_t k) {
+	return ~KLeadingOnes(k);
+}
+```
+
 ## Count trailing 1s
+From the least significant bit, count how many contiguous 1 bits there are in the bitmap.
+```
+CountTrailingOnes(xxx0) = 0
+CountTrailingOnes(xx01) = 1
+CountTrailingOnes(x011) = 2
+CountTrailingOnes(0111) = 3
+CountTrailingOnes(1111) = 4
+```
+Note this is a nontrivial computation, requiring actual bit iteration/accumulation in some way.
+```
+uint32_t CountTrailingOnes(uint32_t a) {
+	for (uint32_t R = 0; R != numeric_limits<uint32_t>::digits; ++R) {
+		if ((a & 0b1) == 0) return R;
+		a = a >> 1u;
+	}
+	return numeric_limits<uint32_t>::digits;
+}
+```
+Thankfully, computer hardware have implemented this operation as an intrinsic instruction.
+```
+uint32_t CountTrailingOnes(uint32_t a) {
+	return countr_one(a);
+}
+```
+
+## Count trailing 0s
+From the least significant bit, count how many contiguous 0 bits there are in the bitmap.
+```
+CountTrailingZeros(xxx1) = 0
+CountTrailingZeros(xx10) = 1
+CountTrailingZeros(x100) = 2
+CountTrailingZeros(1000) = 3
+CountTrailingZeros(0000) = 4
+```
+This can be implemented as CountTrailingOnes via a simple negation:
+```
+uint32_t CountTrailingZeros(uint32_t a) {
+	return CountTrailingOnes(~a);
+}
+```
+The standard intrinsic:
+```
+uint32_t CountTrailingZeros(uint32_t a) {
+	return countr_zero(a);
+}
+```
+
+## Count leading 1s
+From the most significant bit, count how many contiguous 1 bits there are in the bitmap.
+```
+CountLeadingOnes(0xxx) = 0
+CountLeadingOnes(10xx) = 1
+CountLeadingOnes(110x) = 2
+CountLeadingOnes(1110) = 3
+CountLeadingOnes(1111) = 4
+```
+The standard intrinsic:
+```
+uint32_t CountLeadingOnes(uint32_t a) {
+	return countl_one(a);
+}
+```
+
+## Count leading 0s
+From the most significant bit, count how many contiguous 0 bits there are in the bitmap.
+```
+CountLeadingZeros(1xxx) = 0
+CountLeadingZeros(01xx) = 1
+CountLeadingZeros(001x) = 2
+CountLeadingZeros(0001) = 3
+CountLeadingZeros(0000) = 4
+```
+The standard intrinsic:
+```
+uint32_t CountLeadingZeros(uint32_t a) {
+	return countl_zero(a);
+}
+```
 
 # Signed integers
 So far we've only considered non-negative numbers. I.e. zero and all positives. But what about negative numbers?
@@ -693,7 +854,7 @@ So far we've only considered non-negative numbers. I.e. zero and all positives. 
 There are many different encodings, all with various trade-offs. Modern computer hardware has mostly stabilized around 2's complement for most purposes. 
 
 ## Sign bit
-Take a bitmap, choose one bit to represent + or -, and leave the rest for representing the value.
+Take a bitmap, choose one bit to represent `+` or `-`, and leave the rest for representing the value.
 
 Say we have a 3-bit bitmap:
 ```
@@ -707,7 +868,7 @@ Say we have a 3-bit bitmap:
 111 -3
 ```
 There's two things to notice here:
-    Mathematically, 0 = -0, but they have different bitmap representations. This complicates equality checks.
+    Mathematically, `0 = -0`, but they have different bitmap representations. This complicates equality checks.
     Ordering is strange: it increments positively until 3, where it jumps down and then increments negatively.
 ```
 void deconstructSignedInteger(uint64_t bitmap, uint64_t& u, bool& positive) {
@@ -723,7 +884,7 @@ void deconstructSignedInteger(uint64_t bitmap, uint64_t& u, bool& positive) {
 ```
 
 ## 1's complement
-Take a bitmap, choose the highest bit to signal + or -, and flip negative bitmaps to recover the value.
+Take a bitmap, choose the highest bit to signal `+` or `-`, and flip negative bitmaps to recover the value.
 ```
 000 0
 001 1
@@ -734,7 +895,7 @@ Take a bitmap, choose the highest bit to signal + or -, and flip negative bitmap
 110 001 -1
 111 000 -0
 ```
-This also has the 0 = -0 but not in bitmap form issue. Note there's a discontinuity jumping from 3 to -3, but otherwise the ordering is always increasing. This makes ordering slightly easier.
+This also has the `0 = -0` but not in bitmap form issue. Note there's a discontinuity jumping from 3 to -3, but otherwise the ordering is always increasing. This makes ordering slightly easier.
 ```
 void deconstructSignedInteger(uint64_t bitmap, uint64_t& u, bool& positive) {
     if (bitmap & (1ULL << 63)) {
@@ -749,7 +910,7 @@ void deconstructSignedInteger(uint64_t bitmap, uint64_t& u, bool& positive) {
 ```
 
 ## 2's complement
-Choose the highest bit to signal + or -, flip negative bitmaps and add one to recover the value.
+Choose the highest bit to signal `+` or `-`, flip negative bitmaps and add one to recover the value.
 ```
 000 0
 001 1
@@ -800,7 +961,7 @@ void deconstructSignedInteger(uint64_t bitmap, uint64_t& u, bool& positive) {
 ```
 
 ## Zig Zag
-Optimizes the number of bits required for small absolute values. Uses the least significant bit as an indicator of + or -.
+Optimizes the number of bits required for small absolute values. Uses the least significant bit as an indicator of `+` or `-`.
 ```
 000  0
 001 -1
