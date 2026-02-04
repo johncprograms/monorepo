@@ -3,88 +3,91 @@
 - [Table of Contents](#table-of-contents)
 - [What is a computer?](#what-is-a-computer)
 - [Memory array](#memory-array)
-  - [Memory cell](#memory-cell)
-  - [Modulo arithmetic](#modulo-arithmetic)
-    - [Overflow](#overflow)
-    - [Underflow](#underflow)
-    - [Multiplication](#multiplication)
-    - [Division](#division)
-    - [Detecting overflow](#detecting-overflow)
-  - [Base conversions](#base-conversions)
+	- [Memory cell](#memory-cell)
+	- [Modulo arithmetic](#modulo-arithmetic)
+		- [Overflow](#overflow)
+		- [Underflow](#underflow)
+		- [Multiplication](#multiplication)
+		- [Division](#division)
+		- [Detecting overflow](#detecting-overflow)
+	- [Base conversions](#base-conversions)
 - [Bitmap](#bitmap)
-  - [And](#and)
-  - [Or](#or)
-  - [Xor](#xor)
-  - [Not (aka flip)](#not-aka-flip)
-  - [Set](#set)
-  - [Clear (or reset)](#clear-or-reset)
-  - [Conditional not](#conditional-not)
-  - [Conditional set](#conditional-set)
-  - [Conditional clear](#conditional-clear)
-  - [Population count](#population-count)
-  - [Shift Left Logical 0:](#shift-left-logical-0)
-  - [Shift Right Logical 0:](#shift-right-logical-0)
-  - [Shift Left Logical 1:](#shift-left-logical-1)
-  - [Shift Right Logical 1:](#shift-right-logical-1)
-  - [Rotate (aka circular shift)](#rotate-aka-circular-shift)
-  - [Reverse](#reverse)
-  - [Count leading 0s](#count-leading-0s)
-  - [Count leading 1s](#count-leading-1s)
-  - [Count trailing 0s](#count-trailing-0s)
-  - [Count trailing 1s](#count-trailing-1s)
+	- [Not (aka flip)](#not-aka-flip)
+	- [And](#and)
+	- [Or](#or)
+	- [Xor](#xor)
+	- [Set](#set)
+	- [Clear (or reset)](#clear-or-reset)
+	- [Conditional not](#conditional-not)
+	- [Conditional set](#conditional-set)
+	- [Conditional clear](#conditional-clear)
+	- [Population count](#population-count)
+	- [Shift Left Logical 0](#shift-left-logical-0)
+	- [Shift Left Logical 1](#shift-left-logical-1)
+	- [Shift Left Arithmetic](#shift-left-arithmetic)
+	- [Shift Right Logical 0](#shift-right-logical-0)
+	- [Shift Right Logical 1](#shift-right-logical-1)
+	- [Shift Right Arithmetic](#shift-right-arithmetic)
+	- [Rotate (aka circular shift)](#rotate-aka-circular-shift)
+	- [Reverse](#reverse)
+	- [Count leading 0s](#count-leading-0s)
+	- [Count leading 1s](#count-leading-1s)
+	- [Count trailing 0s](#count-trailing-0s)
+	- [Count trailing 1s](#count-trailing-1s)
 - [Signed integers](#signed-integers)
-  - [Sign bit](#sign-bit)
-  - [1's complement](#1s-complement)
-  - [2's complement](#2s-complement)
-  - [Offset binary](#offset-binary)
-  - [Zig Zag](#zig-zag)
-  - [Arithmetic Shift:](#arithmetic-shift)
+	- [Sign bit](#sign-bit)
+	- [1's complement](#1s-complement)
+	- [2's complement](#2s-complement)
+	- [Offset binary](#offset-binary)
+	- [Zig Zag](#zig-zag)
 - [Self-referential memory](#self-referential-memory)
-  - [Linked list fundamentals](#linked-list-fundamentals)
-  - [Dynamic memory allocation](#dynamic-memory-allocation)
+	- [Linked list fundamentals](#linked-list-fundamentals)
+	- [Dynamic memory allocation](#dynamic-memory-allocation)
 - [Directed lists](#directed-lists)
 - [Variable size array](#variable-size-array)
 - [Variable size bitmap](#variable-size-bitmap)
 - [Graphs](#graphs)
-  - [Adjacency matrix](#adjacency-matrix)
-  - [Adjacency lists](#adjacency-lists)
-  - [Implicit/formulaic](#implicitformulaic)
-    - [1D Lattice](#1d-lattice)
-    - [2D Lattice](#2d-lattice)
-    - [ND Lattice](#nd-lattice)
-    - [Hash partitioning](#hash-partitioning)
-    - [Rendezvous hashing](#rendezvous-hashing)
+	- [Adjacency matrix](#adjacency-matrix)
+	- [Adjacency lists](#adjacency-lists)
+	- [Implicit/formulaic](#implicitformulaic)
+		- [1D Lattice](#1d-lattice)
+		- [2D Lattice](#2d-lattice)
+		- [ND Lattice](#nd-lattice)
+		- [Hash partitioning](#hash-partitioning)
+		- [Rendezvous hashing](#rendezvous-hashing)
 - [Dimensional packing](#dimensional-packing)
-  - [Horizontal stripe](#horizontal-stripe)
-  - [Horizontal striding (sub-stripe)](#horizontal-striding-sub-stripe)
-  - [Vertical stripe](#vertical-stripe)
-  - [Vertical striding (sub-stripe)](#vertical-striding-sub-stripe)
-  - [Lower triangular, row-wise](#lower-triangular-row-wise)
-  - [Upper triangular, col-wise](#upper-triangular-col-wise)
-  - [Upper triangular, row-wise](#upper-triangular-row-wise)
-  - [Lower triangular, col-wise](#lower-triangular-col-wise)
-  - [Lower triangular, excluding diagonal, row-wise](#lower-triangular-excluding-diagonal-row-wise)
-  - [Upper triangular, excluding diagonal, col-wise](#upper-triangular-excluding-diagonal-col-wise)
-  - [Upper triangular, excluding diagonal, row-wise](#upper-triangular-excluding-diagonal-row-wise)
-  - [Right-leaning diagonal (Hankel matrix)](#right-leaning-diagonal-hankel-matrix)
-  - [Left-leaning diagonal (Toeplitz matrix)](#left-leaning-diagonal-toeplitz-matrix)
-  - [Compressed sparse row (CSR)](#compressed-sparse-row-csr)
-  - [Compressed sparse column (CSC)](#compressed-sparse-column-csc)
-  - [Page directory 1D](#page-directory-1d)
-  - [Address concatenation](#address-concatenation)
-  - [Morton order](#morton-order)
-  - [Sparse Array Bitmap](#sparse-array-bitmap)
-  - [Locality Sensitive Hashing](#locality-sensitive-hashing)
+	- [Horizontal stripe](#horizontal-stripe)
+	- [Horizontal striding (sub-stripe)](#horizontal-striding-sub-stripe)
+	- [Vertical stripe](#vertical-stripe)
+	- [Vertical striding (sub-stripe)](#vertical-striding-sub-stripe)
+	- [Lower triangular, row-wise](#lower-triangular-row-wise)
+	- [Upper triangular, col-wise](#upper-triangular-col-wise)
+	- [Upper triangular, row-wise](#upper-triangular-row-wise)
+	- [Lower triangular, col-wise](#lower-triangular-col-wise)
+	- [Lower triangular, excluding diagonal, row-wise](#lower-triangular-excluding-diagonal-row-wise)
+	- [Upper triangular, excluding diagonal, col-wise](#upper-triangular-excluding-diagonal-col-wise)
+	- [Upper triangular, excluding diagonal, row-wise](#upper-triangular-excluding-diagonal-row-wise)
+	- [Right-leaning diagonal (Hankel matrix)](#right-leaning-diagonal-hankel-matrix)
+	- [Left-leaning diagonal (Toeplitz matrix)](#left-leaning-diagonal-toeplitz-matrix)
+	- [Compressed sparse row (CSR)](#compressed-sparse-row-csr)
+	- [Compressed sparse column (CSC)](#compressed-sparse-column-csc)
+	- [yx Address concatenation](#yx-address-concatenation)
+	- [xy Address concatenation](#xy-address-concatenation)
+	- [Morton order](#morton-order)
+	- [ND address concatenation](#nd-address-concatenation)
+	- [Page directory](#page-directory)
+	- [Sparse Array Bitmap](#sparse-array-bitmap)
+	- [Locality Sensitive Hashing](#locality-sensitive-hashing)
 - [Instructions](#instructions)
 - [Execution state](#execution-state)
 - [Instruction parallelism (SIMD)](#instruction-parallelism-simd)
 - [Execution parallelism](#execution-parallelism)
-  - [Multi-computer parallelism](#multi-computer-parallelism)
-  - [Multi-process parallelism](#multi-process-parallelism)
-  - [Multi-thread parallelism](#multi-thread-parallelism)
-  - [Lockstep parallelism (SIMT)](#lockstep-parallelism-simt)
-    - [Conditionals](#conditionals)
-    - [Dynamic lockstep](#dynamic-lockstep)
+	- [Multi-computer parallelism](#multi-computer-parallelism)
+	- [Multi-process parallelism](#multi-process-parallelism)
+	- [Multi-thread parallelism](#multi-thread-parallelism)
+	- [Lockstep parallelism (SIMT)](#lockstep-parallelism-simt)
+		- [Conditionals](#conditionals)
+		- [Dynamic lockstep](#dynamic-lockstep)
 - [SCRATCH](#scratch)
 - [ENDSCRATCH](#endscratch)
 
@@ -317,67 +320,159 @@ Some highly specialized bit operations do define what should happen, but those u
 
 With a fixed number of bits, there are some operations that do work across bits, not in an entirely parallel fashion.
 
+## Not (aka flip)
+```
+not(0) = 1
+not(1) = 0
+```
+Single bit version:
+```
+uint1_t not(uint1_t a) {
+    return ~a;
+}
+```
+Multi bit version:
+```
+uint32_t not(uint32_t a) {
+    return ~a;
+}
+```
+
 ## And
 ```
 and(0,0) = 0
 and(0,1) = 0
 and(1,0) = 0
 and(1,1) = 1
-result = a & b
 ```
+Single bit version:
+```
+uint1_t and(uint1_t a, uint1_t b) {
+    return a & b;
+}
+```
+Multi bit version:
+```
+uint32_t and(uint32_t a, uint32_t b) {
+    return a & b;
+}
+```
+
 ## Or
 ```
 or(0,0) = 0
 or(0,1) = 1
 or(1,0) = 1
 or(1,1) = 1
-result = a | b
 ```
+Single bit version:
+```
+uint1_t or(uint1_t a, uint1_t b) {
+    return a | b;
+}
+```
+Multi bit version:
+```
+uint32_t or(uint32_t a, uint32_t b) {
+    return a | b;
+}
+```
+
 ## Xor
 ```
 xor(0,0) = 0
 xor(0,1) = 1
 xor(1,0) = 1
 xor(1,1) = 0
-result = a ^ b
 ```
-## Not (aka flip)
+Single bit version:
 ```
-not(0) = 1
-not(1) = 0
-result = ~b
+uint1_t xor(uint1_t a, uint1_t b) {
+    return a ^ b;
+}
 ```
+Multi bit version:
+```
+uint32_t xor(uint32_t a, uint32_t b) {
+    return a ^ b;
+}
+```
+
 ## Set
-By 'set' most programmers mean 'set to 1' in a base 2 context. This is a trivial set to 1.
+By 'set' most programmers mean 'set to 1' in a base 2 context. This is a trivial set to 1. Single bit version:
 ```
-result = 1
+void set(uint1_t& a) {
+    a = 1;
+}
 ```
+Multi bit version:
+```
+void set(uint32_t& a) {
+    a = numeric_limits<uint32_t>::max();
+}
+```
+
 ## Clear (or reset)
-By 'clear' or 'reset', most programmers mean 'set to 0' in a base 2 context. This is a trivial set to 0.
+By 'clear' or 'reset', most programmers mean 'set to 0' in a base 2 context. This is a trivial set to 0. Single bit version:
 ```
-result = 0
+void clear(uint1_t& a) {
+    a = 0;
+}
 ```
+Multi bit version:
+```
+void clear(uint32_t& a) {
+    a = 0;
+}
+```
+
 ## Conditional not
-`cnot(b,value)` means: if value is true, flip b. Otherwise return b.
+`cnot(a,condition)` means: if condition is true, flip a. Otherwise return a.
 ```
 cnot(0,0) = 0
 cnot(0,1) = 1
 cnot(1,0) = 1
 cnot(1,1) = 0
 ```
-Note this is the same as `xor(b,value)`. So you can write this in code as:
+Note this is the same as `xor(a,condition)`. Single bit version:
 ```
-result = b ^ value
+uint1_t cnot(uint1_t a, uint1_t condition) {
+    return a ^ condition;
+}
 ```
+Multi bit version:
+```
+uint32_t cnot(uint32_t a, uint32_t condition) {
+    return a ^ condition;
+}
+```
+
 ## Conditional set
-`cset(b,value)` means: If value is 0, we want to leave b alone. Else value is 1, we're setting b to 1.
+`cset(a,condition)` means: If condition is 0, we want to leave a alone. Else condition is 1, we're setting a to 1. Single bit version:
 ```
-result = b | value
+uint1_t cset(uint1_t a, uint1_t condition) {
+    return a | condition;
+}
 ```
+Multi bit version:
+```
+uint32_t cset(uint32_t a, uint32_t condition) {
+    return a | condition;
+}
+```
+
 ## Conditional clear
-`cclear(b,value)` means: If value is 0, we want to leave b alone. Else value is 1, we're setting b to 0.
+`cclear(a,condition)` means: If condition is 0, we want to leave a alone. Else condition is 1, we're setting a to 0. Single bit version:
 ```
-result = b & ~value
+uint1_t cclear(uint1_t a, uint1_t condition) {
+    return a & ~condition;
+}
+```
+Multi bit version:
+```
+uint32_t cclear(uint32_t a, uint32_t condition) {
+    return a & ~condition;
+}
 ```
 
 ## Population count
@@ -385,7 +480,8 @@ Counts the number of bits set to 1 in the bitmap.
 ```
 result = popcount(b)
 ```
-## Shift Left Logical 0:
+
+## Shift Left Logical 0
 Shifts the bits by a specified number of bits, adding in zeros (or ones) as needed to fill the rest.
 Once you run up against the limits of the bitmap size, bits shift off the end. Say we're in uint8.
 ```
@@ -401,9 +497,57 @@ shiftLeftLogical0(1111,8) = 00000000
 ```
 Any higher shift values give 0.
 ```
-a << b
+uint32_t shiftLeftLogical0(uint32_t a, uint32_t b) {
+    return (a << b);
+}
 ```
-## Shift Right Logical 0:
+
+## Shift Left Logical 1
+Same concept as for Left Logical 0, but shifts in 1 bits instead of 0 bits.
+```
+shiftLeftLogical1(1111,0) =     1111
+shiftLeftLogical1(1111,1) =    11111
+shiftLeftLogical1(1111,2) =   111111
+shiftLeftLogical1(1111,3) =  1111111
+shiftLeftLogical1(1111,4) = 11111111
+shiftLeftLogical1(1111,5) = 11111111
+shiftLeftLogical1(1111,6) = 11111111
+shiftLeftLogical1(1111,7) = 11111111
+shiftLeftLogical1(1111,8) = 11111111
+```
+Generally there's no intrinsic for this.
+```
+uint32_t shiftLeftLogical1(uint32_t a, uint32_t b) {
+    if (b >= 32) return numeric_limits<uint32_t>::max();
+    const uint32_t mask = (1u << b) - 1;
+    return (a << b) | mask;
+}
+```
+
+## Shift Left Arithmetic
+Same concept as for Left Logical 0/1, but shifts in a bit that matches the least significant bit.
+```
+shiftLeftArithmetic(111x,0) =     111x
+shiftLeftArithmetic(111x,1) =    111xx
+shiftLeftArithmetic(111x,2) =   111xxx
+shiftLeftArithmetic(111x,3) =  111xxxx
+shiftLeftArithmetic(111x,4) = 111xxxxx
+shiftLeftArithmetic(111x,5) = 11xxxxxx
+shiftLeftArithmetic(111x,6) = 1xxxxxxx
+shiftLeftArithmetic(111x,7) = xxxxxxxx
+shiftLeftArithmetic(111x,8) = xxxxxxxx
+```
+Where `x` is either `0` or `1`. Generally there's no intrinsic for this.
+```
+uint32_t shiftLeftArithmetic(uint32_t a, uint32_t b) {
+    const uint32_t bit = a & 0b1;
+    const uint32_t mask = (bit << b) - 1;
+    if (b >= 32) return (mask << 1) | bit;
+    return (a << b) | mask;
+}
+```
+
+## Shift Right Logical 0
 Same concept as for Left Logical 0, but shifts in the other direction.
 ```
 shiftRightLogical0(11110000,0) = 11110000
@@ -418,41 +562,58 @@ shiftRightLogical0(11110000,8) = 00000000
 ```
 Any higher shift values give 0.
 ```
-a >> b
+uint32_t shiftRightLogical0(uint32_t a, uint32_t b) {
+    return (a >> b);
+}
 ```
-## Shift Left Logical 1:
-Same concept as for Left Logical 0, but shifts in 1 bits instead of 0 bits.
-```
-shiftLeftLogical1(11110000,0) =     1111
-shiftLeftLogical1(11110000,1) =    11111
-shiftLeftLogical1(11110000,2) =   111111
-shiftLeftLogical1(11110000,3) =  1111111
-shiftLeftLogical1(11110000,4) = 11111111
-shiftLeftLogical1(11110000,5) = 11111111
-shiftLeftLogical1(11110000,6) = 11111111
-shiftLeftLogical1(11110000,7) = 11111111
-shiftLeftLogical1(11110000,8) = 11111111
-```
-Generally there's no intrinsic for this.
-```
-TODO
-```
-## Shift Right Logical 1:
+
+## Shift Right Logical 1
 Same concept as for Right Logical 0, but shifts in 1 bits instead of 0 bits.
 ```
-shiftRightLogical1(11110000,0) = 11110000
-shiftRightLogical1(11110000,1) = 11111000
-shiftRightLogical1(11110000,2) = 11111100
-shiftRightLogical1(11110000,3) = 11111110
-shiftRightLogical1(11110000,4) = 11111111
-shiftRightLogical1(11110000,5) = 11111111
-shiftRightLogical1(11110000,6) = 11111111
-shiftRightLogical1(11110000,7) = 11111111
-shiftRightLogical1(11110000,8) = 11111111
+shiftRightLogical1(01110000,0) = 01110000
+shiftRightLogical1(01110000,1) = 10111000
+shiftRightLogical1(01110000,2) = 11011100
+shiftRightLogical1(01110000,3) = 11101110
+shiftRightLogical1(01110000,4) = 11110111
+shiftRightLogical1(01110000,5) = 11111011
+shiftRightLogical1(01110000,6) = 11111101
+shiftRightLogical1(01110000,7) = 11111110
+shiftRightLogical1(01110000,8) = 11111111
 ```
 Generally there's no intrinsic for this.
 ```
-TODO
+uint32_t shiftRightLogical1(uint32_t a, uint32_t b) {
+    if (b >= numeric_limits<uint32_t>::digits) return numeric_limits<uint32_t>::max();
+    const uint32_t mask = (1u << b) - 1;
+    const uint32_t upper = mask << (numeric_limits<uint32_t>::digits - b);
+    return upper | (a >> b);
+}
+```
+
+## Shift Right Arithmetic
+Same concept as for Right Logical 0/1, but shifts in a bit that matches the most significant bit.
+```
+shiftRightArithmetic(x1110000,0) = x1110000
+shiftRightArithmetic(x1110000,1) = xx111000
+shiftRightArithmetic(x1110000,2) = xxx11100
+shiftRightArithmetic(x1110000,3) = xxxx1110
+shiftRightArithmetic(x1110000,4) = xxxxx111
+shiftRightArithmetic(x1110000,5) = xxxxxx11
+shiftRightArithmetic(x1110000,6) = xxxxxxx1
+shiftRightArithmetic(x1110000,7) = xxxxxxxx
+shiftRightArithmetic(x1110000,8) = xxxxxxxx
+```
+Where `x` is either `0` or `1`. Generally, signed integer right shift will do this by default. For unsigned integers, generally there's no intrinsic.
+```
+int32_t shiftRightArithmetic(int32_t a, int32_t b) {
+    return (a >> b);
+}
+uint32_t shiftRightArithmetic(uint32_t a, uint32_t b) {
+    if (b >= numeric_limits<uint32_t>::digits) return numeric_limits<uint32_t>::max();
+    const uint32_t bit = (a >> (numeric_limits<uint32_t>::digits - 1)) & 0b1;
+    const uint32_t upper = mask << (numeric_limits<uint32_t>::digits - b);
+    return upper | (a >> b);
+}
 ```
 
 ## Rotate (aka circular shift)
@@ -468,13 +629,13 @@ rotateLeft(1100,4) = 1100
 
 Intrinsic:
 ```
-result = rotl(b,count)
+result = rotl(a,count)
 ```
 For uint64, it would look like:
 ```
-uint64_t rotl(uint64_t b, uint64_t count) {
+uint64_t rotl(uint64_t a, uint64_t count) {
     count = count % 64;
-    return count == 0 ? b : (b << count) | (b >> (64 - count));
+    return count == 0 ? a : (a << count) | (a >> (64 - count));
 }
 ```
 
@@ -489,13 +650,13 @@ rotateRight(1100,4) = 1100
 
 Intrinsic:
 ```
-		result = rotr(b,count)
+		result = rotr(a,count)
 ```
 For uint64, it would look like:
 ```
-uint64_t rotr(uint64_t b, uint64_t count) {
+uint64_t rotr(uint64_t a, uint64_t count) {
     count = count % 64;
-    return count == 0 ? b : (b >> count) | (b << (64 - count));
+    return count == 0 ? a : (a >> count) | (a << (64 - count));
 }
 ```
 
@@ -662,9 +823,6 @@ void deconstructSignedInteger(uint64_t bitmap, uint64_t& u, bool& positive) {
     }
 }
 ```
-
-## Arithmetic Shift:
-TODO
 
 # Self-referential memory
 Recall that memory is a configurable number to number map. The reason to use numbers on both sides is so we can store references to memory slots within the slots themselves.
@@ -1500,7 +1658,124 @@ CompressedSparseRow<int32_t> csr = {
 ## Compressed sparse column (CSC)
 Exactly the same as CSR, but transposed. Trivially swap x,y and you'll have the CSC version.
 
-## Page directory 1D
+## yx Address concatenation
+Given `xx` and `yy`, concatenate the bits to get `yyxx`. For example, with 2 bit length `x` and `y`,
+```
+     00   01   10   11 x
+00 0000 0001 0010 0011
+01 0100 0101 0110 0111
+10 1000 1001 1010 1011
+11 1100 1101 1110 1111
+ y
+```
+Mapping back to base 10,
+```
+ 0  1  2  3
+ 4  5  6  7
+ 8  9 10 11
+12 13 14 15
+```
+Note that this is identical to the [Horizontal stripe](#horizontal-stripe) layout. It works when the `X` dimension is a power of two.
+
+## xy Address concatenation
+Given `xx` and `yy`, concatenate the bits to get `xxyy`. For example, with 2 bit length `x` and `y`,
+```
+     00   01   10   11 x
+00 0000 0100 1000 1100
+01 0001 0101 1001 1101
+10 0010 0110 1010 1110
+11 0011 0111 1011 1111
+ y
+```
+Mapping back to base 10,
+```
+ 0  4  8 12
+ 1  5  9 13
+ 2  6 10 14
+ 3  7 11 15
+```
+Note that this is identical to the [Vertical stripe](#vertical-stripe) layout. It works then the `Y` dimension is a power of two.
+
+## Morton order
+Given `xx` and `yy`, interleave the bits to get `yxyx`. For example, with 2 bit length `x` and `y`,
+```
+     00   01   10   11 x
+00 0000 0001 0100 0101
+01 0010 0011 0110 0111
+10 1000 1001 1100 1101
+11 1010 1011 1110 1111
+ y
+```
+Mapping back to base 10,
+```
+ 0  1  4  5
+ 2  3  6  7
+ 8  9 12 13
+10 11 14 15
+```
+Notice how it's a Z pattern of smaller Z patterns. This self-similar hierarchy continues for every 2 more bits present in `x` and `y`. 
+
+The 1D-from-2D mapping is:
+```
+uint16_t index(uint8_t x, uint8_t y) {
+    const uint16_t a = x;
+    const uint16_t b = y;
+    const uint16_t A = 
+        ((a & 0b00000001) << 0) |
+        ((a & 0b00000010) << 2) |
+        ((a & 0b00000100) << 4) |
+        ((a & 0b00001000) << 6) |
+        ((a & 0b00010000) << 8) |
+        ((a & 0b00100000) << 10) |
+        ((a & 0b01000000) << 12) |
+        ((a & 0b10000000) << 14);
+    const uint16_t B =
+        ((b & 0b00000001) << 1) |
+        ((b & 0b00000010) << 3) |
+        ((b & 0b00000100) << 5) |
+        ((b & 0b00001000) << 7) |
+        ((b & 0b00010000) << 9) |
+        ((b & 0b00100000) << 11) |
+        ((b & 0b01000000) << 13) |
+        ((b & 0b10000000) << 15);
+    return A | B;
+}
+```
+This is usually implemented in hardware, since it's a simple bit interleave operation, and that can be done by just twisting wires to perform the interleave.
+
+For image downsizing, this is the optimal memory layout. Consider collapsing each 2x2 sub-image down into a 1x1 pixel. Each 2x2 is already contiguous.
+```
+template<typename T> vector<T> DownsizeMortonByHalf(const span<T> image) {
+    const size_t cI = image.size();
+    assert(cI % 4 == 0);
+    const size_t cR = cI / 4;
+    vector<T> R(cR);
+    for (size_t i = 0; i < cR; ++i) {
+        R[i] = (image[4*i+0] + image[4*i+1] + image[4*i+2] + image[4*i+3]) / 4;
+    }
+    return R;
+}
+```
+Note that since the Morton order is self-similar, you can trivially downsize again and again, until you reach a 1x1 image. Graphics people call this a Level-of-Detail hierarchy, and it's helpful for when you want to render image thumbnails at any size smaller than the original size.
+
+## ND address concatenation
+Given an N-dimensional grid with `E[N]` denoting the extent of dimension N, and each `E[N]` is a power of two, you can interleave and/or concatenate linear address bits for each individual dimension, into a singular 1-dimensional address.
+
+For example, say we have a 4x8x16 grid, each addressed respectively via `xx`, `yyy`, `zzzz`. All possible permutations of all of these bits form all possible address concatenation schemes.
+```
+xxyyyzzzz
+zzzzyyyxx
+xyxyyzzzz
+zzzzyyxyx
+...
+```
+The bits also don't necessarily have to remain in their original orders per dimension, so it really is all possible permutations of the bits. There are `P(K,K) = K!` permutations, where `K` is the total number of bits across all dimensions. So notice that as the number of dimensions and the extents of the dimensions grows, the possible 1-dimensional encodings according to this scheme grows exponentially.
+
+This technique is particularly powerful, unique in that it can collapse N-dimensions directly down into 1 with one scheme. Most of the other dimensional packing schemes subtract one dimension (e.g. take 2D to 1D), whereas this scheme divides by N to go straight to 1D.
+
+When combined with 1D sparsity techniques, this is one way you can encode arbitrary dimensional data with very little source code.
+
+## Page directory
 First, consider 1D lattice sparsity. If I have `S = { 0 1 ... N-1 }` with some arbitrary subsets present, how do I store the subset efficiently for large N?
 The page idea is to split the `S` space into chunks of size `C` (aka pages). Then I can make one root directory page, which contains the addresses of chunks that are either present or not. There are multiple directory schemes, but this is the simplest.
 ```
@@ -1535,13 +1810,8 @@ template<typename T> struct PageDirectory1D {
 };
 ```
 
-## Address concatenation
-
-## Morton order
-x|y|...|x|y
-
 ## Sparse Array Bitmap
-Idea: use a register-sized bitmap (e.g. uint64_t) to represent presence, and an array of present values (sorted by index order).
+Idea: use a register-sized bitmap (e.g. `uint64_t`) to represent presence, and an array of present values (sorted by index order).
 For example, shrinking it down to 8 bits for a moment, we have a universe of indexes `S = { 0 1 ... 7 }`. Say I want to store values corresponding to the sparse subset `s = { 0 1 6 }`.
 ```
 bitmap = 01000011
@@ -1624,69 +1894,7 @@ Modern GPUs allow for dynamic divergence and convergence, even automatically, to
 # SCRATCH
 
 
-The pattern here is trickier to define. It's easiest to conceptualize as a sequence of mirrorings. Start with [Lower triangular, row-wise](#lower-triangular-row-wise)
-```
-0
-1 2
-3 4 5
-6 7 8 9
-```
-```
-index(x,y) = y(y+1)/2 + x
-```
-Mirror in the x dimension.
-```
-    0
-    2 1
-5 4 3
-9 8 7 6
-```
-```
-index1(x,y) = index(N-1-x, y)
-= y(y+1)/2 + N-1-x
-```
-Mirror in the y dimension.
-```
-9 8 7 6
-5 4 3
-    2 1
-    0
-```
-```
-index2(x,y) = index1(x, N-1-y)
-= (N-1-y)((N-1-y)+1)/2 + N-1-x
-```
-And finally, mirror the 1D index itself to reverse the linear order and get to the desired order.
-```
-0 1 2 3
-4 5 6
-    7 8
-    9
-```
-```
-index3(x,y) = N(N+1)/2 - 1 - index2(x, y)
-```
-
-```
-{ 0 4 7 9 }
-{ 9-9 9-5 9-2 9-0 }
 
 
-index(x,y) = y(y+1)/2 + x
-mirror x and y:
-index1(x,y) = index(N-1-x, N-1-y)
-= (N-1-y)(N-y)/2 + (N-1-x)
-= ((N-1) - y)(N - y)/2 + (N-1) - x
-= (N-1)N/2 - (N-1)y/2 - Ny/2 + y^2/2 + (N-1) - x
-
-Reverse the linear index too:
-= N(N+1)/2 - 1 - (N-1)N/2 + (N-1)y/2 + Ny/2 - y^2/2 - (N-1) + x
-= ((N+1)-(N-1))N/2 - 1 + (N-1+N)y/2 - y^2/2 - (N-1) + x
-= (N+1-N+1)N/2 - 1 + (2N-1)y/2 - y^2/2 - N + 1 + x
-= (2N-1)y/2 - y^2/2 + x
-= (2N-1-y)y/2 + x
-```
 
 # ENDSCRATCH
-
-
