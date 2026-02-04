@@ -21,7 +21,6 @@
 	- [Conditional not](#conditional-not)
 	- [Conditional set](#conditional-set)
 	- [Conditional clear](#conditional-clear)
-	- [Population count](#population-count)
 	- [Shift Left Logical 0](#shift-left-logical-0)
 	- [Shift Left Logical 1](#shift-left-logical-1)
 	- [Shift Left Arithmetic](#shift-left-arithmetic)
@@ -30,6 +29,12 @@
 	- [Shift Right Arithmetic](#shift-right-arithmetic)
 	- [Rotate (aka circular shift)](#rotate-aka-circular-shift)
 	- [Reverse](#reverse)
+	- [Population count](#population-count)
+	- [Is power of 2](#is-power-of-2)
+	- [Ceiling to power of 2](#ceiling-to-power-of-2)
+	- [Floor to power of 2](#floor-to-power-of-2)
+	- [Ceiling to multiple of power of 2](#ceiling-to-multiple-of-power-of-2)
+	- [Floor to multiple of power of 2](#floor-to-multiple-of-power-of-2)
 	- [K trailing 1s](#k-trailing-1s)
 	- [K trailing 0s](#k-trailing-0s)
 	- [K leading 1s](#k-leading-1s)
@@ -479,12 +484,6 @@ uint32_t cclear(uint32_t a, uint32_t condition) {
 }
 ```
 
-## Population count
-Counts the number of bits set to 1 in the bitmap.
-```
-result = popcount(b)
-```
-
 ## Shift Left Logical 0
 Shifts the bits by a specified number of bits, adding in zeros (or ones) as needed to fill the rest.
 Once you run up against the limits of the bitmap size, bits shift off the end. Say we're in uint8.
@@ -686,6 +685,80 @@ uint8_t reverse(uint8_t b) {
 ```
 You can trivially extended further to larger bitmap size.
 
+## Population count
+Counts the number of bits set to 1 in the bitmap. This usually requires an iteration over bits:
+```
+uint32_t PopulationCount(uint32_t a) {
+	uint32_t R = 0;
+	for (size_t i = 0; i < numeric_limits<uint32_t>::digits; ++i) {
+		R += (a & 0b1);
+		a = a >> 1;
+	}
+	return R;
+}
+```
+Thankfully, modern computer hardware has implemented this operation as an intrinsic instruction.
+```
+uint32_t PopulationCount(uint32_t a) {
+	return popcount(a);
+}
+```
+
+## Is power of 2
+```
+IsPowerOf2(0) = IsPowerOf2(000) = 0
+IsPowerOf2(1) = IsPowerOf2(001) = 1
+IsPowerOf2(2) = IsPowerOf2(010) = 1
+IsPowerOf2(3) = IsPowerOf2(011) = 0
+IsPowerOf2(4) = IsPowerOf2(100) = 1
+IsPowerOf2(5) = IsPowerOf2(101) = 0
+...
+```
+Notice that `IsPowerOf2` returns True when there's precisely one `1` bit present. And if you subtract 1, you'll get a sequence of 1s trailing the original 1 bit.
+```
+  4 = 0100
+4-1 = 0011
+```
+Treating that as a mask, we can check if any of those lower bits are set via [And](#and).
+```
+bool IsPowerOf2(uint32_t a) {
+	return (a & (a-1)) == 0;
+}
+```
+Or by using [Population count](#population-count) directly,
+```
+bool IsPowerOf2(uint32_t a) {
+	return popcount(a) == 1;
+}
+```
+The C++ standard library has `has_single_bit` which does this.
+```
+bool IsPowerOf2(uint32_t a) {
+	return has_single_bit(a);
+}
+```
+
+## Ceiling to power of 2
+Rounds a given integer up to a power of 2. If it's already a power of 2, leave it alone.
+```
+CeilingPowerOf2(0) = CeilingPowerOf2(000) = 1
+CeilingPowerOf2(1) = CeilingPowerOf2(001) = 1
+CeilingPowerOf2(2) = CeilingPowerOf2(010) = 2
+CeilingPowerOf2(3) = CeilingPowerOf2(011) = 4
+CeilingPowerOf2(4) = CeilingPowerOf2(100) = 4
+CeilingPowerOf2(5) = CeilingPowerOf2(101) = 8
+```
+TODO
+
+## Floor to power of 2
+TODO
+
+## Ceiling to multiple of power of 2
+TODO
+
+## Floor to multiple of power of 2
+TODO
+
 ## K trailing 1s
 Given a bitmap width `N`, and a number `K <= N`, generate a bitmap of `(N-K)` 0s followed by `K` trailing 1s. For instance with `N=4`,
 ```
@@ -787,7 +860,7 @@ uint32_t CountTrailingOnes(uint32_t a) {
 	return numeric_limits<uint32_t>::digits;
 }
 ```
-Thankfully, computer hardware have implemented this operation as an intrinsic instruction.
+Thankfully, modern computer hardware has implemented this operation as an intrinsic instruction.
 ```
 uint32_t CountTrailingOnes(uint32_t a) {
 	return countr_one(a);
