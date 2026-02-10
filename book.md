@@ -17,7 +17,7 @@
 	- [Or](#or)
 	- [Xor](#xor)
 	- [Set](#set)
-	- [Clear (or reset)](#clear-or-reset)
+	- [Clear (aka reset)](#clear-aka-reset)
 	- [Conditional not](#conditional-not)
 	- [Conditional set](#conditional-set)
 	- [Conditional clear](#conditional-clear)
@@ -206,8 +206,10 @@ Else if x is greater than or equal to y, subtract multiples of y until you put t
 Otherwise x is already in the [0, y) range, and the result is x. You can think of it as q = 0.
 
 ### Multiplication
+TODO
 
 ### Division
+TODO
 
 ### Detecting overflow
 `a + b` overflows when `a + b >= numeric_limits<>::max()`. Rearranging to avoid overflow in the detection, `a >= numeric_limits<>::max() - b`.
@@ -438,7 +440,7 @@ void set(uint32_t& a) {
 }
 ```
 
-## Clear (or reset)
+## Clear (aka reset)
 By 'clear' or 'reset', most programmers mean 'set to 0' in a base 2 context. This is a trivial set to 0. Single bit version:
 ```
 void clear(uint1_t& a) {
@@ -2430,6 +2432,94 @@ Modern GPUs allow for dynamic divergence and convergence, even automatically, to
 
 ## Least common multiple
 
+
+Directed trees
+Directed forests
+Directed acyclic graphs
+Directed graphs
+Directed multigraphs
+
+Undirected lists
+Undirected trees
+Undirected forests
+Undirected acyclic graphs
+Undirected graphs
+Undirected multigraphs
+
+
+Arbitrary size integers
+	d = sum of d_base^k * base^k, for k = 0, 1, 2, ...
+	TODO
+
+Rational numbers
+	The rational numbers are defined as the set of all possible fractions. That is, one integer divided by another, where the denominator cannot be zero.
+	In mathematical set notation,
+		Q = { a / b, where a is an integer and b is an integer not equal to zero }
+
+Fixed point
+
+Floating point
+	IEEE754 standard
+	TODO
+
+Kahan summation
+
+Sequences / Strings
+	Subsequence / substring
+	Views
+		External length
+		Internal length
+	Contains
+	Count
+	Find
+		Forward
+		Reverse
+	Replace
+
+	Concatenate
+	  template<typename T> void concatenate(const span<const span<T>> spans, vector<T>& result) {
+	    size_t cResult = 0;
+	    for (const auto& s : spans)
+	      cResult += s.size();
+      result.resize(cResult);
+      auto r = begin(result);
+      for (const auto& s : spans) {
+        for (const auto& e : s) {
+          *r = e;
+          ++r;
+        }
+      }
+      PRECONDITION(r == end(result));
+	  }
+
+	Zipper merge
+		Given two sorted sequences, merge them into one sorted sequence.
+
+Intervals
+	()
+	[]
+	(]
+	[)
+	  template<typename T> struct IntervalEE { T p0, p1; };
+	  template<typename T> struct IntervalII { T p0, p1; };
+	  template<typename T> struct IntervalEI { T p0, p1; };
+	  template<typename T> struct IntervalIE { T p0, p1; };
+	Discrete vs continuous
+	Tiling
+
+	Overlap
+	Intersect
+  Union
+  Difference
+  Symmetric difference
+	Contains
+		Given a point and an interval, return if the point is inside the interval.
+		Given a point and a set of intervals, return if the point is inside any interval.
+	Covering
+		Given a set of points and a set of intervals, return if all points are inside any interval.
+	Merging
+		Given a set of intervals, merge them if adjacent/overlapping.
+		Given two lists of sorted, non-adjacent/overlapping intervals, merge them into one list.
 
 
 # ENDSCRATCH
