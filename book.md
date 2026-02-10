@@ -31,10 +31,6 @@
 	- [Reverse](#reverse)
 	- [Population count](#population-count)
 	- [Is power of 2](#is-power-of-2)
-	- [Ceiling to power of 2](#ceiling-to-power-of-2)
-	- [Floor to power of 2](#floor-to-power-of-2)
-	- [Ceiling to multiple of power of 2](#ceiling-to-multiple-of-power-of-2)
-	- [Floor to multiple of power of 2](#floor-to-multiple-of-power-of-2)
 	- [K trailing 1s](#k-trailing-1s)
 	- [K trailing 0s](#k-trailing-0s)
 	- [K leading 1s](#k-leading-1s)
@@ -43,6 +39,12 @@
 	- [Count trailing 0s](#count-trailing-0s)
 	- [Count leading 1s](#count-leading-1s)
 	- [Count leading 0s](#count-leading-0s)
+	- [Floor to power of 2](#floor-to-power-of-2)
+	- [Ceiling to power of 2](#ceiling-to-power-of-2)
+	- [Floor to multiple of power of 2](#floor-to-multiple-of-power-of-2)
+	- [Ceiling to multiple of power of 2](#ceiling-to-multiple-of-power-of-2)
+	- [Floor to multiple of N](#floor-to-multiple-of-n)
+	- [Ceiling to multiple of N](#ceiling-to-multiple-of-n)
 - [Signed integers](#signed-integers)
 	- [Sign bit](#sign-bit)
 	- [1's complement](#1s-complement)
@@ -98,15 +100,18 @@
 		- [Conditionals](#conditionals)
 		- [Dynamic lockstep](#dynamic-lockstep)
 - [SCRATCH](#scratch)
+	- [Long division](#long-division)
+	- [Greatest common divisor](#greatest-common-divisor)
+	- [Least common multiple](#least-common-multiple)
 - [ENDSCRATCH](#endscratch)
 
 
 
 
 # What is a computer?
-1. Memory array
-2. Sequence of memory modification instructions stored in memory
-3. Address of the next instruction to execute
+1. [Memory array](#memory-array) An addressable information store
+2. [Instructions](#instructions) A sequence of memory modification instructions stored in memory
+3. [Execution state](#execution-state) Namely, the address of the next instruction to execute
 
 In short: memory, instructions, and execution state.
 
@@ -205,6 +210,18 @@ Otherwise x is already in the [0, y) range, and the result is x. You can think o
 ### Division
 
 ### Detecting overflow
+`a + b` overflows when `a + b >= numeric_limits<>::max()`. Rearranging to avoid overflow in the detection, `a >= numeric_limits<>::max() - b`.
+```
+bool IsOverflowingAdd(uint32_t a, uint32_t b) {
+	return a >= (numeric_limits<uint32_t>::max() - b);
+}
+```
+`a - b` underflows when `a < b`.
+```
+bool IsUnderflowingSub(uint32_t a, uint32_t b) {
+	return a < b;
+}
+```
 
 ## Base conversions
 Given a sequence of digits in some given base, convert to another base.
@@ -738,27 +755,6 @@ bool IsPowerOf2(uint32_t a) {
 }
 ```
 
-## Ceiling to power of 2
-Rounds a given integer up to a power of 2. If it's already a power of 2, leave it alone.
-```
-CeilingPowerOf2(0) = CeilingPowerOf2(000) = 1
-CeilingPowerOf2(1) = CeilingPowerOf2(001) = 1
-CeilingPowerOf2(2) = CeilingPowerOf2(010) = 2
-CeilingPowerOf2(3) = CeilingPowerOf2(011) = 4
-CeilingPowerOf2(4) = CeilingPowerOf2(100) = 4
-CeilingPowerOf2(5) = CeilingPowerOf2(101) = 8
-```
-TODO
-
-## Floor to power of 2
-TODO
-
-## Ceiling to multiple of power of 2
-TODO
-
-## Floor to multiple of power of 2
-TODO
-
 ## K trailing 1s
 Given a bitmap width `N`, and a number `K <= N`, generate a bitmap of `(N-K)` 0s followed by `K` trailing 1s. For instance with `N=4`,
 ```
@@ -918,6 +914,307 @@ The standard intrinsic:
 ```
 uint32_t CountLeadingZeros(uint32_t a) {
 	return countl_zero(a);
+}
+```
+
+## Floor to power of 2
+Rounds a given integer down to a power of 2. If it's already a power of 2, leave it alone. Let 0 stay 0.
+```
+FloorToPowerOf2(0) = FloorToPowerOf2(000) = 0
+FloorToPowerOf2(1) = FloorToPowerOf2(001) = 1
+FloorToPowerOf2(2) = FloorToPowerOf2(010) = 2
+FloorToPowerOf2(3) = FloorToPowerOf2(011) = 2
+FloorToPowerOf2(4) = FloorToPowerOf2(100) = 4
+FloorToPowerOf2(5) = FloorToPowerOf2(101) = 4
+```
+We only have to count the number of leading zeros, and from that we can generate a power of two with the same number of leading zeros.
+|a|CountLeadingZeros(a)|3-CountLeadingZeros(a)|2-CountLeadingZeros(a)|1 << (2-CountLeadingZeros(a))|
+|-|-|-|-|-|
+|000|3|0|3 (sub underflow)|000 (shift overflow)
+|001|2|1|0|001
+|010|1|2|1|010
+|011|1|2|1|010
+|100|0|3|2|100
+|101|0|3|2|100
+...
+
+Since shift overflow is `undefined behavior` in C++, we handle the `0` case explicitly.
+```
+uint32_t FloorToPowerOf2(uint32_t a) {
+	if (a == 0) return 0;
+	return 1u << (numeric_limits<uint32_t>::digits - CountLeadingZeros(a) - 1u);
+}
+```
+The standard C++ intrinsic:
+```
+uint32_t FloorToPowerOf2(uint32_t a) {
+	return bit_floor(a);
+}
+```
+
+## Ceiling to power of 2
+Rounds a given integer up to a power of 2. If it's already a power of 2, leave it alone.
+```
+CeilingToPowerOf2(0) = CeilingToPowerOf2(000) = 1
+CeilingToPowerOf2(1) = CeilingToPowerOf2(001) = 1
+CeilingToPowerOf2(2) = CeilingToPowerOf2(010) = 2
+CeilingToPowerOf2(3) = CeilingToPowerOf2(011) = 4
+CeilingToPowerOf2(4) = CeilingToPowerOf2(100) = 4
+CeilingToPowerOf2(5) = CeilingToPowerOf2(101) = 8
+```
+The `0` case is somewhat exceptional, so that's handled separately. For the rest, the key insight is that powers of 2 are unique in that if you subtract one, the number of leading zeros will change. For all other numbers, non powers of 2, subtracting one will not change the number of leading zeros. After doing the count, we can reverse the count and reconstruct a power of 2. E.g. for 4 bits,
+
+| a | a-1 | CountLeadingZeros(a-1) | 4-CountLeadingZeros(a-1) | 1 << (4-CountLeadingZeros(a-1)) |
+|-|-|-|-|-|
+0000|1111 (sub underflow)|0|4|0000 (shift overflow)|
+0001|0000|4|0|0001|
+0010|0001|3|1|0010|
+0011|0010|2|2|0100|
+0100|0011|2|2|0100|
+0101|0100|1|3|1000|
+0110|0101|1|3|1000|
+0111|0110|1|3|1000|
+1000|0111|1|3|1000|
+1001|1000|0|4|0000 (shift overflow)|
+...
+
+Notice that we get the wrong answer for `1001` because the shift overflows. The correct answer would be `10000`, but that doesn't fit in the 4 bit integer. The same happens with all numbers up to `1111`. We can either use a larger integer as the intermediate and return value, or make success conditional, or force the caller to have already dealt with it.
+```
+uint64_t CeilingToPowerOf2(uint32_t a) {
+	if (a == 0) return 1;
+	return 1ull << (numeric_limits<uint64_t>::digits - CountLeadingZeros(static_cast<uint64_t>(a) - 1));
+}
+```
+```
+bool CeilingToPowerOf2(uint32_t a, uint32_t& result) {
+	if (a == 0) {
+		result = 1;
+		return true;
+	}
+	const uint32_t cShift = numeric_limits<uint32_t>::digits - CountLeadingZeros(a - 1);
+	if (cShift >= numeric_limits<uint32_t>::digits) {
+		return false;
+	}
+	result = 1u << cShift;
+	return true;
+}
+```
+```
+uint32_t CeilingToPowerOf2(uint32_t a) {
+	if (a == 0) return 1;
+	const uint32_t cShift = numeric_limits<uint32_t>::digits - CountLeadingZeros(a - 1);
+	assert(cShift < numeric_limits<uint32_t>::digits);
+	return 1u << cShift;
+}
+```
+The standard C++ intrinsic takes the third approach, with so-called `undefined behavior`. Essentially, leaving it up to the caller to never pass in something that would cause the overflow case.
+```
+uint32_t CeilingToPowerOf2(uint32_t a) {
+	return bit_ceil(a);
+}
+```
+
+## Floor to multiple of power of 2
+Rounds a given integer down to a multiple of the given power of 2. If it's already a multiple of a power of 2, leave it alone.
+```
+FloorToMultipleOfPowerOf2(0,2) = 0
+FloorToMultipleOfPowerOf2(1,2) = 0
+FloorToMultipleOfPowerOf2(2,2) = 2
+FloorToMultipleOfPowerOf2(3,2) = 2
+FloorToMultipleOfPowerOf2(4,2) = 4
+FloorToMultipleOfPowerOf2(5,2) = 4
+FloorToMultipleOfPowerOf2(6,2) = 6
+FloorToMultipleOfPowerOf2(7,2) = 6
+...
+```
+```
+FloorToMultipleOfPowerOf2(0,4) = 0
+FloorToMultipleOfPowerOf2(1,4) = 0
+FloorToMultipleOfPowerOf2(2,4) = 0
+FloorToMultipleOfPowerOf2(3,4) = 0
+FloorToMultipleOfPowerOf2(4,4) = 4
+FloorToMultipleOfPowerOf2(5,4) = 4
+FloorToMultipleOfPowerOf2(6,4) = 4
+FloorToMultipleOfPowerOf2(7,4) = 4
+...
+```
+Note how useful this is for bucketing; `FloorToMultipleOfPowerOf2(a, powerOf2) / powerOf2` gives you a bucket number, where each bucket holds `powerOf2` unique integers. In this way, you can partition a 1D lattice `{0, 1, ..., N-1}` (where `N` is a power of 2) into uniform buckets of some smaller size (`N/2`, `N/4`, `N/8`, etc.). This technique comes up often in sparse storage designs.
+
+Getting back to the implementation, the key idea is that the least significant bits are what decide numbers in between one multiple and another. E.g. 
+```
+xxx000 multiple of 4
+xxx001
+xxx010
+xxx011
+xxx100 multiple of 4
+xxx101
+xxx110
+xxx111
+xx1000 multiple of 4
+```
+Aligning to `0` as a multiple, we can AND away the least significant bits to redirect intermediate entries above into their `multiple of 4` entries above them. So `xxx011 & 11` takes us to `xxx000 multiple of 4`. The mask we use is simply the `powerOf2 - 1`, in this case `4-1 = 3 = 11 binary`. All put together,
+```
+uint32_t FloorToMultipleOfPowerOf2(uint32_t a, uint32_t powerOf2) {
+	assert(IsPowerOf2(powerOf2));
+	return a & ~(powerOf2 - 1u);
+}
+```
+Note an alternate is to shift right and then [Shift Left Logical 0](#shift-left-logical-0), to clear the least significant bits. The amount to shift by is `CountTrailingZeros(powerOf2)`. This is generally slower than the above approach, since the `~(powerOf2 - 1u)` mask can generally be precomputed and the whole thing can be just a single `AND` instruction above, whereas the below is a serial chain of 3 instructions: `CountTrailingZeros`, `Shift Right`, `Shift Left Logical 0`. But I've included it here for reference.
+```
+uint32_t FloorToMultipleOfPowerOf2(uint32_t a, uint32_t powerOf2) {
+	assert(IsPowerOf2(powerOf2));
+	const uint32_t cShift = CountTrailingZeros(powerOf2);
+	return (a >> cShift) << cShift;
+}
+```
+
+## Ceiling to multiple of power of 2
+Rounds a given integer up to a multiple of the given power of 2. If it's already a multiple of a power of 2, leave it alone.
+```
+CeilingToMultipleOfPowerOf2(0,2) = 0
+CeilingToMultipleOfPowerOf2(1,2) = 2
+CeilingToMultipleOfPowerOf2(2,2) = 2
+CeilingToMultipleOfPowerOf2(3,2) = 4
+CeilingToMultipleOfPowerOf2(4,2) = 4
+CeilingToMultipleOfPowerOf2(5,2) = 6
+CeilingToMultipleOfPowerOf2(6,2) = 6
+CeilingToMultipleOfPowerOf2(7,2) = 8
+...
+```
+```
+CeilingToMultipleOfPowerOf2(0,4) = 0
+CeilingToMultipleOfPowerOf2(1,4) = 4
+CeilingToMultipleOfPowerOf2(2,4) = 4
+CeilingToMultipleOfPowerOf2(3,4) = 4
+CeilingToMultipleOfPowerOf2(4,4) = 4
+CeilingToMultipleOfPowerOf2(5,4) = 8
+CeilingToMultipleOfPowerOf2(6,4) = 8
+CeilingToMultipleOfPowerOf2(7,4) = 8
+...
+```
+Take the example from above:
+```
+xxx000 multiple of 4
+xxx001
+xxx010
+xxx011
+xxx100 multiple of 4
+xxx101
+xxx110
+xxx111
+xx1000 multiple of 4
+```
+The key insight here is that we can use the same floor calculation, but offset the input so that the floor aligns to the intended ceiling result. In this case, `FloorToMultipleOfPowerOf2(a + 3, 4)`. The `+3` offset takes `x01`, `x10`, `x11` down beyond the next multiple of 4, so the floor will take us back.
+```
+uint32_t CeilingToMultipleOfPowerOf2(uint32_t a, uint32_t powerOf2) {
+	assert(IsPowerOf2(powerOf2));
+	assert(!IsOverflowingAdd(a, powerOf2 - 1));
+	return FloorToMultipleOfPowerOf2(a + (powerOf2 - 1), powerOf2);
+}
+```
+Inlining,
+```
+uint32_t CeilingToMultipleOfPowerOf2(uint32_t a, uint32_t powerOf2) {
+	assert(IsPowerOf2(powerOf2));
+	const uint32_t mask = powerOf2 - 1;
+	assert(!IsOverflowingAdd(a, mask));
+	return (a + mask) & ~mask;
+}
+```
+Note that since this is a ceiling function, it has a potential to overflow the input space. Again we have the option to just assert (crash) and force callers to avoid this situation, change the contract to return an integer in a wider space, or return a success conditional alongside the result and fail on overflow. The assert option is above, and here's the wider return option:
+```
+uint64_t CeilingToMultipleOfPowerOf2(uint32_t a, uint32_t powerOf2) {
+	assert(IsPowerOf2(powerOf2));
+	const uint64_t mask = static_cast<uint64_t>(powerOf2) - 1ull;
+	return (a + mask) & ~mask;
+}
+```
+And the conditional success option:
+```
+bool CeilingToMultipleOfPowerOf2(uint32_t a, uint32_t powerOf2, uint32_t& result) {
+	assert(IsPowerOf2(powerOf2));
+	const uint32_t mask = powerOf2 - 1;
+	if (IsOverflowingAdd(a, mask)) {
+		return false;
+	}
+	result = (a + mask) & ~mask;
+	return true;
+}
+```
+
+## Floor to multiple of N
+Rounds a given integer down to a multiple of the given `N`. If it's already a multiple of `N`, leave it alone.
+```
+FloorToMultipleOfN(0,3) = 0
+FloorToMultipleOfN(1,3) = 0
+FloorToMultipleOfN(2,3) = 0
+FloorToMultipleOfN(3,3) = 3
+FloorToMultipleOfN(4,3) = 3
+FloorToMultipleOfN(5,3) = 3
+FloorToMultipleOfN(6,3) = 6
+FloorToMultipleOfN(7,3) = 6
+...
+```
+For `N` non powers of 2, we have to use full integer division and remainder. We can't manipulate digits in the natural base directly, so we're left with full division.
+
+There's basically two options:
+1. divide, drop the remainder, and multiply back
+1. divide and subtract the remainder from the input
+
+```
+uint32_t FloorToMultipleOfN(uint32_t a, uint32_t n) {
+	assert(n > 0);
+	return (a / n) * n;
+}
+```
+```
+uint32_t FloorToMultipleOfN(uint32_t a, uint32_t n) {
+	assert(n > 0);
+	return a - (a % n);
+}
+```
+Which is faster is going to depend on microarchitectural details.
+
+## Ceiling to multiple of N
+Rounds a given integer up to a multiple of the given `N`. If it's already a multiple of `N`, leave it alone.
+```
+CeilingToMultipleOfN(0,3) = 0
+CeilingToMultipleOfN(1,3) = 3
+CeilingToMultipleOfN(2,3) = 3
+CeilingToMultipleOfN(3,3) = 3
+CeilingToMultipleOfN(4,3) = 6
+CeilingToMultipleOfN(5,3) = 6
+CeilingToMultipleOfN(6,3) = 6
+CeilingToMultipleOfN(7,3) = 9
+...
+```
+One way to write this is in terms of `FloorToMultipleOfN`, i.e. `FloorToMultipleOfN(a+n-1, n)`. However, it's hard to guarantee we overflow only in the cases where the result would overflow; i.e. avoiding overflow in intermediate terms. So instead, we'll compute the ceiling more directly as a term we add to the given number, so the overflow check triggers only when the result requires overflow. Here's the multiple versions for how you want to handle the overflow case:
+```
+uint32_t CeilingToMultipleOfN(uint32_t a, uint32_t n) {
+	const uint32_t remainder = a % n;
+	const uint32_t up = (remainder != 0) ? (n - remainder) : 0;
+	assert(!IsOverflowingAdd(a, up));
+	return a + up;
+}
+```
+```
+uint64_t CeilingToMultipleOfN(uint32_t a, uint32_t n) {
+	const auto A = static_cast<uint64_t>(a);
+	const auto N = static_cast<uint64_t>(n);
+	const auto remainder = A % N;
+	const auto up = (remainder != 0) ? (N - remainder) : 0;
+	return A + up;
+}
+```
+```
+bool CeilingToMultipleOfN(uint32_t a, uint32_t n, uint32_t& result) {
+	const uint32_t remainder = a % n;
+	const uint32_t up = (remainder != 0) ? (n - remainder) : 0;
+	if (IsOverflowingAdd(a, up)) {
+		return false;
+	}
+	result = a + up;
+	return true;
 }
 ```
 
@@ -2127,7 +2424,11 @@ Modern GPUs allow for dynamic divergence and convergence, even automatically, to
 
 # SCRATCH
 
+## Long division
 
+## Greatest common divisor
+
+## Least common multiple
 
 
 
