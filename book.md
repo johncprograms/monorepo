@@ -4,12 +4,16 @@
 - [What is a computer?](#what-is-a-computer)
 - [Memory array](#memory-array)
 	- [Memory cell](#memory-cell)
+- [Unsigned integers](#unsigned-integers)
 	- [Modulo arithmetic](#modulo-arithmetic)
-		- [Overflow](#overflow)
-		- [Underflow](#underflow)
-		- [Multiplication](#multiplication)
-		- [Division](#division)
-		- [Detecting overflow](#detecting-overflow)
+	- [Overflow](#overflow)
+	- [Underflow](#underflow)
+	- [Multiplication](#multiplication)
+	- [Division](#division)
+	- [Long division](#long-division)
+	- [Greatest common divisor](#greatest-common-divisor)
+	- [Least common multiple](#least-common-multiple)
+	- [Detecting overflow](#detecting-overflow)
 	- [Base conversions](#base-conversions)
 - [Bit operations](#bit-operations)
 	- [Not (aka flip)](#not-aka-flip)
@@ -51,12 +55,39 @@
 	- [2's complement](#2s-complement)
 	- [Offset binary](#offset-binary)
 	- [Zig Zag](#zig-zag)
+- [Rational numbers](#rational-numbers)
+- [Fixed point](#fixed-point)
+- [Floating point](#floating-point)
+	- [Kahan summation](#kahan-summation)
 - [Self-referential memory](#self-referential-memory)
 	- [Linked list fundamentals](#linked-list-fundamentals)
 	- [Dynamic memory allocation](#dynamic-memory-allocation)
-- [Directed lists](#directed-lists)
 - [Variable size array](#variable-size-array)
 - [Variable size bitmap](#variable-size-bitmap)
+- [Sequences (aka strings)](#sequences-aka-strings)
+	- [Subsequences (aka substrings)](#subsequences-aka-substrings)
+	- [Views](#views)
+	- [Contains](#contains)
+	- [Count](#count)
+	- [Find](#find)
+	- [Replace](#replace)
+	- [Concatenate](#concatenate)
+	- [Zipper merge](#zipper-merge)
+- [Intervals](#intervals)
+	- [Discrete vs continuous](#discrete-vs-continuous)
+	- [Tiling](#tiling)
+	- [Overlap](#overlap)
+	- [Intersect](#intersect)
+	- [Union](#union)
+	- [Difference](#difference)
+	- [Symmetric difference](#symmetric-difference)
+	- [Contains](#contains-1)
+	- [Covering](#covering)
+	- [Merging](#merging)
+- [Linked lists](#linked-lists)
+- [Trees](#trees)
+- [Forests](#forests)
+- [Directed Acyclic Graphs (aka DAGs)](#directed-acyclic-graphs-aka-dags)
 - [Graphs](#graphs)
 	- [Adjacency matrix](#adjacency-matrix)
 	- [Adjacency lists](#adjacency-lists)
@@ -66,6 +97,15 @@
 		- [ND Lattice](#nd-lattice)
 		- [Hash partitioning](#hash-partitioning)
 		- [Rendezvous hashing](#rendezvous-hashing)
+	- [Topological sort](#topological-sort)
+	- [Minimum spanning tree](#minimum-spanning-tree)
+	- [Shortest path](#shortest-path)
+	- [Minimum cut (aka maximum flow)](#minimum-cut-aka-maximum-flow)
+	- [Connected components](#connected-components)
+	- [Bipartite matching](#bipartite-matching)
+- [Hypergraphs (aka multigraphs)](#hypergraphs-aka-multigraphs)
+	- [Directed hyperedges](#directed-hyperedges)
+	- [Undirected hyperedges](#undirected-hyperedges)
 - [Dimensional packing](#dimensional-packing)
 	- [Horizontal stripe](#horizontal-stripe)
 	- [Horizontal striding (sub-stripe)](#horizontal-striding-sub-stripe)
@@ -99,11 +139,6 @@
 	- [Lockstep parallelism (SIMT)](#lockstep-parallelism-simt)
 		- [Conditionals](#conditionals)
 		- [Dynamic lockstep](#dynamic-lockstep)
-- [SCRATCH](#scratch)
-	- [Long division](#long-division)
-	- [Greatest common divisor](#greatest-common-divisor)
-	- [Least common multiple](#least-common-multiple)
-- [ENDSCRATCH](#endscratch)
 
 
 
@@ -121,9 +156,10 @@ By numbering each slot, giving them a fixed address, we can identify and remembe
 
 Mathematically, take a set of integer slots, `s = { 1, 2, ..., S }`.
 
-Define a configurable function `m` that maps from `s` to the set of numbers. I.e. for each slot `i` in `s`, `m[i]` is the number we're storing in slot `i`.
+Define a configurable function `m` that maps from `s` to the set of numbers. I.e. for each slot `i` in `s`, let `m[i]` be the number we're storing in slot `i`.
 
 Say with `S = 3`, we can store 3 numbers, change them via address, read them back, and the array will remember.
+
 Initial state:
 ```
 m[1] = 0
@@ -138,13 +174,14 @@ m[1] = 0
 m[2] = 6
 m[3] = 12
 ```
-The fundamental idea of computer memory is that it's a configurable number to number map.
+The fundamental idea of computer memory is that it's a configurable number (slot address) to number (value) map.
 
 ## Memory cell
 In modern computers, it's a voltage potential stored in a physical wire; either high or low. Mapping to a binary number 1 or 0. Digital logic latches and flip-flops are the basic circuitry constructs that allow for storing a single bit of memory, which can be either 0 or 1. Transistors sit on either side of the memory wire, controlling the storage and retrieval of the high or low voltage and letting it move to the next stage of the wire network.
 
 By laying out a bunch of wires in parallel, we can combine those binary 0s and 1s into one logical unit, a binary number with more digits.
 
+# Unsigned integers
 Let's break down the representation of a number, to explore how we can convert it to 0s and 1s.
 
 Say we've got `234`. We can break it down per digit as:
@@ -153,19 +190,29 @@ Say we've got `234`. We can break it down per digit as:
 ```
 More generally,
 ```
-d = d_100 d_10 d_1 = d_100 * 100 + d_10 * 10 + d_1 * 1
-d = d_10^2 d_10^1 d_10^0 = d_10^2 * 10^2 + d_10^1 * 10^1 + d_10^0 * 10^0
-d = sum of d_10^k * 10^k, for k = 0, 1, 2, ...
+d = digit(100) digit(10) digit(1) = digit(100) * 100 + digit(10) * 10 + digit(1) * 1
+d = digit(10^2) digit(10^1) digit(10^0) = digit(10^2) * 10^2 + digit(10^1) * 10^1 + digit(10^0) * 10^0
+d = sum of digit(10^k) * 10^k, for k = 0, 1, 2, ...
 ```
 We can let k go on as far as we want, and just assume there are implicit leading zeros so eventually it will converge.
 
 We can generalize to arbitrary bases:
+
+Binary (base 2):
 ```
-Binary (base 2): d = sum of d_2^k * 2^k, for k = 0, 1, 2, ...
-Octal (base 8): d = sum of d_8^k * 8^k, for k = 0, 1, 2, ...
-Hexadecimal (base 16): d = sum of d_16^k * 16^k, for k = 0, 1, 2, ...
-Arbitrary base: d = sum of d_base^k * base^k, for k = 0, 1, 2, ...
-    where base is any positive integer.
+d = sum of digit(2^k) * 2^k, for k = 0, 1, 2, ...
+```
+Octal (base 8): 
+```
+d = sum of digit(8^k) * 8^k, for k = 0, 1, 2, ...
+```
+Hexadecimal (base 16): 
+```
+d = sum of digit(16^k) * 16^k, for k = 0, 1, 2, ...
+```
+Arbitrary base, where `base` is any positive integer:
+```
+d = sum of digit(base^k) * base^k, for k = 0, 1, 2, ...
 ```
 Computer hardware is generally base 2, because we can set up electronic circuits where the the voltage potential is either high (mapping to 1) or low (mapping to 0). There are some high density storage systems that use base 3 or 4 or more, by using intermediate levels in between max voltage and ground. 
 
@@ -176,12 +223,12 @@ With higher-level constructions, you can build arbitrarily large numbers based o
 
 Say we pick base 10, and maximum number of digits is 3. Valid range of numbers is 0 (aka 000) up to 999.
 ```
-d = sum of d_10^2 * 10^2 + d_10^1 * 10^1 + d_10^0 * 10^0
-d = sum of d_10^k * 10^k, for k = 0, 1, 2.
+d = sum of digit(10^2) * 10^2 + digit(10^1) * 10^1 + digit(10^0) * 10^0
+d = sum of digit(10^k) * 10^k, for k = 0, 1, 2.
 ```
 Notice how k is bounded to be less than 3, our maximum number of digits. Now we have a finite set of numbers.
 
-### Overflow
+## Overflow
 500 + 555 would be 1005, but that's not a valid number in our system.
 The modulo comes in, which is that we divide what would be the result by the maximum number plus one, and take the remainder. So,
 ```
@@ -193,7 +240,7 @@ Because, 1055 / 1000 = 1 with remainder 55.
 So in this kind of system, 500 + 555 = 5. It looks wrong, but in this modulo space it's the truth.
 Since most integer math in most programming languages happens in some modulo space (usually 2^32 or 2^64 is the maximum number plus one), the `mod N+1` mathematical notation is dropped for convenience. But it's implicitly there in those languages.
 
-### Underflow
+## Underflow
 Same ideas apply for subtraction, the inverse of addition.
 ```
 (500 - 555) mod 1000
@@ -205,13 +252,22 @@ So if x is less than 0, add multiples of y until you put the result into [0, y) 
 Else if x is greater than or equal to y, subtract multiples of y until you put the result in [0, y) range.
 Otherwise x is already in the [0, y) range, and the result is x. You can think of it as q = 0.
 
-### Multiplication
+## Multiplication
 TODO
 
-### Division
+## Division
+TODO: Long division algorithm
+
+## Long division
 TODO
 
-### Detecting overflow
+## Greatest common divisor
+TODO
+
+## Least common multiple
+TODO
+
+## Detecting overflow
 `a + b` overflows when `a + b >= numeric_limits<>::max()`. Rearranging to avoid overflow in the detection, `a >= numeric_limits<>::max() - b`.
 ```
 bool IsOverflowingAdd(uint32_t a, uint32_t b) {
@@ -224,6 +280,9 @@ bool IsUnderflowingSub(uint32_t a, uint32_t b) {
 	return a < b;
 }
 ```
+
+TODO
+`a * b` overflows when `
 
 ## Base conversions
 Given a sequence of digits in some given base, convert to another base.
@@ -1357,6 +1416,24 @@ void deconstructSignedInteger(uint64_t bitmap, uint64_t& u, bool& positive) {
 }
 ```
 
+# Rational numbers
+The rational numbers are defined as the set of all possible fractions. That is, one integer divided by another, where the denominator cannot be zero.
+In mathematical set notation,
+```
+Q = { a / b, where a is an integer and b is an integer not equal to zero }
+```
+TODO
+
+# Fixed point
+TODO
+
+# Floating point
+IEEE754 standard
+TODO
+
+## Kahan summation
+TODO
+
 # Self-referential memory
 Recall that memory is a configurable number to number map. The reason to use numbers on both sides is so we can store references to memory slots within the slots themselves.
 So with one fixed size array of numbers, we can store sets of numbers, as well as arbitrary links between numbers.
@@ -1393,9 +1470,6 @@ T* allocate(size_t count);
 void free(T* reference);
 ```
 The key thing here is that allocation can fail, due to running out of memory. We're requesting some dynamic size, and only when there's sufficient room will we get an interval of writeable memory back.
-
-# Directed lists
-Also known as singly-linked lists
 
 # Variable size array
 Also known as: table, variable length array, vector
@@ -1809,14 +1883,99 @@ static void TestBitmap()
 }
 ```
 
+# Sequences (aka strings)
+TODO
 
+## Subsequences (aka substrings)
+## Views
+External length
+Internal length
+## Contains
+## Count
+## Find
+Forward
+Reverse
+## Replace
+## Concatenate
+```
+template<typename T> void concatenate(const span<const span<T>> spans, vector<T>& result) {
+	size_t cResult = 0;
+	for (const auto& s : spans)
+		cResult += s.size();
+	result.resize(cResult);
+	auto r = begin(result);
+	for (const auto& s : spans) {
+		for (const auto& e : s) {
+			*r = e;
+			++r;
+		}
+	}
+	assert(r == end(result));
+}
+```
 
+## Zipper merge
+Given two sorted sequences, merge them into one sorted sequence.
 
+# Intervals
+TODO
+()
+[]
+(]
+[)
+```
+template<typename T> struct IntervalEE { T p0, p1; };
+template<typename T> struct IntervalII { T p0, p1; };
+template<typename T> struct IntervalEI { T p0, p1; };
+template<typename T> struct IntervalIE { T p0, p1; };
+```
+## Discrete vs continuous
+## Tiling
 
+## Overlap
+## Intersect
+## Union
+## Difference
+## Symmetric difference
+## Contains
+Given a point and an interval, return if the point is inside the interval.
+Given a point and a set of intervals, return if the point is inside any interval.
+## Covering
+Given a set of points and a set of intervals, return if all points are inside any interval.
+## Merging
+Given a set of intervals, merge them if adjacent/overlapping.
+Given two lists of sorted, non-adjacent/overlapping intervals, merge them into one list.
 
+# Linked lists
+Also known as singly-linked lists
+Undirected lists
+Doubly-linked lists
+TODO
+
+# Trees
+Directed trees
+Undirected trees
+Parent pointer or branch stack
+TODO
+
+# Forests
+Directed forests
+Undirected forests
+Useful for copy-on-write (aka COW)
+TODO
+
+# Directed Acyclic Graphs (aka DAGs)
+TODO
 
 # Graphs
+TODO
 Families of connectivity/edge implementations:
+1. [Adjacency matrix](#adjacency-matrix)
+2. [Adjacency lists](#adjacency-lists)
+3. [Implicit/formulaic](#implicitformulaic)
+4. 
+Directed graphs
+Undirected graphs
 
 ## Adjacency matrix
 Index the nodes in the graph as `{ 0, ..., N-1 }`. Then define a matrix `E(i,j)` which stores information about the edge from node `i` to `j`. Note that `E` is a square matrix, with forward direction edges stored in the lower triangle `i < j`, reverse direction edges stored in the upper triangle `i > j`, and self-loop edges stored in the diagonal `i == j`.
@@ -1826,6 +1985,7 @@ If the graph is an undirected graph, note that the matrix would be symmetric, `E
 If the graph is undirected and also doesn't allow self-loops, we can eliminate the diagonal as well. Effectively only storing `E(i,j)` for `i < j`. For efficient 1D storage, see [Lower triangular, excluding diagonal, row-wise](#lower-triangular-excluding-diagonal-row-wise)
 
 ## Adjacency lists
+TODO
 
 ## Implicit/formulaic
 Per-node, we can use implicit knowledge to deduce which other nodes are connected. The most common type is a lattice, or as it's known in 2D, a grid.
@@ -1911,6 +2071,58 @@ The idea is to hash the node, and use the hash code to choose a partition neighb
 
 ### Rendezvous hashing
 The idea is to define a hash combinator function, `h(node1, node2)`, and choose the top K hash codes among all `node2` for a given `node1`. By using a min- or max-heap, this has a time cost of `O(K log N)` per `node1`.
+
+## Topological sort
+TODO
+
+## Minimum spanning tree
+TODO
+
+## Shortest path
+TODO
+
+## Minimum cut (aka maximum flow)
+TODO
+
+## Connected components
+TODO
+
+## Bipartite matching
+TODO
+
+# Hypergraphs (aka multigraphs)
+The defining feature of graphs is that the edges are pairs of nodes: (source node, destination node). If the edges are directed, then the order matters. Otherwise the edges are undirected, and the order doesn't matter.
+
+What makes hypergraphs different is that instead of edges being pairs, they are triples, quads, and so on. Limitations on the number of nodes in a hyperedge forms classes of hypergraphs. For instance, `k`-hypergraphs contain `k`-hyperedges that are tuples of `k` different nodes.
+
+## Directed hyperedges
+Direction is much more interesting for hypergraphs. Regular graph edges only have two permutations, `(A,B)` or `(B,A)`. On the other hand, 3-hyperedges have `P(3,3) = 3! = 6` permutations:
+```
+A,B,C
+A,C,B
+B,A,C
+B,C,A
+C,A,B
+C,B,A
+```
+This gets even more dramatic for large `k` `k`-hyperedges. In a sense we're encoding directionality within the subset of nodes in the hyperedge with a specific permutation.
+
+Also note that self-loops are more complex; in any of the permutations, we could have a node duplicated, triplicated, etc. all the way up to `(A,A,...,A)` that's all one node.
+
+If you let `k` become unbounded and arbitrary, then notice how one hyperedge is effectively encoding a path in a graph. E.g. `(A,B,C)` hyperedge encodes `(A,B)`, `(B,C)` graph edges. So with a set of hyperedges, we can equivalently encode a graph. If you consider all possible subsets of hyperedges in a hypergraph, each of those defines a graph. With `E` hyperedges, there are `2^E` possible subsets and hence that many graphs encoded into the hypergraph. Hence why the name *hyper*-graph; it's an exponentially larger superset of graphs.
+
+## Undirected hyperedges
+Undirected hypergraphs are somewhat more common, which is where we ignore the ordering of edges in a hyperedge, and just treat it as a set. I.e. collapse all the above `(A,B,C)` permutations down to one, `(A,B,C)`. There's still an exponential number of hyperedges that could exist, but no longer the additional exponentiality of all permutations as well.
+
+Note that undirected hypergraphs form a generalization of partitioning. With graph partitioning, you assign each node to some bucket, and the buckets form the partition. In undirected hypergraphs, we could represent that partition by saying we have a hyperedge for each bucket, and the nodes within each bucket form that hyperedge. The key partition property is that each node belongs to only one hyperedge. However, we could drop that property and thus allow assigning one node to multiple buckets, or to no bucket. I.e. we can use hyperedges to encode all possible buckets.
+
+Adjacency in an undirected hypergraph is defined as: nodes within an undirected hyperedge are fully connected. That is, for `(A,B,C)`, the adjacency lists look like:
+```
+A: B,C
+B: A,C
+C: A,B
+```
+This is a significantly more efficient way of encoding fully connected subgraphs than traditional adjacency matrix or adjacency list representations. So if your graph can be mostly decomposed into fully connected subgraphs, using this undirected hyperedge model can significantly reduce memory usage. You can combine a traditional representation of graph edges alongside hyperedges to represent the fully connected subgraphs into a hybridized graph.
 
 # Dimensional packing
 Memory is fundamentally 1-dimensional. I.e. the set of slots `S = { 0 1 ... N-1 }` requires one number to uniquely identify/address each element. A 2-dimensional index would be 2 numbers, ..., N-dimensional index would be N numbers to uniquely address each element.
@@ -2388,11 +2600,16 @@ You can extend this to an arbitrary - length bitmap, and I'm sure there's some b
 Also, for repeated `set` calls causing lots of `values` shifting during `insert`, it may be more efficient to use an ordered tree of some kind instead.
 
 ## Locality Sensitive Hashing
-
+TODO
 
 # Instructions
+TODO
+
 # Execution state
+TODO
+
 # Instruction parallelism (SIMD)
+TODO
 
 # Execution parallelism
 Take the execution state of a computer, stamp out multiple copies of it, fan-out work to them which can be done in parallel, and synchronously join the results back in to one of the instances designated as the `main` thread or sub-computer.
@@ -2418,108 +2635,3 @@ This was the key insight that allowed GPUs to become massively parallel, and is 
 
 ### Dynamic lockstep
 Modern GPUs allow for dynamic divergence and convergence, even automatically, to try and preserve the speedup of simultaneous instruction execution as much as possible. The idea is to allow for some small amount of divergence, minimizing the amount of time spent on masked off instructions. For example, once a conditional is hit and there's the `if` and `else` blocks, the set of threads in the group can be partitioned into two subgroups, one for each branch. In each subgroup, we can remove the dead instructions from the instruction stream and only execute the live branch. Once both branches are done, we can insert a synchronization point for convergence, which will destroy the two subgroups and return us back to just one group. Note this requires support for two instruction streams, one for each subgroup, and the ability to create and delete them dynamically. More than two if the architecture wants to allow for even more independent scheduling. Modern GPUs do this and more, to maximize the amount of useful parallel work.
-
-
-
-
-
-
-# SCRATCH
-
-## Long division
-
-## Greatest common divisor
-
-## Least common multiple
-
-
-Directed trees
-Directed forests
-Directed acyclic graphs
-Directed graphs
-Directed multigraphs
-
-Undirected lists
-Undirected trees
-Undirected forests
-Undirected acyclic graphs
-Undirected graphs
-Undirected multigraphs
-
-
-Arbitrary size integers
-	d = sum of d_base^k * base^k, for k = 0, 1, 2, ...
-	TODO
-
-Rational numbers
-	The rational numbers are defined as the set of all possible fractions. That is, one integer divided by another, where the denominator cannot be zero.
-	In mathematical set notation,
-		Q = { a / b, where a is an integer and b is an integer not equal to zero }
-
-Fixed point
-
-Floating point
-	IEEE754 standard
-	TODO
-
-Kahan summation
-
-Sequences / Strings
-	Subsequence / substring
-	Views
-		External length
-		Internal length
-	Contains
-	Count
-	Find
-		Forward
-		Reverse
-	Replace
-
-	Concatenate
-	  template<typename T> void concatenate(const span<const span<T>> spans, vector<T>& result) {
-	    size_t cResult = 0;
-	    for (const auto& s : spans)
-	      cResult += s.size();
-      result.resize(cResult);
-      auto r = begin(result);
-      for (const auto& s : spans) {
-        for (const auto& e : s) {
-          *r = e;
-          ++r;
-        }
-      }
-      PRECONDITION(r == end(result));
-	  }
-
-	Zipper merge
-		Given two sorted sequences, merge them into one sorted sequence.
-
-Intervals
-	()
-	[]
-	(]
-	[)
-	  template<typename T> struct IntervalEE { T p0, p1; };
-	  template<typename T> struct IntervalII { T p0, p1; };
-	  template<typename T> struct IntervalEI { T p0, p1; };
-	  template<typename T> struct IntervalIE { T p0, p1; };
-	Discrete vs continuous
-	Tiling
-
-	Overlap
-	Intersect
-  Union
-  Difference
-  Symmetric difference
-	Contains
-		Given a point and an interval, return if the point is inside the interval.
-		Given a point and a set of intervals, return if the point is inside any interval.
-	Covering
-		Given a set of points and a set of intervals, return if all points are inside any interval.
-	Merging
-		Given a set of intervals, merge them if adjacent/overlapping.
-		Given two lists of sorted, non-adjacent/overlapping intervals, merge them into one list.
-
-
-# ENDSCRATCH

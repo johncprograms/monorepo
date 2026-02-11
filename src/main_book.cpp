@@ -1233,6 +1233,15 @@ template<typename T> vector<T> SymmetricDifference(Sequence<T> A, const Sequence
 	return SymmetricDifference(SortedSequence<T>(As), SortedSequence<T>(Bs));
 }
 
+// Randomly shuffles the elements of A in place, using the provided random number generator.
+template<typename T, typename Rng> void RandomShuffleInplace(Sequence<T> A, Rng& rng) {
+	// Implementation is the so-called Fisher-Yates shuffle.
+	for (size_t top = A.size(); top-- != 0; ) {
+		const size_t select = uniform_int_distribution<size_t>(0, top)(rng); // [0,top]
+		swap(A[select], A[top]);
+	}
+}
+
 template<typename T> bool Equal(const Sequence<T>& A, const Sequence<T>& B) {
 	if (A.size() != B.size()) return false;
 	const auto a = begin(A);
