@@ -55,14 +55,12 @@
 	- [2's complement](#2s-complement)
 	- [Offset binary](#offset-binary)
 	- [Zig Zag](#zig-zag)
-- [Rational numbers](#rational-numbers)
-- [Fixed point](#fixed-point)
-- [Floating point](#floating-point)
-	- [Kahan summation](#kahan-summation)
 - [Self-referential memory](#self-referential-memory)
-	- [Linked list fundamentals](#linked-list-fundamentals)
+	- [Internal indexing](#internal-indexing)
+	- [External indexing](#external-indexing)
 	- [Dynamic memory allocation](#dynamic-memory-allocation)
-- [Variable size array](#variable-size-array)
+- [Variable length array](#variable-length-array)
+- [Variable size stack](#variable-size-stack)
 - [Variable size bitmap](#variable-size-bitmap)
 - [Sequences (aka strings)](#sequences-aka-strings)
 	- [Subsequences (aka substrings)](#subsequences-aka-substrings)
@@ -84,6 +82,11 @@
 	- [Contains](#contains-1)
 	- [Covering](#covering)
 	- [Merging](#merging)
+- [Fixed point](#fixed-point)
+- [Floating point](#floating-point)
+	- [Kahan summation](#kahan-summation)
+- [Non modulo numbers](#non-modulo-numbers)
+- [Rational numbers](#rational-numbers)
 - [Linked lists](#linked-lists)
 - [Trees](#trees)
 - [Forests](#forests)
@@ -282,7 +285,7 @@ bool IsUnderflowingSub(uint32_t a, uint32_t b) {
 ```
 
 TODO
-`a * b` overflows when `
+`a * b` overflows when ``
 
 ## Base conversions
 Given a sequence of digits in some given base, convert to another base.
@@ -1416,49 +1419,165 @@ void deconstructSignedInteger(uint64_t bitmap, uint64_t& u, bool& positive) {
 }
 ```
 
-# Rational numbers
-The rational numbers are defined as the set of all possible fractions. That is, one integer divided by another, where the denominator cannot be zero.
-In mathematical set notation,
-```
-Q = { a / b, where a is an integer and b is an integer not equal to zero }
-```
-TODO
-
-# Fixed point
-TODO
-
-# Floating point
-IEEE754 standard
-TODO
-
-## Kahan summation
-TODO
-
 # Self-referential memory
 Recall that memory is a configurable number to number map. The reason to use numbers on both sides is so we can store references to memory slots within the slots themselves.
 So with one fixed size array of numbers, we can store sets of numbers, as well as arbitrary links between numbers.
 It's this arbitrary link storage mechanism that makes memory actually powerful.
 
-## Linked list fundamentals
-TODO
+This extends indefinitely; we can store arbitrarily-nested maps of maps of maps of ... maps to numbers. I.e. structures which hold references to structures which hold references to ... numbers. This combinatorial power is why we can encode really complicated things in a single memory. 
 
-This extends indefinitely; we can store arbitrarily-nested maps of maps of maps of ... maps to numbers. This combinatorial power is why we can encode really complicated things in a single set of numbers.
+We'll start with the simplest list encoding. Say we have 4 slots, `S = { 0, 1, 2, 3 }`. Say `m[i]`'s value refers to the next slot to look at, with `m[0]` denoting the head of the list. And define `0` as our encoded value to mean `no link`. We can store the list `1 -> 2 -> 3` as:
+```
+m[0] = 1
+m[1] = 2
+m[2] = 3
+m[3] = 0
+```
+By reading `m[0]` we figure out where the start of the list is, and then we can traverse the subsequent `m[i]`s until reaching an `m[k] == 0` denoting the end of the list, which in this example is `m[3]`.
+
+With this scheme we can encode the empty list as:
+```
+m[0] = 0
+```
+List containing one element:
+```
+m[0] = 1
+m[1] = 0
+```
+List `3 -> 1 -> 2`:
+```
+m[0] = 3
+m[1] = 2
+m[2] = 0
+m[3] = 1
+```
+Say we want to extend this encoding scheme to store a number at each node. We could either:
+1. store per-node values alongside the `next` link, so called [Internal indexing](#internal-indexing). Or,
+1. store per-node values after the links, so called [External indexing](#external-indexing).
+
+## Internal indexing
+Say we want to store `(3,c) -> (1,a) -> (2,b)` with values `a, b, c` on those nodes. 
+
+We will store the value of node `i` at `m[1+2*i]`, with the `next` link stored at the subsequent location `m[1+2*i+1]`. I.e. `{ starting node, node 1 value, node 1 next, node 2 value, node 2 next, ... }`.
+```
+m[0] = 5
+m[1] = a
+m[2] = 3
+m[3] = b
+m[4] = 0
+m[5] = c
+m[6] = 1
+```
+Note the same list could alternately be encoded as `{ starting node, node 3 value, node 3 next, node 1 value, node 1 next, node 2 value, node 2 next }`. Or any other permutation of the nodes. Or even with gaps.
+```
+m[0] = 1
+m[1] = c
+m[2] = 3
+m[3] = a
+m[4] = 7
+m[5] = unused
+m[6] = unused
+m[7] = b
+m[8] = 0
+```
+Note we can extend the associated values of each ndoe by expanding the size of the `node i value`. E.g. `(3,c1,c2) -> (1,a1,a2) -> (2,b1,b2)` can be encoded as:
+```
+m[0] = 1
+m[1] = c1
+m[2] = c2
+m[3] = 4
+m[4] = a1
+m[5] = a2
+m[6] = 7
+m[7] = b1
+m[8] = b2
+m[9] = 0
+```
+
+## External indexing
+Say we want to store `(3,c) -> (1,a) -> (2,b)` with values `a, b, c` on those nodes. 
+
+Say `m[0]` is the head of the list to start with. `m[i]` will store the links for `i in { 1, 2, 3 }`, and `m[i+3]` will store the values.
+```
+m[0] = 3
+m[1] = 2
+m[2] = 0
+m[3] = 1
+m[4] = a
+m[5] = b
+m[6] = c
+```
+So at any node `i` to get the corresponding value, we just look up `m[i+3]`, or in general, `m[i+cNodes]` where `cNodes` is the number of nodes we've allocated as our maximum list capacity. Note that we could arbitrarily separate the links block and the values block, and just change the lookup offset to accomodate that.
+
+This strategy is called external indexing, where we align two independent blocks; one block stores the connectivity information, and one block stores associated data. This is powerful, because we can trivially add more associated data (imagine adding a third block to store an additional number per-node, etc.). And we can write code that modifies connectivity without considering the value data; having to copy it, move it, etc.
 
 ## Dynamic memory allocation
 Every computer has a ceiling to the amount of memory onboard. That is, the memory array has a fixed upper limit. In order to write software programs that can run on various computers with different amounts of memory, we need a dynamic addressing scheme.
 
 The other major constraint is that very often the input to a computer program is user-generated (or at least influenced), and so it will be variable-length. Meaning, we need an addressing scheme that adjusts for variable-length things we want to store.
 
-TODO: stack top, partitioning a fixed-size array into two intervals: variable data, and empty space.
+The first idea is a stack, where we take a fixed size array, designate a variable stack top, and allow pushing/popping to/from the top. With this partitioning, we get two intervals: variable data, and empty space.
 ```
 {variable1, ..., variableN, empty1, ..., emptyE}
 ```
+```
+template<typename T, size_t Capacity> struct Stack {
+	array<T, Capacity> stack;
+	size_t top = 0; // index of first empty slot at the top of the stack.
+	void push(const T& value) {
+		assert(top < stack.size());
+		stack[top] = value;
+		++top;
+	}
+	const T& top() {
+		assert(top > 0);
+		return stack[top-1];
+	}
+	void pop() {
+		assert(top > 0);
+		--top;
+	}
+};
+```
 Note we can run out of space if the variable data grows too long.
-Also note that for other things we want to store in memory, now the problem is worse. Instead of trying to come up with address schemes for a fixed size array, now we have to generate address schemes for the empty space interval, which is now variable size.
+Also note that for other things we want to store in memory, now the problem is worse. Instead of trying to come up with address schemes for a fixed size array, now we have to generate address schemes for the empty space interval that's unused by the stack, which is now variable size (as the stack grows/shrinks).
 
 If our only other storage requirement is one more variable-length data, we could reverse the order and have a symmetric stack for the second variable-length data. That way both variable-length data streams can shrink/grow, and we'll avoid overlaps unless we're really out of space.
 ```
 {variable1, ..., variableN, empty1, ..., emptyE, varSecondM, ..., varSecond1}
+```
+```
+template<typename T, size_t Capacity> struct DoubleStack {
+	array<T, Capacity> memory;
+	size_t top1 = 0; // index of first empty slot at the top of the first stack.
+	size_t top2 = 0; // index of first occupied slot at the top of the second stack (or Capacity if not occupied).
+	void push1(const T& value) {
+		assert(top1 < top2);
+		memory[top1] = value;
+		++top1;
+	}
+	const T& top1() {
+		assert(top1 > 0);
+		return memory[top1-1];
+	}
+	void pop1() {
+		assert(top1 > 0);
+		--top1;
+	}
+	void push2(const T& value) {
+		assert(top1 < top2);
+		--top2;
+		memory[top2] = value;
+	}
+	const T& top2() {
+		assert(top2 < memory.size());
+		return memory[top2];
+	}
+	void pop2() {
+		assert(top2 < memory.size());
+		++top2;
+	}
+};
 ```
 However, notice that if we have 3 or more variable-length data streams to store, now we've got issues. We'll need to consistently move interior data streams around to make room as the first and second variable data changes length, or choose some other strategy. Like a variable list storing addresses of other variable streams.
 
@@ -1469,13 +1588,22 @@ The standardized interface for managing variable-length data storage is an acqui
 T* allocate(size_t count);
 void free(T* reference);
 ```
+```
+T* new(size_t count);
+void delete(T* reference);
+```
 The key thing here is that allocation can fail, due to running out of memory. We're requesting some dynamic size, and only when there's sufficient room will we get an interval of writeable memory back.
 
-# Variable size array
-Also known as: table, variable length array, vector
+On modern computers, this fundamental memory management is a capability provided by the operating system (OS). On Windows, see `VirtualAlloc` documentation. On Unix, see `mmap` documentation. You request a block of memory, and the OS provides the memory and address to it. And when you're done, you hand it back so the OS can reclaim the memory space for other things.
+
+There are many details to dive into for how the OS implements this, as well as layers built on top of the OS layer for specific memory usage patterns.
+
+# Variable length array
+Now that we can rely on the OS layer to implement memory allocation requests, we can build the most basic variable length structure, the array. Also known as: table, resizeable array. We request one contiguous memory block, keep track of the size, and allow indexing into the allocated block. We can also accomodate a `resize()` operation that preserves values that were there (except for dropped values if you resize to smaller), while initializing new empty slots to default values (if you resize to larger).
+
+This is the fundamental data structure for encoding a variable length memory block into a fixed size indirection block (length and starting address of the variable block). 
 ```
-template<typename T> struct Array
-{
+template<typename T> struct Array {
   T* mem = nullptr;
   size_t len = 0; // # of elements in mem.
 
@@ -1520,28 +1648,27 @@ template<typename T> struct Array
 };
 ```
 
+# Variable size stack
+
+
 # Variable size bitmap
 ```
-struct Bitmap
-{
+struct Bitmap {
 	vector<uint64_t> m_v;
 	size_t m_cBits = 0;
 
 	__forceinline size_t size() const noexcept { return m_cBits; }
 	__forceinline bool empty() const noexcept { return m_cBits == 0; }
-	__forceinline void clear() noexcept
-	{
+	__forceinline void clear() noexcept {
 		m_cBits = 0;
 		m_v.clear();
 	}
-	__forceinline void resize(size_t cBits)
-	{
+	__forceinline void resize(size_t cBits) {
 		m_cBits = cBits;
 		m_v.resize((cBits + 63) / 64);
 
 		// Reset the trailing bits in the last word.
-		if (cBits)
-		{
+		if (cBits) {
 			const size_t j = cBits - 1;
 			const size_t j64 = j / 64;
 			const size_t jbit = j % 64;
@@ -1549,15 +1676,13 @@ struct Bitmap
 			m_v[j64] &= jmask;
 		}
 	}
-	__forceinline bool get(size_t i) const noexcept
-	{
+	__forceinline bool get(size_t i) const noexcept {
 		VEC(i < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t ibit = i % 64;
 		return (m_v[i64] & (1ULL << ibit)) != 0;
 	}
-	__forceinline void set(size_t i, bool f) noexcept
-	{
+	__forceinline void set(size_t i, bool f) noexcept {
 		VEC(i < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t ibit = i % 64;
@@ -1566,23 +1691,20 @@ struct Bitmap
 		else
 			m_v[i64] &= ~(1ULL << ibit);
 	}
-	__forceinline void set(size_t i) noexcept
-	{
+	__forceinline void set(size_t i) noexcept {
 		VEC(i < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t ibit = i % 64;
 		m_v[i64] |= (1ULL << ibit);
 	}
-	__forceinline void reset(size_t i) noexcept
-	{
+	__forceinline void reset(size_t i) noexcept {
 		VEC(i < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t ibit = i % 64;
 		m_v[i64] &= ~(1ULL << ibit);
 	}
 	// Sets the range [i, j] to 1.
-	__forceinline void setRange(size_t i, size_t j) noexcept
-	{
+	__forceinline void setRange(size_t i, size_t j) noexcept {
 		VEC(i <= j);
 		VEC(j < m_cBits);
 		const size_t i64 = i / 64;
@@ -1591,14 +1713,12 @@ struct Bitmap
 		const size_t jbit = j % 64;
 		const uint64_t imask = ((1ULL << ibit) - 1);
 		const uint64_t jmask = jbit == 63 ? ~0ULL : (1ULL << (jbit + 1)) - 1;
-		if (i64 == j64)
-		{
+		if (i64 == j64) {
 			// All bits are in the same 64-bit word.
 			const uint64_t mask = imask ^ jmask;
 			m_v[i64] |= mask;
 		}
-		else
-		{
+		else {
 			// Set the bits in the first word.
 			m_v[i64] |= ~imask;
 			// Set the bits in the middle words.
@@ -1609,8 +1729,7 @@ struct Bitmap
 		}
 	}
 	// Resets the range [i, j] to 0.
-	__forceinline void resetRange(size_t i, size_t j) noexcept
-	{
+	__forceinline void resetRange(size_t i, size_t j) noexcept {
 		VEC(i <= j);
 		VEC(j < m_cBits);
 		const size_t i64 = i / 64;
@@ -1619,14 +1738,12 @@ struct Bitmap
 		const size_t jbit = j % 64;
 		const uint64_t imask = ((1ULL << ibit) - 1);
 		const uint64_t jmask = jbit == 63 ? ~0ULL : (1ULL << (jbit + 1)) - 1;
-		if (i64 == j64)
-		{
+		if (i64 == j64) {
 			// All bits are in the same 64-bit word.
 			const uint64_t mask = imask ^ jmask;
 			m_v[i64] &= ~mask;
 		}
-		else
-		{
+		else {
 			// Reset the bits in the first word.
 			m_v[i64] &= imask;
 			// Reset the bits in the middle words.
@@ -1637,8 +1754,7 @@ struct Bitmap
 		}
 	}
 	// Returns the number of bits set to 1 in the range [i, j].
-	__forceinline size_t popcount(size_t i, size_t j) const noexcept
-	{
+	__forceinline size_t popcount(size_t i, size_t j) const noexcept {
 		VEC(i <= j);
 		VEC(j < m_cBits);
 		const size_t i64 = i / 64;
@@ -1648,14 +1764,12 @@ struct Bitmap
 		const uint64_t imask = ((1ULL << ibit) - 1);
 		const uint64_t jmask = jbit == 63 ? ~0ULL : (1ULL << (jbit + 1)) - 1;
 		size_t count = 0;
-		if (i64 == j64)
-		{
+		if (i64 == j64) {
 			// All bits are in the same 64-bit word.
 			const uint64_t mask = imask ^ jmask;
 			count += std::popcount(m_v[i64] & mask);
 		}
-		else
-		{
+		else {
 			// Count the bits in the first word.
 			count += std::popcount(m_v[i64] & ~imask);
 			// Count the bits in the middle words.
@@ -1667,19 +1781,16 @@ struct Bitmap
 		return count;
 	}
 	// Appends the contents of another bitmap to this one.
-	__forceinline void append(const Bitmap& o)
-	{
+	__forceinline void append(const Bitmap& o) {
 		if (o.empty())
 			return;
-		if (empty())
-		{
+		if (empty()) {
 			*this = o;
 			return;
 		}
 		const size_t cold = m_cBits / 64;
 		const size_t cshift = (m_cBits % 64);
-		if (!cshift)
-		{
+		if (!cshift) {
 			m_v.insert(end(m_v), begin(o.m_v), end(o.m_v));
 			m_cBits += o.m_cBits;
 			return;
@@ -1690,8 +1801,7 @@ struct Bitmap
 		m_cBits += o.m_cBits;
 		// Handle all complete words from source
 		size_t i = 0;
-		for (; i < o.m_v.size() - 1; ++i)
-		{
+		for (; i < o.m_v.size() - 1; ++i) {
 			m_v[cold + i] |= (o.m_v[i] & mask) << cshift;
 			m_v[cold + i + 1] |= (o.m_v[i] >> calign);
 		}
@@ -1703,40 +1813,34 @@ struct Bitmap
 		if ((cold + i + 1) < m_v.size())
 			m_v[cold + i + 1] |= (lastWord >> calign);
 	}
-	__forceinline void emplace_back(bool f)
-	{
+	__forceinline void emplace_back(bool f) {
 		const size_t i = m_cBits++;
 		const size_t i64 = i / 64;
 		const size_t ibit = i % 64;
-		if (i64 == m_v.size())
-		{
+		if (i64 == m_v.size()) {
 			m_v.push_back(0);
 		}
 		m_v[i64] |= (size_t)f << ibit;
 	}
 
 	Bitmap() = default;
-	Bitmap(size_t cBits) : m_cBits(cBits)
-	{
+	Bitmap(size_t cBits) : m_cBits(cBits) {
 		m_v.resize((cBits + 63) / 64);
 	}
 	~Bitmap() noexcept = default;
 	Bitmap(const Bitmap& o) : m_v(o.m_v), m_cBits(o.m_cBits) {}
-	Bitmap& operator=(const Bitmap& o)
-	{
+	Bitmap& operator=(const Bitmap& o) {
 		m_v = o.m_v;
 		m_cBits = o.m_cBits;
 		return *this;
 	}
-	Bitmap(Bitmap&& o) noexcept
-	{
+	Bitmap(Bitmap&& o) noexcept {
 		// clang-format off
 		m_v = std::move(o.m_v); o.m_v.clear();
 		m_cBits = std::move(o.m_cBits); o.m_cBits = 0;
 		// clang-format on
 	}
-	Bitmap& operator=(Bitmap&& o) noexcept
-	{
+	Bitmap& operator=(Bitmap&& o) noexcept {
 		// clang-format off
 		m_v = std::move(o.m_v); o.m_v.clear();
 		m_cBits = std::move(o.m_cBits); o.m_cBits = 0;
@@ -1745,16 +1849,13 @@ struct Bitmap
 	}
 };
 
-static void VerifyEqual(const Bitmap& b, const vector<bool>& v)
-{
+static void VerifyEqual(const Bitmap& b, const vector<bool>& v) {
 	VEC(b.size() == v.size());
-	for (size_t i = 0; i < b.size(); ++i)
-	{
+	for (size_t i = 0; i < b.size(); ++i) {
 		VEC(b.get(i) == v[i]);
 	}
 
-	if (b.size())
-	{
+	if (b.size()) {
 		const size_t cB = b.popcount(0, b.size() - 1);
 		size_t cV = 0;
 		for (size_t i = 0; i < v.size(); ++i)
@@ -1762,28 +1863,24 @@ static void VerifyEqual(const Bitmap& b, const vector<bool>& v)
 		VEC(cB == cV);
 	}
 }
-static void TestBitmap()
-{
+static void TestBitmap() {
 	Bitmap b;
 	vector<bool> v;
 	minstd_rand gen(1234);
 	uniform_int_distribution<size_t> dist;
 	function<void()> rgfn[] = {
-		[&]()
-		{
+		[&]() {
 			b.clear();
 			v.clear();
 			VerifyEqual(b, v);
 		},
-		[&]()
-		{
+		[&]() {
 			const size_t cBits = dist(gen) % 1000;
 			b.resize(cBits);
 			v.resize(cBits);
 			VerifyEqual(b, v);
 		},
-		[&]()
-		{
+		[&]() {
 			if (b.empty())
 				return;
 			const size_t i = dist(gen) % b.size();
@@ -1794,8 +1891,7 @@ static void TestBitmap()
 			v[j] = false;
 			VerifyEqual(b, v);
 		},
-		[&]()
-		{
+		[&]() {
 			if (b.empty())
 				return;
 			const size_t i = dist(gen) % b.size();
@@ -1806,8 +1902,7 @@ static void TestBitmap()
 			v[j] = false;
 			VerifyEqual(b, v);
 		},
-		[&]()
-		{
+		[&]() {
 			if (b.empty())
 				return;
 			const size_t i = dist(gen) % b.size();
@@ -1819,8 +1914,7 @@ static void TestBitmap()
 				v[k] = true;
 			VerifyEqual(b, v);
 		},
-		[&]()
-		{
+		[&]() {
 			if (b.empty())
 				return;
 			const size_t i = dist(gen) % b.size();
@@ -1832,8 +1926,7 @@ static void TestBitmap()
 				v[k] = false;
 			VerifyEqual(b, v);
 		},
-		[&]()
-		{
+		[&]() {
 			if (b.empty())
 				return;
 			const size_t i = dist(gen) % b.size();
@@ -1846,13 +1939,11 @@ static void TestBitmap()
 				cV += (size_t)v[k];
 			VEC(cB == cV);
 		},
-		[&]()
-		{
+		[&]() {
 			const size_t cAppend = dist(gen) % 1000;
 			Bitmap n { cAppend };
 			vector<bool> m(cAppend);
-			for (size_t i = 0; i < cAppend; ++i)
-			{
+			for (size_t i = 0; i < cAppend; ++i) {
 				const bool f = dist(gen) % 2;
 				n.set(i, f);
 				m[i] = f;
@@ -1862,11 +1953,9 @@ static void TestBitmap()
 			v.insert(end(v), begin(m), end(m));
 			VerifyEqual(b, v);
 		},
-		[&]()
-		{
+		[&]() {
 			const size_t cAppend = dist(gen) % 1000;
-			for (size_t i = 0; i < cAppend; ++i)
-			{
+			for (size_t i = 0; i < cAppend; ++i) {
 				const bool f = dist(gen) % 2;
 				b.emplace_back(f);
 				v.push_back(f);
@@ -1874,8 +1963,7 @@ static void TestBitmap()
 			VerifyEqual(b, v);
 		},
 	};
-	for (size_t i = 0; i < 10000; ++i)
-	{
+	for (size_t i = 0; i < 10000; ++i) {
 		const size_t j = dist(gen) % (sizeof(rgfn) / sizeof(rgfn[0]));
 		const auto& fn = rgfn[j];
 		fn();
@@ -1945,6 +2033,27 @@ Given a set of points and a set of intervals, return if all points are inside an
 ## Merging
 Given a set of intervals, merge them if adjacent/overlapping.
 Given two lists of sorted, non-adjacent/overlapping intervals, merge them into one list.
+
+# Fixed point
+TODO
+
+# Floating point
+IEEE754 standard
+TODO
+
+## Kahan summation
+TODO
+
+# Non modulo numbers
+TODO
+
+# Rational numbers
+The rational numbers are defined as the set of all possible fractions. That is, one integer divided by another, where the denominator cannot be zero.
+In mathematical set notation,
+```
+Q = { a / b, where a is an integer and b is an integer not equal to zero }
+```
+TODO
 
 # Linked lists
 Also known as singly-linked lists
