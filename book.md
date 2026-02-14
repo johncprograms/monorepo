@@ -58,10 +58,10 @@
 - [Self-referential memory](#self-referential-memory)
 	- [Internal indexing](#internal-indexing)
 	- [External indexing](#external-indexing)
-	- [Dynamic memory allocation](#dynamic-memory-allocation)
+- [Dynamic memory allocation](#dynamic-memory-allocation)
 - [Variable length array](#variable-length-array)
-- [Variable size stack](#variable-size-stack)
-- [Variable size bitmap](#variable-size-bitmap)
+- [Variable length stack](#variable-length-stack)
+- [Variable length bitmap](#variable-length-bitmap)
 - [Sequences (aka strings)](#sequences-aka-strings)
 	- [Subsequences (aka substrings)](#subsequences-aka-substrings)
 	- [Views](#views)
@@ -1511,7 +1511,7 @@ So at any node `i` to get the corresponding value, we just look up `m[i+3]`, or 
 
 This strategy is called external indexing, where we align two independent blocks; one block stores the connectivity information, and one block stores associated data. This is powerful, because we can trivially add more associated data (imagine adding a third block to store an additional number per-node, etc.). And we can write code that modifies connectivity without considering the value data; having to copy it, move it, etc.
 
-## Dynamic memory allocation
+# Dynamic memory allocation
 Every computer has a ceiling to the amount of memory onboard. That is, the memory array has a fixed upper limit. In order to write software programs that can run on various computers with different amounts of memory, we need a dynamic addressing scheme.
 
 The other major constraint is that very often the input to a computer program is user-generated (or at least influenced), and so it will be variable-length. Meaning, we need an addressing scheme that adjusts for variable-length things we want to store.
@@ -1648,10 +1648,98 @@ template<typename T> struct Array {
 };
 ```
 
-# Variable size stack
+# Variable length stack
+This is the first trivial extension of the [Variable length array](#variable-length-array), often used in its place because of the increased capability. The idea is to add a stack top index, and allow a subset of the array's memory to be used. 
+
+The C++ standard library calls this `std::vector`.
+
+As the stack grows/shrinks, it's important to use a geometric growth strategy. The motivating example is a sequence of `P` pushes; if we reallocate to grow by a constant factor (e.g. always make 10 new spaces), then we will reallocate `P/10` times. If `P` is `O(N)`, each reallocation is `O(N)`, and so the total sequence will be `O(N^2)` which leads to horrible performance. The resolution is to grow by a multiplicative factor, e.g. double/halve the capacity. Then for `P` pushes, we'll reallocate `O(log P)` times. With `P` being `O(N)`, the total sequence will thus be `O(N log N)`. Which is good enough to handle dynamic sizing in practice. Note that doubling/halving will maintain a utilization ratio of `[0.5, 1]`, which on average is `0.75`. You can improve on that utilization at the cost of more frequent reallocations by choosing some factor other than 2, like `1.5`. The factor of 2 is often used though, so you can use [Ceiling to power of 2](#ceiling-to-power-of-2) and similar strategies to infer next/previous capacities.
 
 
-# Variable size bitmap
+This strategy usually starts breaking down at huge sizes (e.g. many gigabytes or larger), due to address space fragmentation. I.e. the OS may eventually not be able to find a contiguous block of memory that's gigabytes large, because smaller allocations have been requested and serviced all over the address space. This is less common nowadays in the age of 48bit virtual address space, but it can still happen. At these levels, you'll start wanting to use more complex data structures to allow for non-contiguity.
+```
+template<typename T> struct Stack {
+  T* mem = nullptr;
+  size_t len = 0; // # of elements currently on the stack.
+  size_t capacity = 0;
+
+  Stack() = default;
+  Stack(size_t capacityInitial) {
+    mem = new T[capacityInitial];
+    len = 0;
+	capacity = capacityInitial;
+  }
+  Stack(size_t capacityInitial, const T& valueInitial) {
+    mem = new T[capacityInitial];
+    for (size_t i = 0; i < capacity; ++i)
+      mem[i] = valueInitial;
+    len = 0;
+	capacity = capacityInitial;
+  }
+  ~Stack() noexcept {
+    if (mem)
+      delete [] mem;
+    mem = nullptr;
+    len = 0;
+	capacity = 0;
+  }
+  __forceinline size_t capacity() const noexcept { return capacity; }
+  __forceinline size_t size() const noexcept { return len; }
+  __forceinline bool empty() const noexcept { return len == 0; }
+  __forceinline void reallocate(size_t capacityNew) {
+	assert(len <= capacityNew);
+	if (capacity == capacityNew) return;
+    auto memNew = new T[capacityNew];
+    for (size_t i = 0; i < len; ++i)
+      memNew[i] = std::move(mem[i]);
+    delete [] mem;
+    mem = memNew;
+    capacity = capacityNew;
+  }
+  __forceinline void resize(size_t lenNew) {
+    if (len == lenNew) return;
+	if (len > lenNew) {
+		// Reset values at the end to default values.
+		for (size_t i = lenNew; i < len; ++i) {
+			mem[i] = {};
+		}
+	}
+	len = lenNew;
+	reallocate(CeilingToPowerOf2(len));
+  }
+  __forceinline const T& operator[](size_t i) const {
+    assert(i < len);
+    return mem[i];
+  }
+  __forceinline T& operator[](size_t i) {
+    assert(i < len);
+    return mem[i];
+  }
+  __forceinline void push(const T& value) {
+	if (len == capacity) {
+		reallocate(2 * capacity);
+	}
+	mem[len] = value;
+	++len;
+  }
+  __forceinline const T& top() {
+	assert(len > 0);
+	return mem[len];
+  }
+  __forceinline void pop() {
+	assert(len > 0);
+	--len;
+	if (len < capacity / 2) {
+		reallocate(capacity / 2);
+	}
+  }
+};
+```
+
+# Variable length bitmap
+As described in [Bit operations](#bit-operations), lots of things operate in parallel across bits. A Boolean flag per-input, for example. Since [Variable length stack](#variable-length-stack) is so flexible, we often want that, but only a single bit (or a couple) per-element.
+
+We can implement this as an adapter around a [Variable length stack](#variable-length-stack) of `uint64_t`, the natural register width of today's 64bit CPUs.
 ```
 struct Bitmap {
 	vector<uint64_t> m_v;
@@ -1677,13 +1765,13 @@ struct Bitmap {
 		}
 	}
 	__forceinline bool get(size_t i) const noexcept {
-		VEC(i < m_cBits);
+		assert(i < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t ibit = i % 64;
 		return (m_v[i64] & (1ULL << ibit)) != 0;
 	}
 	__forceinline void set(size_t i, bool f) noexcept {
-		VEC(i < m_cBits);
+		assert(i < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t ibit = i % 64;
 		if (f)
@@ -1692,21 +1780,21 @@ struct Bitmap {
 			m_v[i64] &= ~(1ULL << ibit);
 	}
 	__forceinline void set(size_t i) noexcept {
-		VEC(i < m_cBits);
+		assert(i < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t ibit = i % 64;
 		m_v[i64] |= (1ULL << ibit);
 	}
 	__forceinline void reset(size_t i) noexcept {
-		VEC(i < m_cBits);
+		assert(i < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t ibit = i % 64;
 		m_v[i64] &= ~(1ULL << ibit);
 	}
 	// Sets the range [i, j] to 1.
 	__forceinline void setRange(size_t i, size_t j) noexcept {
-		VEC(i <= j);
-		VEC(j < m_cBits);
+		assert(i <= j);
+		assert(j < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t j64 = j / 64;
 		const size_t ibit = i % 64;
@@ -1730,8 +1818,8 @@ struct Bitmap {
 	}
 	// Resets the range [i, j] to 0.
 	__forceinline void resetRange(size_t i, size_t j) noexcept {
-		VEC(i <= j);
-		VEC(j < m_cBits);
+		assert(i <= j);
+		assert(j < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t j64 = j / 64;
 		const size_t ibit = i % 64;
@@ -1755,8 +1843,8 @@ struct Bitmap {
 	}
 	// Returns the number of bits set to 1 in the range [i, j].
 	__forceinline size_t popcount(size_t i, size_t j) const noexcept {
-		VEC(i <= j);
-		VEC(j < m_cBits);
+		assert(i <= j);
+		assert(j < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t j64 = j / 64;
 		const size_t ibit = i % 64;
@@ -1849,21 +1937,20 @@ struct Bitmap {
 	}
 };
 
-static void VerifyEqual(const Bitmap& b, const vector<bool>& v) {
-	VEC(b.size() == v.size());
-	for (size_t i = 0; i < b.size(); ++i) {
-		VEC(b.get(i) == v[i]);
-	}
-
-	if (b.size()) {
-		const size_t cB = b.popcount(0, b.size() - 1);
-		size_t cV = 0;
-		for (size_t i = 0; i < v.size(); ++i)
-			cV += (size_t)v[i];
-		VEC(cB == cV);
-	}
-}
 static void TestBitmap() {
+	auto VerifyEqual = [](const Bitmap& b, const vector<bool>& v) {
+		assert(b.size() == v.size());
+		for (size_t i = 0; i < b.size(); ++i) {
+			assert(b.get(i) == v[i]);
+		}
+		if (b.size()) {
+			const size_t cB = b.popcount(0, b.size() - 1);
+			size_t cV = 0;
+			for (size_t i = 0; i < v.size(); ++i)
+				cV += (size_t)v[i];
+			assert(cB == cV);
+		}
+	};
 	Bitmap b;
 	vector<bool> v;
 	minstd_rand gen(1234);
@@ -1937,7 +2024,7 @@ static void TestBitmap() {
 			size_t cV = 0;
 			for (size_t k = s; k <= t; ++k)
 				cV += (size_t)v[k];
-			VEC(cB == cV);
+			assert(cB == cV);
 		},
 		[&]() {
 			const size_t cAppend = dist(gen) % 1000;
