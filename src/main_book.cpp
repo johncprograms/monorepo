@@ -923,7 +923,6 @@ template<typename T> optional<T> KthOrderStatistic(Sequence<T> A, size_t k) {
 	if (!cA) return nullopt;
 	assert(k < cA);
 	vector<T> As(begin(A), end(A));
-	SortInplace(As);
 	nth_element(begin(As), begin(As) + k, end(As));
 	return As[k];
 }
@@ -2370,11 +2369,797 @@ struct Bitmap
 
 
 
-int
-main( int argc, char** argv )
+#define EXTERNAL 1
+
+#if EXTERNAL
+template<typename T> struct SingleLinkedList {
+	constexpr static size_t NIL = numeric_limits<size_t>::max();
+	vector<T> values;
+	vector<size_t> next;
+	vector<size_t> freeList;
+	size_t head = NIL;
+	size_t tail = NIL;
+	__forceinline bool empty() const { return freeList.size() == values.size(); }
+	__forceinline const T& front() const { assert(!empty() and head < values.size()); return values[head]; }
+	__forceinline       T& front()       { assert(!empty() and head < values.size()); return values[head]; }
+	__forceinline const T& back() const { assert(!empty() and tail < values.size()); return values[tail]; }
+	__forceinline       T& back()       { assert(!empty() and tail < values.size()); return values[tail]; }
+
+	void clear() {
+		values.clear();
+		next.clear();
+		freeList.clear();
+		head = tail = NIL;
+	}
+
+	void push_back(const T& value) {
+		const bool wasEmpty = empty();
+		size_t idx = 0;
+		if (!freeList.empty()) {
+			idx = freeList.back();
+			freeList.pop_back();
+			values[idx] = value;
+			next[idx] = NIL;
+		}
+		else {
+			idx = values.size();
+			values.push_back(value);
+			next.push_back(NIL);
+		}
+		if (wasEmpty) {
+			head = tail = idx;
+		}
+		else {
+			next[tail] = idx;
+			tail = idx;
+		}
+	}
+	void emplace_back(T&& value) {
+		const bool wasEmpty = empty();
+		size_t idx = 0;
+		if (!freeList.empty()) {
+			idx = freeList.back();
+			freeList.pop_back();
+			values[idx] = std::move(value);
+			next[idx] = NIL;
+		}
+		else {
+			idx = values.size();
+			values.emplace_back(std::move(value));
+			next.push_back(NIL);
+		}
+		if (wasEmpty) {
+			head = tail = idx;
+		}
+		else {
+			next[tail] = idx;
+			tail = idx;
+		}
+	}
+
+	void push_front(const T& value) {
+		const bool wasEmpty = empty();
+		size_t idx = 0;
+		if (!freeList.empty()) {
+			idx = freeList.back();
+			freeList.pop_back();
+			values[idx] = value;
+			next[idx] = head;
+		}
+		else {
+			idx = values.size();
+			values.push_back(value);
+			next.push_back(head);
+		}
+		if (wasEmpty) {
+			head = tail = idx;
+		}
+		else {
+			head = idx;
+		}
+	}
+	void emplace_front(T&& value) {
+		const bool wasEmpty = empty();
+		size_t idx = 0;
+		if (!freeList.empty()) {
+			idx = freeList.back();
+			freeList.pop_back();
+			values[idx] = std::move(value);
+			next[idx] = head;
+		}
+		else {
+			idx = values.size();
+			values.emplace_back(std::move(value));
+			next.push_back(head);
+		}
+		if (wasEmpty) {
+			head = tail = idx;
+		}
+		else {
+			head = idx;
+		}
+	}
+
+	// NOTE: pop_back would require O(N) node traversal to find the second-to-last node.
+	void pop_front() {
+		assert(!empty());
+		if (head == tail) {
+			freeList.push_back(head);
+			head = tail = NIL;
+		}
+		else {
+			const size_t headNew = next[head];
+			freeList.push_back(head);
+			head = headNew;
+		}
+	}
+
+	// Template to share code across iterator value_type=`T` and const_iterator value_type=`const T`
+	template<typename TValue> struct base_iterator final {
+		using difference_type = ptrdiff_t;
+		using value_type = TValue;
+		using reference_type = TValue&;
+
+		SingleLinkedList<T>* list = nullptr;
+		size_t node = NIL;
+
+		base_iterator() = default;
+		base_iterator(SingleLinkedList<T>* list_, size_t node_) : list(list_), node(node_) {}
+		~base_iterator() noexcept = default;
+		base_iterator(const base_iterator& o) { list = o.list; node = o.node; }
+		base_iterator& operator=(const base_iterator& o) { list = o.list; node = o.node; }
+		bool operator==(const base_iterator& o) const { return list == o.list and node == o.node; }
+		reference_type operator*() const { assert(list and node < list->values.size()); return list->values[node]; }
+		base_iterator& operator++() { // Prefix
+			if (node != NIL) {
+				assert(list and node < list->values.size());
+				node = list->next[node];
+			}
+			return *this;
+		}
+		base_iterator operator++(int) { // Postfix
+			auto tmp = *this;
+			++(*this);
+			return tmp;
+		}
+	};
+	using iterator = base_iterator<T>;
+	using const_iterator = base_iterator<const T>;
+	static_assert(forward_iterator<iterator>);
+	static_assert(forward_iterator<const_iterator>);
+	iterator begin() { return iterator(head); }
+	iterator end() { return iterator(); }
+	const_iterator begin() const { return const_iterator(head); }
+	const_iterator end() const { return const_iterator(); }
+};
+#else // !EXTERNAL
+template<typename T> struct SingleLinkedNode {
+	T value;
+	SingleLinkedNode* next = nullptr;
+
+	SingleLinkedNode(const T& value_) : value(value_) {}
+	SingleLinkedNode(T&& value_) : value(std::move(value_)) {}
+};
+template<typename T> struct SingleLinkedList {
+	SingleLinkedNode<T>* head = nullptr;
+	SingleLinkedNode<T>* tail = nullptr;
+
+	__forceinline bool empty() const { return !head; }
+	__forceinline const T& front() const { assert(!empty()); return head->value; }
+	__forceinline       T& front()       { assert(!empty()); return head->value; }
+	__forceinline const T& back() const { assert(!empty()); return tail->value; }
+	__forceinline       T& back()       { assert(!empty()); return tail->value; }
+
+	void clear() {
+		while (head) {
+			auto* next = head->next;
+			delete head;
+			head = next;
+		}
+		head = tail = nullptr;
+	}
+
+	__forceinline void _push_back_node(SingleLinkedNode<T>* node) {
+		node->next = nullptr;
+		if (!head) {
+			head = tail = node;
+		}
+		else {
+			assert(!tail->next);
+			tail->next = node;
+			tail = node;
+		}
+	}
+	void push_back(const T& value) {
+		auto* node = new SingleLinkedNode<T>(value);
+		_push_back_node(node);
+	}
+	void emplace_back(T&& value) {
+		auto* node = new SingleLinkedNode<T>(std::move(value));
+		_push_back_node(node);
+	}
+
+	__forceinline void _push_front_node(SingleLinkedNode<T>* node) {
+		if (!head) {
+			head = tail = node;
+		}
+		else {
+			node->next = head;
+			head = node;
+		}
+	}
+	void push_front(const T& value) {
+		auto* node = new SingleLinkedNode<T>(value);
+		_push_front_node(node);
+	}
+	void emplace_front(T&& value) {
+		auto* node = new SingleLinkedNode<T>(std::move(value));
+		_push_front_node(node);
+	}
+
+	// NOTE: pop_back would require O(N) node traversal to find the second-to-last node.
+	void pop_front() {
+		assert(!empty());
+		if (head == tail) {
+			delete head;
+			head = tail = nullptr;
+		}
+		else {
+			auto* headNew = head->next;
+			delete head;
+			head = headNew;
+		}
+	}
+
+	// Template to share code across iterator value_type=`T` and const_iterator value_type=`const T`
+	template<typename TValue> struct base_iterator final {
+		using difference_type = ptrdiff_t;
+		using value_type = TValue;
+		using reference_type = TValue&;
+
+		SingleLinkedNode<T>* node = nullptr;
+
+		base_iterator() = default;
+		base_iterator(SingleLinkedNode<T>* node_) : node(node_) {}
+		~base_iterator() noexcept = default;
+		base_iterator(const base_iterator& o) { node = o.node; }
+		base_iterator& operator=(const base_iterator& o) { node = o.node; }
+		bool operator==(const base_iterator& o) const { return node == o.node; }
+		reference_type operator*() const { assert(node); return node->value; }
+		base_iterator& operator++() { // Prefix
+			if (node) {
+				node = node->next;
+			}
+			return *this;
+		}
+		base_iterator operator++(int) { // Postfix
+			auto tmp = *this;
+			++(*this);
+			return tmp;
+		}
+	};
+	using iterator = base_iterator<T>;
+	using const_iterator = base_iterator<const T>;
+	static_assert(forward_iterator<iterator>);
+	static_assert(forward_iterator<const_iterator>);
+	iterator begin() { return iterator(head); }
+	iterator end() { return iterator(); }
+	const_iterator begin() const { return const_iterator(head); }
+	const_iterator end() const { return const_iterator(); }
+};
+#endif // !EXTERNAL
+static void TestSingleLinkedList() {
+	SingleLinkedList<int> list;
+	deque<int> reference;
+	auto VerifyEqual = [](const SingleLinkedList<int>& list, const deque<int>& reference) {
+		assert(equal(begin(list), end(list), begin(reference), end(reference)));
+	};
+	minstd_rand rng(0x1234);
+	geometric_distribution<int> distGeo(0.01);
+	uniform_int_distribution<int> distInt(1, 100);
+	const function<void()> fns[] = {
+		[&]() {
+			const int v = distInt(rng);
+			list.push_back(v);
+			reference.push_back(v);
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			const int v = distInt(rng);
+			int u = v;
+			list.emplace_back(move(u));
+			u = v;
+			reference.emplace_back(move(u));
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			const int v = distInt(rng);
+			list.push_front(v);
+			reference.push_front(v);
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			const int v = distInt(rng);
+			int u = v;
+			list.emplace_front(move(u));
+			u = v;
+			reference.emplace_front(move(u));
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			assert(list.empty() == reference.empty());
+			if (!list.empty()) {
+				assert(list.front() == reference.front());
+				assert(list.back() == reference.back());
+			}
+			list.pop_front();
+			reference.pop_front();
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			auto itL = begin(list);
+			auto itL1 = end(list);
+			auto itR = begin(reference);
+			auto itR1 = end(reference);
+			while (itL != itL1) {
+				const int v = distInt(rng);
+				*itL = v;
+				*itR = v;
+				++itL;
+				++itR;
+			}
+			assert(itL == itL1);
+			assert(itR == itR1);
+			VerifyEqual(list, reference);
+		},
+	};
+	for (size_t i = 0; i < 1000; ++i) {
+		const size_t ifn = distInt(rng) % size(fns);
+		const size_t cfn = distGeo(rng);
+		for (size_t j = 0; j < cfn; ++j) {
+			fns[ifn]();
+		}
+	}
+}
+
+#if EXTERNAL
+template<typename T> struct DoubleLinkedList {
+	constexpr static size_t NIL = numeric_limits<size_t>::max();
+	vector<T> values;
+	vector<size_t> next;
+	vector<size_t> prev;
+	vector<size_t> freeList;
+	size_t head = NIL;
+	size_t tail = NIL;
+	__forceinline bool empty() const { return freeList.size() == values.size(); }
+	__forceinline const T& front() const { assert(!empty() and head < values.size()); return values[head]; }
+	__forceinline       T& front()       { assert(!empty() and head < values.size()); return values[head]; }
+	__forceinline const T& back() const { assert(!empty() and tail < values.size()); return values[tail]; }
+	__forceinline       T& back()       { assert(!empty() and tail < values.size()); return values[tail]; }
+
+	void clear() {
+		values.clear();
+		next.clear();
+		prev.clear();
+		freeList.clear();
+		head = tail = NIL;
+	}
+
+	void push_back(const T& value) {
+		const bool wasEmpty = empty();
+		size_t idx = 0;
+		if (!freeList.empty()) {
+			idx = freeList.back();
+			freeList.pop_back();
+			values[idx] = value;
+			next[idx] = NIL;
+			prev[idx] = tail;
+		}
+		else {
+			idx = values.size();
+			values.push_back(value);
+			next.push_back(NIL);
+			prev.push_back(tail);
+		}
+		if (wasEmpty) {
+			head = tail = idx;
+		}
+		else {
+			next[tail] = idx;
+			tail = idx;
+		}
+	}
+	void emplace_back(T&& value) {
+		const bool wasEmpty = empty();
+		size_t idx = 0;
+		if (!freeList.empty()) {
+			idx = freeList.back();
+			freeList.pop_back();
+			values[idx] = std::move(value);
+			next[idx] = NIL;
+			prev[idx] = tail;
+		}
+		else {
+			idx = values.size();
+			values.emplace_back(std::move(value));
+			next.push_back(NIL);
+			prev.push_back(tail);
+		}
+		if (wasEmpty) {
+			head = tail = idx;
+		}
+		else {
+			next[tail] = idx;
+			tail = idx;
+		}
+	}
+
+	void push_front(const T& value) {
+		const bool wasEmpty = empty();
+		size_t idx = 0;
+		if (!freeList.empty()) {
+			idx = freeList.back();
+			freeList.pop_back();
+			values[idx] = value;
+			next[idx] = head;
+			prev[idx] = NIL;
+		}
+		else {
+			idx = values.size();
+			values.push_back(value);
+			next.push_back(head);
+			prev.push_back(NIL);
+		}
+		if (wasEmpty) {
+			head = tail = idx;
+		}
+		else {
+			next[head] = idx;
+			head = idx;
+		}
+	}
+	void emplace_front(T&& value) {
+		const bool wasEmpty = empty();
+		size_t idx = 0;
+		if (!freeList.empty()) {
+			idx = freeList.back();
+			freeList.pop_back();
+			values[idx] = std::move(value);
+			next[idx] = head;
+			prev[idx] = NIL;
+		}
+		else {
+			idx = values.size();
+			values.emplace_back(std::move(value));
+			next.push_back(head);
+			prev.push_back(NIL);
+		}
+		if (wasEmpty) {
+			head = tail = idx;
+		}
+		else {
+			next[head] = idx;
+			head = idx;
+		}
+	}
+
+	void pop_front() {
+		assert(!empty());
+		if (head == tail) {
+			freeList.push_back(head);
+			head = tail = NIL;
+		}
+		else {
+			const size_t headNew = next[head];
+			freeList.push_back(head);
+			prev[headNew] = NIL;
+			head = headNew;
+		}
+	}
+	void pop_back() {
+		assert(!empty());
+		if (head == tail) {
+			freeList.push_back(tail);
+			head = tail = NIL;
+		}
+		else {
+			const size_t tailNew = prev[tail];
+			freeList.push_back(tail);
+			next[tailNew] = NIL;
+			tail = tailNew;
+		}
+	}
+
+	// Template to share code across iterator value_type=`T` and const_iterator value_type=`const T`
+	template<typename TValue> struct base_iterator final {
+		using difference_type = ptrdiff_t;
+		using value_type = TValue;
+
+		const DoubleLinkedList<T>* list = nullptr;
+		size_t node = NIL;
+
+		base_iterator() = default;
+		base_iterator(DoubleLinkedList<T>* list_, size_t node_) : list(list_), node(node_) {}
+		base_iterator(const DoubleLinkedList<T>* list_, size_t node_) : list(list_), node(node_) {}
+		~base_iterator() noexcept = default;
+		base_iterator(const base_iterator& o) { list = o.list; node = o.node; }
+		base_iterator& operator=(const base_iterator& o) { list = o.list; node = o.node; }
+		bool operator==(const base_iterator& o) const { return list == o.list and node == o.node; }
+		value_type& operator*() const { assert(list and node < list->values.size()); return list->values[node]; }
+		base_iterator& operator++() { // Prefix
+			if (node != NIL) {
+				assert(list and node < list->values.size());
+				node = list->next[node];
+			}
+			return *this;
+		}
+		base_iterator operator++(int) { // Postfix
+			auto tmp = *this;
+			++(*this);
+			return tmp;
+		}
+		base_iterator& operator--() { // Prefix
+			if (node != NIL) {
+				assert(list and node < list->values.size());
+				node = list->prev[node];
+			}
+			return *this;
+		}
+		base_iterator operator--(int) { // Postfix
+			auto tmp = *this;
+			--(*this);
+			return tmp;
+		}
+	};
+	using iterator = base_iterator<T>;
+	using const_iterator = base_iterator<const T>;
+	static_assert(forward_iterator<iterator>);
+	static_assert(forward_iterator<const_iterator>);
+	iterator begin() { return iterator(this, head); }
+	iterator end() { return iterator(); }
+	const_iterator begin() const { return const_iterator(this, head); }
+	const_iterator end() const { return const_iterator(); }
+};
+#else // !EXTERNAL
+template<typename T> struct DoubleLinkedNode {
+	T value;
+	DoubleLinkedNode<T>* prev = nullptr;
+	DoubleLinkedNode<T>* next = nullptr;
+
+	DoubleLinkedNode(const T& value_) : value(value_) {}
+	DoubleLinkedNode(T&& value_) : value(std::move(value_)) {}
+};
+template<typename T> struct DoubleLinkedList {
+	DoubleLinkedNode<T>* head = nullptr;
+	DoubleLinkedNode<T>* tail = nullptr;
+
+	__forceinline bool empty() const { return !head; }
+	__forceinline const T& front() const { assert(!empty()); return head->value; }
+	__forceinline       T& front()       { assert(!empty()); return head->value; }
+	__forceinline const T& back() const { assert(!empty()); return tail->value; }
+	__forceinline       T& back()       { assert(!empty()); return tail->value; }
+
+	void clear() {
+		while (head) {
+			auto* next = head->next;
+			delete head;
+			head = next;
+		}
+		head = tail = nullptr;
+	}
+	__forceinline void _push_back_node(DoubleLinkedNode<T>* node) {
+		if (!head) {
+			node->prev = nullptr;
+			node->next = nullptr;
+			head = tail = node;
+		}
+		else {
+			node->prev = tail;
+			node->next = nullptr;
+			assert(!tail->next);
+			tail->next = node;
+			tail = node;
+		}
+	}
+	void push_back(const T& value) {
+		auto* node = new DoubleLinkedNode<T>(value);
+		_push_back_node(node);
+	}
+	void emplace_back(T&& value) {
+		auto* node = new DoubleLinkedNode<T>(std::move(value));
+		_push_back_node(node);
+	}
+
+	__forceinline void _push_front_node(DoubleLinkedNode<T>* node) {
+		if (!head) {
+			node->prev = nullptr;
+			node->next = nullptr;
+			head = tail = node;
+		}
+		else {
+			node->prev = nullptr;
+			node->next = head;
+			head->prev = node;
+			head = node;
+		}
+	}
+	void push_front(const T& value) {
+		auto* node = new DoubleLinkedNode<T>(value);
+		_push_front_node(node);
+	}
+	void emplace_front(T&& value) {
+		auto* node = new DoubleLinkedNode<T>(std::move(value));
+		_push_front_node(node);
+	}
+
+	void pop_front() {
+		assert(!empty());
+		if (head == tail) {
+			delete head;
+			head = tail = nullptr;
+		}
+		else {
+			auto* headNew = head->next;
+			delete head;
+			headNew->prev = nullptr;
+			head = headNew;
+		}
+	}
+
+	void pop_back() {
+		assert(!empty());
+		if (head == tail) {
+			delete tail;
+			head = tail = nullptr;
+		}
+		else {
+			auto* tailNew = tail->prev;
+			delete tail;
+			tailNew->next = nullptr;
+			tail = tailNew;
+		}
+	}
+
+	// Template to share code across iterator value_type=`T` and const_iterator value_type=`const T`
+	template<typename TValue> struct base_iterator final {
+		using difference_type = ptrdiff_t;
+		using value_type = TValue;
+		using reference_type = TValue&;
+
+		DoubleLinkedNode<T>* node = nullptr;
+
+		base_iterator() = default;
+		base_iterator(DoubleLinkedNode<T>* node_) : node(node_) {}
+		~base_iterator() noexcept = default;
+		base_iterator(const base_iterator& o) { node = o.node; }
+		base_iterator& operator=(const base_iterator& o) { node = o.node; }
+		bool operator==(const base_iterator& o) const { return node == o.node; }
+		reference_type operator*() const { assert(node); return node->value; }
+		base_iterator& operator++() { // Prefix
+			if (node) {
+				node = node->next;
+			}
+			return *this;
+		}
+		base_iterator operator++(int) { // Postfix
+			auto tmp = *this;
+			++(*this);
+			return tmp;
+		}
+		base_iterator& operator--() { // Prefix
+		if (node) {
+			node = node->prev;
+		}
+		return *this;
+	}
+	base_iterator operator--(int) { // Postfix
+		auto tmp = *this;
+		--(*this);
+		return tmp;
+	}
+	};
+	using iterator = base_iterator<T>;
+	using const_iterator = base_iterator<const T>;
+	static_assert(bidirectional_iterator<iterator>);
+	static_assert(bidirectional_iterator<const_iterator>);
+	iterator begin() { return iterator(head); }
+	iterator end() { return iterator(); }
+	const_iterator begin() const { return const_iterator(head); }
+	const_iterator end() const { return const_iterator(); }
+};
+#endif // !EXTERNAL
+static void TestDoubleLinkedList() {
+	DoubleLinkedList<int> list;
+	deque<int> reference;
+	auto VerifyEqual = [](const DoubleLinkedList<int>& list, const deque<int>& reference) {
+		assert(equal(begin(list), end(list), begin(reference), end(reference)));
+	};
+	minstd_rand rng(0x1234);
+	geometric_distribution<int> distGeo(0.01);
+	uniform_int_distribution<int> distInt(1, 100);
+	const function<void()> fns[] = {
+		[&]() {
+			const int v = distInt(rng);
+			list.push_back(v);
+			reference.push_back(v);
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			const int v = distInt(rng);
+			int u = v;
+			list.emplace_back(move(u));
+			u = v;
+			reference.emplace_back(move(u));
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			const int v = distInt(rng);
+			list.push_front(v);
+			reference.push_front(v);
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			const int v = distInt(rng);
+			int u = v;
+			list.emplace_front(move(u));
+			u = v;
+			reference.emplace_front(move(u));
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			assert(list.empty() == reference.empty());
+			if (!list.empty()) {
+				assert(list.front() == reference.front());
+				assert(list.back() == reference.back());
+			}
+			list.pop_front();
+			reference.pop_front();
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			assert(list.empty() == reference.empty());
+			if (!list.empty()) {
+				assert(list.front() == reference.front());
+				assert(list.back() == reference.back());
+			}
+			list.pop_back();
+			reference.pop_back();
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			auto itL = begin(list);
+			auto itL1 = end(list);
+			auto itR = begin(reference);
+			auto itR1 = end(reference);
+			while (itL != itL1) {
+				const int v = distInt(rng);
+				*itL = v;
+				*itR = v;
+				++itL;
+				++itR;
+			}
+			assert(itL == itL1);
+			assert(itR == itR1);
+			VerifyEqual(list, reference);
+		},
+	};
+	for (size_t i = 0; i < 1000; ++i) {
+		const size_t ifn = distInt(rng) % size(fns);
+		const size_t cfn = distGeo(rng);
+		for (size_t j = 0; j < cfn; ++j) {
+			fns[ifn]();
+		}
+	}
+}
+
+
+
+int main(int argc, char** argv)
 {
-	TestSequenceSort();
-	TestZipperMerge();
+	TestSingleLinkedList();
+	TestDoubleLinkedList();
+//	TestSequenceSort();
+//	TestZipperMerge();
 	//TestSequences();
 	//TestIntervalSet();
 	return 0;

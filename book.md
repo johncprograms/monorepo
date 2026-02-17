@@ -88,7 +88,12 @@
 - [Non modulo numbers](#non-modulo-numbers)
 - [Rational numbers](#rational-numbers)
 - [Linked lists](#linked-lists)
+	- [Internal indexing](#internal-indexing-1)
+	- [External indexing](#external-indexing-1)
 - [Trees](#trees)
+	- [Succinct static trees](#succinct-static-trees)
+	- [Left-child only binary tree encoding](#left-child-only-binary-tree-encoding)
+	- [Label isomorphic subtrees](#label-isomorphic-subtrees)
 - [Forests](#forests)
 - [Directed Acyclic Graphs (aka DAGs)](#directed-acyclic-graphs-aka-dags)
 - [Graphs](#graphs)
@@ -1497,7 +1502,7 @@ m[9] = 0
 ## External indexing
 Say we want to store `(3,c) -> (1,a) -> (2,b)` with values `a, b, c` on those nodes. 
 
-Say `m[0]` is the head of the list to start with. `m[i]` will store the links for `i in { 1, 2, 3 }`, and `m[i+3]` will store the values.
+Say `m[0]` is the head of the list to start with. `m[i]` will store the links for `i in { 1, 2, 3 }`, and `m[i+3]` will store the values. I.e. `{ starting node, node 1 next, node 2 next, ..., node 1 value, node 2 value, ... }`.
 ```
 m[0] = 3
 m[1] = 2
@@ -2146,13 +2151,483 @@ TODO
 Also known as singly-linked lists
 Undirected lists
 Doubly-linked lists
+Xor double-links
 TODO
 
+## Internal indexing
+Recall the [Internal indexing](#internal-indexing) method, where per-node values are stored alongside the `next` link. `{ starting node, node 1 value, node 1 next, node 2 value, node 2 next, ... }`. 
+
+If we commit to using a discriminated union to pack multiple node types into one supertype (call it `T`), that looks like:
+```
+template<typename T> struct SingleLinkedNode {
+	T value;
+	SingleLinkedNode* next = nullptr;
+
+	SingleLinkedNode(const T& value_) : value(value_) {}
+	SingleLinkedNode(T&& value_) : value(std::move(value_)) {}
+};
+template<typename T> struct SingleLinkedList {
+	SingleLinkedNode<T>* head = nullptr;
+	SingleLinkedNode<T>* tail = nullptr;
+
+	__forceinline bool empty() const { return !head; }
+	__forceinline const T& front() const { assert(!empty()); return head->value; }
+	__forceinline       T& front()       { assert(!empty()); return head->value; }
+	__forceinline const T& back() const { assert(!empty()); return tail->value; }
+	__forceinline       T& back()       { assert(!empty()); return tail->value; }
+
+	void clear() {
+		while (head) {
+			auto* next = head->next;
+			delete head;
+			head = next;
+		}
+		head = tail = nullptr;
+	}
+
+	__forceinline void _push_back_node(SingleLinkedNode<T>* node) {
+		node->next = nullptr;
+		if (!head) {
+			head = tail = node;
+		}
+		else {
+			assert(!tail->next);
+			tail->next = node;
+			tail = node;
+		}
+	}
+	void push_back(const T& value) {
+		auto* node = new SingleLinkedNode<T>(value);
+		_push_back_node(node);
+	}
+	void emplace_back(T&& value) {
+		auto* node = new SingleLinkedNode<T>(std::move(value));
+		_push_back_node(node);
+	}
+
+	__forceinline void _push_front_node(SingleLinkedNode<T>* node) {
+		if (!head) {
+			head = tail = node;
+		}
+		else {
+			node->next = head;
+			head = node;
+		}
+	}
+	void push_front(const T& value) {
+		auto* node = new SingleLinkedNode<T>(value);
+		_push_front_node(node);
+	}
+	void emplace_front(T&& value) {
+		auto* node = new SingleLinkedNode<T>(std::move(value));
+		_push_front_node(node);
+	}
+
+	// NOTE: pop_back would require O(N) node traversal to find the second-to-last node.
+	void pop_front() {
+		assert(!empty());
+		if (head == tail) {
+			delete head;
+			head = tail = nullptr;
+		}
+		else {
+			auto* headNew = head->next;
+			delete head;
+			head = headNew;
+		}
+	}
+
+	// Template to share code across iterator value_type=`T` and const_iterator value_type=`const T`
+	template<typename TValue> struct base_iterator final {
+		using difference_type = ptrdiff_t;
+		using value_type = TValue;
+		using reference_type = TValue&;
+
+		SingleLinkedNode<T>* node = nullptr;
+
+		base_iterator() = default;
+		base_iterator(SingleLinkedNode<T>* node_) : node(node_) {}
+		~base_iterator() noexcept = default;
+		base_iterator(const base_iterator& o) { node = o.node; }
+		base_iterator& operator=(const base_iterator& o) { node = o.node; }
+		bool operator==(const base_iterator& o) const { return node == o.node; }
+		reference_type operator*() const { assert(node); return node->value; }
+		base_iterator& operator++() { // Prefix
+			if (node) {
+				node = node->next;
+			}
+			return *this;
+		}
+		base_iterator operator++(int) { // Postfix
+			auto tmp = *this;
+			++(*this);
+			return tmp;
+		}
+	};
+	using iterator = base_iterator<T>;
+	using const_iterator = base_iterator<const T>;
+	iterator begin() { return iterator(head); }
+	iterator end() { return iterator(); }
+	const_iterator begin() const { return const_iterator(head); }
+	const_iterator end() const { return const_iterator(); }
+};
+static void TestSingleLinkedList() {
+	SingleLinkedList<int> list;
+	deque<int> reference;
+	auto VerifyEqual = [](const SingleLinkedList<int>& list, const deque<int>& reference) {
+		assert(equal(begin(list), end(list), begin(reference), end(reference)));
+	};
+	minstd_rand rng(0x1234);
+	geometric_distribution<int> distGeo(0.01);
+	uniform_int_distribution<int> distInt(1, 100);
+	const function<void()> fns[] = {
+		[&]() {
+			const int v = distInt(rng);
+			list.push_back(v);
+			reference.push_back(v);
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			const int v = distInt(rng);
+			int u = v;
+			list.emplace_back(move(u));
+			u = v;
+			reference.emplace_back(move(u));
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			const int v = distInt(rng);
+			list.push_front(v);
+			reference.push_front(v);
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			const int v = distInt(rng);
+			int u = v;
+			list.emplace_front(move(u));
+			u = v;
+			reference.emplace_front(move(u));
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			assert(list.empty() == reference.empty());
+			if (!list.empty()) {
+				assert(list.front() == reference.front());
+				assert(list.back() == reference.back());
+			}
+			list.pop_front();
+			reference.pop_front();
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			auto itL = begin(list);
+			auto itL1 = end(list);
+			auto itR = begin(reference);
+			auto itR1 = end(reference);
+			while (itL != itL1) {
+				const int v = distInt(rng);
+				*itL = v;
+				*itR = v;
+				++itL;
+				++itR;
+			}
+			assert(itL == itL1);
+			assert(itR == itR1);
+			VerifyEqual(list, reference);
+		},
+	};
+	for (size_t i = 0; i < 1000; ++i) {
+		const size_t ifn = distInt(rng) % size(fns);
+		const size_t cfn = distGeo(rng);
+		for (size_t j = 0; j < cfn; ++j) {
+			fns[ifn]();
+		}
+	}
+}
+```
+Note that `pop_back()` isn't easily supported. Consider a sequence of `pop_back()` calls; we'd need a way to traverse backwards in the list, but our edges are directed only one way. We'd have to rescan from the list head each time, which is generally unacceptable performance.
+
+The common resolution is to add a backwards direction edge. So instead of just `next`, we also store `prev`, the link in the opposite direction. This is a so-called doubly-linked list.
+```
+template<typename T> struct DoubleLinkedNode {
+	T value;
+	DoubleLinkedNode<T>* prev = nullptr;
+	DoubleLinkedNode<T>* next = nullptr;
+
+	DoubleLinkedNode(const T& value_) : value(value_) {}
+	DoubleLinkedNode(T&& value_) : value(std::move(value_)) {}
+};
+template<typename T> struct DoubleLinkedList {
+	DoubleLinkedNode<T>* head = nullptr;
+	DoubleLinkedNode<T>* tail = nullptr;
+
+	__forceinline bool empty() const { return !head; }
+	__forceinline const T& front() const { assert(!empty()); return head->value; }
+	__forceinline       T& front()       { assert(!empty()); return head->value; }
+	__forceinline const T& back() const { assert(!empty()); return tail->value; }
+	__forceinline       T& back()       { assert(!empty()); return tail->value; }
+
+	void clear() {
+		while (head) {
+			auto* next = head->next;
+			delete head;
+			head = next;
+		}
+		head = tail = nullptr;
+	}
+	__forceinline void _push_back_node(DoubleLinkedNode<T>* node) {
+		if (!head) {
+			node->prev = nullptr;
+			node->next = nullptr;
+			head = tail = node;
+		}
+		else {
+			node->prev = tail;
+			node->next = nullptr;
+			assert(!tail->next);
+			tail->next = node;
+			tail = node;
+		}
+	}
+	void push_back(const T& value) {
+		auto* node = new DoubleLinkedNode<T>(value);
+		_push_back_node(node);
+	}
+	void emplace_back(T&& value) {
+		auto* node = new DoubleLinkedNode<T>(std::move(value));
+		_push_back_node(node);
+	}
+
+	__forceinline void _push_front_node(DoubleLinkedNode<T>* node) {
+		if (!head) {
+			node->prev = nullptr;
+			node->next = nullptr;
+			head = tail = node;
+		}
+		else {
+			node->prev = nullptr;
+			node->next = head;
+			head->prev = node;
+			head = node;
+		}
+	}
+	void push_front(const T& value) {
+		auto* node = new DoubleLinkedNode<T>(value);
+		_push_front_node(node);
+	}
+	void emplace_front(T&& value) {
+		auto* node = new DoubleLinkedNode<T>(std::move(value));
+		_push_front_node(node);
+	}
+
+	void pop_front() {
+		assert(!empty());
+		if (head == tail) {
+			delete head;
+			head = tail = nullptr;
+		}
+		else {
+			auto* headNew = head->next;
+			delete head;
+			headNew->prev = nullptr;
+			head = headNew;
+		}
+	}
+
+	void pop_back() {
+		assert(!empty());
+		if (head == tail) {
+			delete tail;
+			head = tail = nullptr;
+		}
+		else {
+			auto* tailNew = tail->prev;
+			delete tail;
+			tailNew->next = nullptr;
+			tail = tailNew;
+		}
+	}
+
+	// Template to share code across iterator value_type=`T` and const_iterator value_type=`const T`
+	template<typename TValue> struct base_iterator final {
+		using difference_type = ptrdiff_t;
+		using value_type = TValue;
+		using reference_type = TValue&;
+
+		DoubleLinkedNode<T>* node = nullptr;
+
+		base_iterator() = default;
+		base_iterator(DoubleLinkedNode<T>* node_) : node(node_) {}
+		~base_iterator() noexcept = default;
+		base_iterator(const base_iterator& o) { node = o.node; }
+		base_iterator& operator=(const base_iterator& o) { node = o.node; }
+		bool operator==(const base_iterator& o) const { return node == o.node; }
+		reference_type operator*() const { assert(node); return node->value; }
+		base_iterator& operator++() { // Prefix
+			if (node) {
+				node = node->next;
+			}
+			return *this;
+		}
+		base_iterator operator++(int) { // Postfix
+			auto tmp = *this;
+			++(*this);
+			return tmp;
+		}
+		base_iterator& operator--() { // Prefix
+		if (node) {
+			node = node->prev;
+		}
+		return *this;
+	}
+	base_iterator operator--(int) { // Postfix
+		auto tmp = *this;
+		--(*this);
+		return tmp;
+	}
+	};
+	using iterator = base_iterator<T>;
+	using const_iterator = base_iterator<const T>;
+	static_assert(bidirectional_iterator<iterator>);
+	static_assert(bidirectional_iterator<const_iterator>);
+	iterator begin() { return iterator(head); }
+	iterator end() { return iterator(); }
+	const_iterator begin() const { return const_iterator(head); }
+	const_iterator end() const { return const_iterator(); }
+};
+static void TestDoubleLinkedList() {
+	DoubleLinkedList<int> list;
+	deque<int> reference;
+	auto VerifyEqual = [](const DoubleLinkedList<int>& list, const deque<int>& reference) {
+		assert(equal(begin(list), end(list), begin(reference), end(reference)));
+	};
+	minstd_rand rng(0x1234);
+	geometric_distribution<int> distGeo(0.01);
+	uniform_int_distribution<int> distInt(1, 100);
+	const function<void()> fns[] = {
+		[&]() {
+			const int v = distInt(rng);
+			list.push_back(v);
+			reference.push_back(v);
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			const int v = distInt(rng);
+			int u = v;
+			list.emplace_back(move(u));
+			u = v;
+			reference.emplace_back(move(u));
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			const int v = distInt(rng);
+			list.push_front(v);
+			reference.push_front(v);
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			const int v = distInt(rng);
+			int u = v;
+			list.emplace_front(move(u));
+			u = v;
+			reference.emplace_front(move(u));
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			assert(list.empty() == reference.empty());
+			if (!list.empty()) {
+				assert(list.front() == reference.front());
+				assert(list.back() == reference.back());
+			}
+			list.pop_front();
+			reference.pop_front();
+			VerifyEqual(list, reference);
+		},
+		[&]() {
+			auto itL = begin(list);
+			auto itL1 = end(list);
+			auto itR = begin(reference);
+			auto itR1 = end(reference);
+			while (itL != itL1) {
+				const int v = distInt(rng);
+				*itL = v;
+				*itR = v;
+				++itL;
+				++itR;
+			}
+			assert(itL == itL1);
+			assert(itR == itR1);
+			VerifyEqual(list, reference);
+		},
+	};
+	for (size_t i = 0; i < 1000; ++i) {
+		const size_t ifn = distInt(rng) % size(fns);
+		const size_t cfn = distGeo(rng);
+		for (size_t j = 0; j < cfn; ++j) {
+			fns[ifn]();
+		}
+	}
+}
+```
+
+## External indexing
+Recall the [External indexing](#external-indexing) method, where we store per-node values separately from the links. `{ starting node, node 1 next, node 2 next, ..., node 1 value, node 2 value, ... }`
+
+
+```
+```
+
 # Trees
+Fundamental tree property:
 Directed trees
 Undirected trees
 Parent pointer or branch stack
+Unordered trees
+Preorder
+Inorder
+Postorder
+Levelorder
 TODO
+
+## Succinct static trees
+TODO
+
+## Left-child only binary tree encoding
+The key idea here is to eliminate the `right` pointer, and instead infer that 
+TODO
+
+## Label isomorphic subtrees
+The problem here is to assign unique IDs to unique subtrees. 
+
+E.g. assign `0` to null, `1` to a leaf, `2` to a parent with one left child, `3` to a parent with one right child, `4` to a parent with two children, `5` to a grandparent with `2` as left child, `6` as grandparent with `2` as right child, ...
+
+```
+struct Node { Node* left; Node* right; };
+void LabelIsomorphicSubtrees(Node* root, unordered_map<Node*, size_t>& result) {
+	size_t uid = 1;
+	unordered_map<pair<size_t, size_t>, size_t> dedupeTable;
+	auto LabelRecur = [&](Node* t) -> size_t {
+		if (!t) return 0;
+		const size_t L = LabelRecur(t->left);
+		const size_t R = LabelRecur(t->right);
+		const auto LR = make_pair<size_t, size_t>(L,R);
+		auto it = dedupeTable.find(LR);
+		size_t id = 0;
+		if (it != end(dedupeTable)) {
+			id = *it;
+		}
+		else {
+			id = uid;
+			++uid;
+			dedupeTable[LR] = id;
+		}
+		result[t] = id;
+		return id;
+	}
+	result.emplace(nullptr, 0u);
+	LabelRecur(root);
+}
+```
 
 # Forests
 Directed forests
@@ -2270,7 +2745,7 @@ The idea is to define a hash combinator function, `h(node1, node2)`, and choose 
 
 ## Topological sort
 TODO
-
+	
 ## Minimum spanning tree
 TODO
 
