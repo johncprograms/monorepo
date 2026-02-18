@@ -274,13 +274,84 @@ template<typename T> void ZipperMergeAscending(Sequence<T> R, DescendingSequence
 	r = move(b, b1, r);
 	assert(r == r1);
 }
+template<typename T> void ZipperMergeDescending(Sequence<T> R, AscendingSequence<T> A, AscendingSequence<T> B) {
+	assert(R.size() == A.size() + B.size());
+	auto a = begin(A);
+	const auto a1 = end(A);
+	auto b = begin(B);
+	const auto b1 = end(B);
+	auto r = rbegin(R);
+	const auto r1 = rend(R);
+	for (; a != a1 && b != b1; ++r) {
+		if (*a <= *b) { *r = *a; ++a; }
+		else { *r = *b; ++b; }
+	}
+	r = move(a, a1, r);
+	r = move(b, b1, r);
+	assert(r == r1);
+}
+template<typename T> void ZipperMergeDescending(Sequence<T> R, DescendingSequence<T> A, DescendingSequence<T> B) {
+	assert(R.size() == A.size() + B.size());
+	auto a = begin(A);
+	const auto a1 = end(A);
+	auto b = begin(B);
+	const auto b1 = end(B);
+	auto r = rbegin(R);
+	const auto r1 = rend(R);
+	for (; a != a1 && b != b1; ++r) {
+		if (*a >= *b) { *r = *a; ++a; }
+		else { *r = *b; ++b; }
+	}
+	r = move(a, a1, r);
+	r = move(b, b1, r);
+	assert(r == r1);
+}
+template<typename T> void ZipperMergeDescending(Sequence<T> R, AscendingSequence<T> A, DescendingSequence<T> B) {
+	assert(R.size() == A.size() + B.size());
+	auto a = begin(A);
+	const auto a1 = end(A);
+	auto b = rbegin(B);
+	const auto b1 = rend(B);
+	auto r = rbegin(R);
+	const auto r1 = rend(R);
+	for (; a != a1 && b != b1; ++r) {
+		if (*a <= *b) { *r = *a; ++a; }
+		else { *r = *b; ++b; }
+	}
+	r = move(a, a1, r);
+	r = move(b, b1, r);
+	assert(r == r1);
+}
+template<typename T> void ZipperMergeDescending(Sequence<T> R, DescendingSequence<T> A, AscendingSequence<T> B) {
+	assert(R.size() == A.size() + B.size());
+	auto a = rbegin(A);
+	const auto a1 = rend(A);
+	auto b = begin(B);
+	const auto b1 = end(B);
+	auto r = rbegin(R);
+	const auto r1 = rend(R);
+	for (; a != a1 && b != b1; ++r) {
+		if (*a <= *b) { *r = *a; ++a; }
+		else { *r = *b; ++b; }
+	}
+	r = move(a, a1, r);
+	r = move(b, b1, r);
+	assert(r == r1);
+}
 template<typename T, typename Tag> vector<T> ZipperMergeAscending(SortedSequence<T, Tag> A, SortedSequence<T, Tag> B) {
 	vector<T> R;
 	R.resize(A.size() + B.size());
 	ZipperMergeAscending<T>(R, A, B);
 	return R;
 }
+template<typename T, typename Tag> vector<T> ZipperMergeDescending(SortedSequence<T, Tag> A, SortedSequence<T, Tag> B) {
+	vector<T> R;
+	R.resize(A.size() + B.size());
+	ZipperMergeDescending<T>(R, A, B);
+	return R;
+}
 template<typename T> void ZipperMergeAscendingInplace(vector<T>& A, AscendingSequence<T> B) {
+	assert(IsSortedAscending<T>(A));
 	// IDEA: Merge into the end of expanded A, right-to-left.
 	const size_t cA = A.size();
 	const size_t cB = B.size();
@@ -293,6 +364,63 @@ template<typename T> void ZipperMergeAscendingInplace(vector<T>& A, AscendingSeq
 	auto r = rbegin(A);
 	for (; a != a1 && b != b1; ++r) {
 		if (*a > *b) { *r = *a; ++a; }
+		else { *r = *b; ++b; }
+	}
+	r = move(b, b1, r);
+	// NOTE: No need to flush the rest of A, since it is already in place.
+}
+template<typename T> void ZipperMergeAscendingInplace(vector<T>& A, DescendingSequence<T> B) {
+	assert(IsSortedAscending<T>(A));
+	// IDEA: Merge into the end of expanded A, right-to-left.
+	const size_t cA = A.size();
+	const size_t cB = B.size();
+	const size_t cNew = cA + cB;
+	A.resize(cNew);
+	auto a = rbegin(A) + cB;
+	const auto a1 = rend(A);
+	auto b = begin(B);
+	const auto b1 = end(B);
+	auto r = rbegin(A);
+	for (; a != a1 && b != b1; ++r) {
+		if (*a > *b) { *r = *a; ++a; }
+		else { *r = *b; ++b; }
+	}
+	r = move(b, b1, r);
+	// NOTE: No need to flush the rest of A, since it is already in place.
+}
+template<typename T> void ZipperMergeDescendingInplace(vector<T>& A, AscendingSequence<T> B) {
+	assert(IsSortedDescending<T>(A));
+	// IDEA: Merge into the end of expanded A, right-to-left.
+	const size_t cA = A.size();
+	const size_t cB = B.size();
+	const size_t cNew = cA + cB;
+	A.resize(cNew);
+	auto a = rbegin(A) + cB;
+	const auto a1 = rend(A);
+	auto b = begin(B);
+	const auto b1 = end(B);
+	auto r = rbegin(A);
+	for (; a != a1 && b != b1; ++r) {
+		if (*a < *b) { *r = *a; ++a; }
+		else { *r = *b; ++b; }
+	}
+	r = move(b, b1, r);
+	// NOTE: No need to flush the rest of A, since it is already in place.
+}
+template<typename T> void ZipperMergeDescendingInplace(vector<T>& A, DescendingSequence<T> B) {
+	assert(IsSortedDescending<T>(A));
+	// IDEA: Merge into the end of expanded A, right-to-left.
+	const size_t cA = A.size();
+	const size_t cB = B.size();
+	const size_t cNew = cA + cB;
+	A.resize(cNew);
+	auto a = rbegin(A) + cB;
+	const auto a1 = rend(A);
+	auto b = rbegin(B);
+	const auto b1 = rend(B);
+	auto r = rbegin(A);
+	for (; a != a1 && b != b1; ++r) {
+		if (*a < *b) { *r = *a; ++a; }
 		else { *r = *b; ++b; }
 	}
 	r = move(b, b1, r);
