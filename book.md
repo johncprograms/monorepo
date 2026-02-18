@@ -1796,6 +1796,14 @@ struct Bitmap {
 		const size_t ibit = i % 64;
 		m_v[i64] &= ~(1ULL << ibit);
 	}
+	__forceinline bool getThenSet(size_t i) noexcept {
+		assert(i < m_cBits);
+		const size_t i64 = i / 64;
+		const size_t ibit = i % 64;
+		const bool f = (m_v[i64] & (1ULL << ibit)) != 0;
+		m_v[i64] |= (1ULL << ibit);
+		return f;
+	}
 	// Sets the range [i, j] to 1.
 	__forceinline void setRange(size_t i, size_t j) noexcept {
 		assert(i <= j);
@@ -1821,6 +1829,10 @@ struct Bitmap {
 			m_v[j64] |= jmask;
 		}
 	}
+	__forceinline void setAll() noexcept {
+		if (m_cBits)
+			setRange(0, m_cBits - 1);
+	}
 	// Resets the range [i, j] to 0.
 	__forceinline void resetRange(size_t i, size_t j) noexcept {
 		assert(i <= j);
@@ -1845,6 +1857,10 @@ struct Bitmap {
 			// Reset the bits in the last word.
 			m_v[j64] &= ~jmask;
 		}
+	}
+	__forceinline void resetAll() noexcept {
+		if (m_cBits)
+			resetRange(0, m_cBits - 1);
 	}
 	// Returns the number of bits set to 1 in the range [i, j].
 	__forceinline size_t popcount(size_t i, size_t j) const noexcept {
@@ -1916,11 +1932,11 @@ struct Bitmap {
 		m_v[i64] |= (size_t)f << ibit;
 	}
 
+	~Bitmap() noexcept = default;
 	Bitmap() = default;
 	Bitmap(size_t cBits) : m_cBits(cBits) {
 		m_v.resize((cBits + 63) / 64);
 	}
-	~Bitmap() noexcept = default;
 	Bitmap(const Bitmap& o) : m_v(o.m_v), m_cBits(o.m_cBits) {}
 	Bitmap& operator=(const Bitmap& o) {
 		m_v = o.m_v;
@@ -1941,7 +1957,6 @@ struct Bitmap {
 		return *this;
 	}
 };
-
 static void TestBitmap() {
 	auto VerifyEqual = [](const Bitmap& b, const vector<bool>& v) {
 		assert(b.size() == v.size());
@@ -2056,7 +2071,7 @@ static void TestBitmap() {
 		},
 	};
 	for (size_t i = 0; i < 10000; ++i) {
-		const size_t j = dist(gen) % (sizeof(rgfn) / sizeof(rgfn[0]));
+		const size_t j = dist(gen) % _countof(rgfn);
 		const auto& fn = rgfn[j];
 		fn();
 	}
@@ -2266,6 +2281,8 @@ template<typename T> struct SingleLinkedList {
 	};
 	using iterator = base_iterator<T>;
 	using const_iterator = base_iterator<const T>;
+	static_assert(forward_iterator<iterator>);
+	static_assert(forward_iterator<const_iterator>);
 	iterator begin() { return iterator(head); }
 	iterator end() { return iterator(); }
 	const_iterator begin() const { return const_iterator(head); }
@@ -2544,6 +2561,16 @@ static void TestDoubleLinkedList() {
 			VerifyEqual(list, reference);
 		},
 		[&]() {
+			assert(list.empty() == reference.empty());
+			if (!list.empty()) {
+				assert(list.front() == reference.front());
+				assert(list.back() == reference.back());
+			}
+			list.pop_back();
+			reference.pop_back();
+			VerifyEqual(list, reference);
+		},
+		[&]() {
 			auto itL = begin(list);
 			auto itL1 = end(list);
 			auto itR = begin(reference);
@@ -2571,7 +2598,9 @@ static void TestDoubleLinkedList() {
 ```
 
 ## External indexing
-Recall the [External indexing](#external-indexing) method, where we store per-node values separately from the links. `{ starting node, node 1 next, node 2 next, ..., node 1 value, node 2 value, ... }`
+Recall the [External indexing](#external-indexing) method, where we store per-node values separately from the links. I.e. `{ starting node, node 1 next, node 2 next, ..., node 1 value, node 2 value, ... }`
+
+To allow for 
 
 
 ```

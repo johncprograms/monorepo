@@ -2125,26 +2125,22 @@ void TestIntervalSet() {
 
 
 
-struct Bitmap
-{
+struct Bitmap {
 	vector<uint64_t> m_v;
 	size_t m_cBits = 0;
 
 	__forceinline size_t size() const noexcept { return m_cBits; }
 	__forceinline bool empty() const noexcept { return m_cBits == 0; }
-	__forceinline void clear() noexcept
-	{
+	__forceinline void clear() noexcept {
 		m_cBits = 0;
 		m_v.clear();
 	}
-	__forceinline void resize(size_t cBits)
-	{
+	__forceinline void resize(size_t cBits) {
 		m_cBits = cBits;
 		m_v.resize((cBits + 63) / 64);
 
 		// Reset the trailing bits in the last word.
-		if (cBits)
-		{
+		if (cBits) {
 			const size_t j = cBits - 1;
 			const size_t j64 = j / 64;
 			const size_t jbit = j % 64;
@@ -2152,15 +2148,13 @@ struct Bitmap
 			m_v[j64] &= jmask;
 		}
 	}
-	__forceinline bool get(size_t i) const noexcept
-	{
+	__forceinline bool get(size_t i) const noexcept {
 		assert(i < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t ibit = i % 64;
 		return (m_v[i64] & (1ULL << ibit)) != 0;
 	}
-	__forceinline void set(size_t i, bool f) noexcept
-	{
+	__forceinline void set(size_t i, bool f) noexcept {
 		assert(i < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t ibit = i % 64;
@@ -2169,22 +2163,19 @@ struct Bitmap
 		else
 			m_v[i64] &= ~(1ULL << ibit);
 	}
-	__forceinline void set(size_t i) noexcept
-	{
+	__forceinline void set(size_t i) noexcept {
 		assert(i < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t ibit = i % 64;
 		m_v[i64] |= (1ULL << ibit);
 	}
-	__forceinline void reset(size_t i) noexcept
-	{
+	__forceinline void reset(size_t i) noexcept {
 		assert(i < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t ibit = i % 64;
 		m_v[i64] &= ~(1ULL << ibit);
 	}
-	__forceinline bool getThenSet(size_t i) noexcept
-	{
+	__forceinline bool getThenSet(size_t i) noexcept {
 		assert(i < m_cBits);
 		const size_t i64 = i / 64;
 		const size_t ibit = i % 64;
@@ -2193,8 +2184,7 @@ struct Bitmap
 		return f;
 	}
 	// Sets the range [i, j] to 1.
-	__forceinline void setRange(size_t i, size_t j) noexcept
-	{
+	__forceinline void setRange(size_t i, size_t j) noexcept {
 		assert(i <= j);
 		assert(j < m_cBits);
 		const size_t i64 = i / 64;
@@ -2203,14 +2193,12 @@ struct Bitmap
 		const size_t jbit = j % 64;
 		const uint64_t imask = ((1ULL << ibit) - 1);
 		const uint64_t jmask = jbit == 63 ? ~0ULL : (1ULL << (jbit + 1)) - 1;
-		if (i64 == j64)
-		{
+		if (i64 == j64) {
 			// All bits are in the same 64-bit word.
 			const uint64_t mask = imask ^ jmask;
 			m_v[i64] |= mask;
 		}
-		else
-		{
+		else {
 			// Set the bits in the first word.
 			m_v[i64] |= ~imask;
 			// Set the bits in the middle words.
@@ -2220,14 +2208,12 @@ struct Bitmap
 			m_v[j64] |= jmask;
 		}
 	}
-	__forceinline void setAll() noexcept
-	{
+	__forceinline void setAll() noexcept {
 		if (m_cBits)
 			setRange(0, m_cBits - 1);
 	}
 	// Resets the range [i, j] to 0.
-	__forceinline void resetRange(size_t i, size_t j) noexcept
-	{
+	__forceinline void resetRange(size_t i, size_t j) noexcept {
 		assert(i <= j);
 		assert(j < m_cBits);
 		const size_t i64 = i / 64;
@@ -2236,14 +2222,12 @@ struct Bitmap
 		const size_t jbit = j % 64;
 		const uint64_t imask = ((1ULL << ibit) - 1);
 		const uint64_t jmask = jbit == 63 ? ~0ULL : (1ULL << (jbit + 1)) - 1;
-		if (i64 == j64)
-		{
+		if (i64 == j64) {
 			// All bits are in the same 64-bit word.
 			const uint64_t mask = imask ^ jmask;
 			m_v[i64] &= ~mask;
 		}
-		else
-		{
+		else {
 			// Reset the bits in the first word.
 			m_v[i64] &= imask;
 			// Reset the bits in the middle words.
@@ -2253,14 +2237,12 @@ struct Bitmap
 			m_v[j64] &= ~jmask;
 		}
 	}
-	__forceinline void resetAll() noexcept
-	{
+	__forceinline void resetAll() noexcept {
 		if (m_cBits)
 			resetRange(0, m_cBits - 1);
 	}
 	// Returns the number of bits set to 1 in the range [i, j].
-	__forceinline size_t popcount(size_t i, size_t j) const noexcept
-	{
+	__forceinline size_t popcount(size_t i, size_t j) const noexcept {
 		assert(i <= j);
 		assert(j < m_cBits);
 		const size_t i64 = i / 64;
@@ -2270,14 +2252,12 @@ struct Bitmap
 		const uint64_t imask = ((1ULL << ibit) - 1);
 		const uint64_t jmask = jbit == 63 ? ~0ULL : (1ULL << (jbit + 1)) - 1;
 		size_t count = 0;
-		if (i64 == j64)
-		{
+		if (i64 == j64) {
 			// All bits are in the same 64-bit word.
 			const uint64_t mask = imask ^ jmask;
 			count += std::popcount(m_v[i64] & mask);
 		}
-		else
-		{
+		else {
 			// Count the bits in the first word.
 			count += std::popcount(m_v[i64] & ~imask);
 			// Count the bits in the middle words.
@@ -2289,19 +2269,16 @@ struct Bitmap
 		return count;
 	}
 	// Appends the contents of another bitmap to this one.
-	__forceinline void append(const Bitmap& o)
-	{
+	__forceinline void append(const Bitmap& o) {
 		if (o.empty())
 			return;
-		if (empty())
-		{
+		if (empty()) {
 			*this = o;
 			return;
 		}
 		const size_t cold = m_cBits / 64;
 		const size_t cshift = (m_cBits % 64);
-		if (!cshift)
-		{
+		if (!cshift) {
 			m_v.insert(end(m_v), begin(o.m_v), end(o.m_v));
 			m_cBits += o.m_cBits;
 			return;
@@ -2312,8 +2289,7 @@ struct Bitmap
 		m_cBits += o.m_cBits;
 		// Handle all complete words from source
 		size_t i = 0;
-		for (; i < o.m_v.size() - 1; ++i)
-		{
+		for (; i < o.m_v.size() - 1; ++i) {
 			m_v[cold + i] |= (o.m_v[i] & mask) << cshift;
 			m_v[cold + i + 1] |= (o.m_v[i] >> calign);
 		}
@@ -2325,40 +2301,34 @@ struct Bitmap
 		if ((cold + i + 1) < m_v.size())
 			m_v[cold + i + 1] |= (lastWord >> calign);
 	}
-	__forceinline void emplace_back(bool f)
-	{
+	__forceinline void emplace_back(bool f) {
 		const size_t i = m_cBits++;
 		const size_t i64 = i / 64;
 		const size_t ibit = i % 64;
-		if (i64 == m_v.size())
-		{
+		if (i64 == m_v.size()) {
 			m_v.push_back(0);
 		}
 		m_v[i64] |= (size_t)f << ibit;
 	}
 
+	~Bitmap() noexcept = default;
 	Bitmap() = default;
-	Bitmap(size_t cBits) : m_cBits(cBits)
-	{
+	Bitmap(size_t cBits) : m_cBits(cBits) {
 		m_v.resize((cBits + 63) / 64);
 	}
-	~Bitmap() noexcept = default;
 	Bitmap(const Bitmap& o) : m_v(o.m_v), m_cBits(o.m_cBits) {}
-	Bitmap& operator=(const Bitmap& o)
-	{
+	Bitmap& operator=(const Bitmap& o) {
 		m_v = o.m_v;
 		m_cBits = o.m_cBits;
 		return *this;
 	}
-	Bitmap(Bitmap&& o) noexcept
-	{
+	Bitmap(Bitmap&& o) noexcept {
 		// clang-format off
 		m_v = std::move(o.m_v); o.m_v.clear();
 		m_cBits = std::move(o.m_cBits); o.m_cBits = 0;
 		// clang-format on
 	}
-	Bitmap& operator=(Bitmap&& o) noexcept
-	{
+	Bitmap& operator=(Bitmap&& o) noexcept {
 		// clang-format off
 		m_v = std::move(o.m_v); o.m_v.clear();
 		m_cBits = std::move(o.m_cBits); o.m_cBits = 0;
@@ -2366,6 +2336,125 @@ struct Bitmap
 		return *this;
 	}
 };
+static void TestBitmap() {
+	auto VerifyEqual = [](const Bitmap& b, const vector<bool>& v) {
+		assert(b.size() == v.size());
+		for (size_t i = 0; i < b.size(); ++i) {
+			assert(b.get(i) == v[i]);
+		}
+		if (b.size()) {
+			const size_t cB = b.popcount(0, b.size() - 1);
+			size_t cV = 0;
+			for (size_t i = 0; i < v.size(); ++i)
+				cV += (size_t)v[i];
+			assert(cB == cV);
+		}
+	};
+	Bitmap b;
+	vector<bool> v;
+	minstd_rand gen(1234);
+	uniform_int_distribution<size_t> dist;
+	function<void()> rgfn[] = {
+		[&]() {
+			b.clear();
+			v.clear();
+			VerifyEqual(b, v);
+		},
+		[&]() {
+			const size_t cBits = dist(gen) % 1000;
+			b.resize(cBits);
+			v.resize(cBits);
+			VerifyEqual(b, v);
+		},
+		[&]() {
+			if (b.empty())
+				return;
+			const size_t i = dist(gen) % b.size();
+			const size_t j = dist(gen) % b.size();
+			b.set(i, true);
+			b.set(j, false);
+			v[i] = true;
+			v[j] = false;
+			VerifyEqual(b, v);
+		},
+		[&]() {
+			if (b.empty())
+				return;
+			const size_t i = dist(gen) % b.size();
+			const size_t j = dist(gen) % b.size();
+			b.set(i);
+			b.reset(j);
+			v[i] = true;
+			v[j] = false;
+			VerifyEqual(b, v);
+		},
+		[&]() {
+			if (b.empty())
+				return;
+			const size_t i = dist(gen) % b.size();
+			const size_t j = dist(gen) % b.size();
+			const size_t s = min<size_t>(i, j);
+			const size_t t = max<size_t>(i, j);
+			b.setRange(s, t);
+			for (size_t k = s; k <= t; ++k)
+				v[k] = true;
+			VerifyEqual(b, v);
+		},
+		[&]() {
+			if (b.empty())
+				return;
+			const size_t i = dist(gen) % b.size();
+			const size_t j = dist(gen) % b.size();
+			const size_t s = min<size_t>(i, j);
+			const size_t t = max<size_t>(i, j);
+			b.resetRange(s, t);
+			for (size_t k = s; k <= t; ++k)
+				v[k] = false;
+			VerifyEqual(b, v);
+		},
+		[&]() {
+			if (b.empty())
+				return;
+			const size_t i = dist(gen) % b.size();
+			const size_t j = dist(gen) % b.size();
+			const size_t s = min<size_t>(i, j);
+			const size_t t = max<size_t>(i, j);
+			const size_t cB = b.popcount(s, t);
+			size_t cV = 0;
+			for (size_t k = s; k <= t; ++k)
+				cV += (size_t)v[k];
+			assert(cB == cV);
+		},
+		[&]() {
+			const size_t cAppend = dist(gen) % 1000;
+			Bitmap n { cAppend };
+			vector<bool> m(cAppend);
+			for (size_t i = 0; i < cAppend; ++i) {
+				const bool f = dist(gen) % 2;
+				n.set(i, f);
+				m[i] = f;
+			}
+			VerifyEqual(n, m);
+			b.append(n);
+			v.insert(end(v), begin(m), end(m));
+			VerifyEqual(b, v);
+		},
+		[&]() {
+			const size_t cAppend = dist(gen) % 1000;
+			for (size_t i = 0; i < cAppend; ++i) {
+				const bool f = dist(gen) % 2;
+				b.emplace_back(f);
+				v.push_back(f);
+			}
+			VerifyEqual(b, v);
+		},
+	};
+	for (size_t i = 0; i < 10000; ++i) {
+		const size_t j = dist(gen) % _countof(rgfn);
+		const auto& fn = rgfn[j];
+		fn();
+	}
+}
 
 
 
@@ -2494,42 +2583,71 @@ template<typename T> struct SingleLinkedList {
 		}
 	}
 
-	// Template to share code across iterator value_type=`T` and const_iterator value_type=`const T`
-	template<typename TValue> struct base_iterator final {
+	struct const_iterator final {
 		using difference_type = ptrdiff_t;
-		using value_type = TValue;
-		using reference_type = TValue&;
+		using value_type = const T;
 
-		SingleLinkedList<T>* list = nullptr;
+		const SingleLinkedList<T>* list = nullptr;
 		size_t node = NIL;
 
-		base_iterator() = default;
-		base_iterator(SingleLinkedList<T>* list_, size_t node_) : list(list_), node(node_) {}
-		~base_iterator() noexcept = default;
-		base_iterator(const base_iterator& o) { list = o.list; node = o.node; }
-		base_iterator& operator=(const base_iterator& o) { list = o.list; node = o.node; }
-		bool operator==(const base_iterator& o) const { return list == o.list and node == o.node; }
-		reference_type operator*() const { assert(list and node < list->values.size()); return list->values[node]; }
-		base_iterator& operator++() { // Prefix
+		~const_iterator() noexcept = default;
+		const_iterator() = default;
+		const_iterator(const SingleLinkedList<T>* list_, size_t node_) : list(list_), node(node_) {}
+		const_iterator(const const_iterator& o) { list = o.list; node = o.node; }
+		const_iterator& operator=(const const_iterator& o) { list = o.list; node = o.node; }
+		bool operator==(const const_iterator& o) const { return list == o.list and node == o.node; }
+		value_type& operator*() const { assert(list and node < list->values.size()); return list->values[node]; }
+		const_iterator& operator++() { // Prefix
 			if (node != NIL) {
 				assert(list and node < list->values.size());
 				node = list->next[node];
+				if (node == NIL) {
+					list = nullptr;
+				}
 			}
 			return *this;
 		}
-		base_iterator operator++(int) { // Postfix
+		const_iterator operator++(int) { // Postfix
 			auto tmp = *this;
 			++(*this);
 			return tmp;
 		}
 	};
-	using iterator = base_iterator<T>;
-	using const_iterator = base_iterator<const T>;
+	struct iterator final {
+		using difference_type = ptrdiff_t;
+		using value_type = T;
+
+		SingleLinkedList<T>* list = nullptr;
+		size_t node = NIL;
+
+		~iterator() noexcept = default;
+		iterator() = default;
+		iterator(SingleLinkedList<T>* list_, size_t node_) : list(list_), node(node_) {}
+		iterator(const iterator& o) { list = o.list; node = o.node; }
+		iterator& operator=(const iterator& o) { list = o.list; node = o.node; }
+		bool operator==(const iterator& o) const { return list == o.list and node == o.node; }
+		value_type& operator*() const { assert(list and node < list->values.size()); return list->values[node]; }
+		iterator& operator++() { // Prefix
+			if (node != NIL) {
+				assert(list and node < list->values.size());
+				node = list->next[node];
+				if (node == NIL) {
+					list = nullptr;
+				}
+			}
+			return *this;
+		}
+		iterator operator++(int) { // Postfix
+			auto tmp = *this;
+			++(*this);
+			return tmp;
+		}
+	};
 	static_assert(forward_iterator<iterator>);
 	static_assert(forward_iterator<const_iterator>);
-	iterator begin() { return iterator(head); }
+	iterator begin() { return iterator(this, head); }
 	iterator end() { return iterator(); }
-	const_iterator begin() const { return const_iterator(head); }
+	const_iterator begin() const { return const_iterator(this, head); }
 	const_iterator end() const { return const_iterator(); }
 };
 #else // !EXTERNAL
@@ -2814,7 +2932,7 @@ template<typename T> struct DoubleLinkedList {
 			head = tail = idx;
 		}
 		else {
-			next[head] = idx;
+			prev[head] = idx;
 			head = idx;
 		}
 	}
@@ -2838,7 +2956,7 @@ template<typename T> struct DoubleLinkedList {
 			head = tail = idx;
 		}
 		else {
-			next[head] = idx;
+			prev[head] = idx;
 			head = idx;
 		}
 	}
@@ -2870,49 +2988,96 @@ template<typename T> struct DoubleLinkedList {
 		}
 	}
 
-	// Template to share code across iterator value_type=`T` and const_iterator value_type=`const T`
-	template<typename TValue> struct base_iterator final {
+	struct const_iterator final {
 		using difference_type = ptrdiff_t;
-		using value_type = TValue;
+		using value_type = const T;
 
 		const DoubleLinkedList<T>* list = nullptr;
 		size_t node = NIL;
 
-		base_iterator() = default;
-		base_iterator(DoubleLinkedList<T>* list_, size_t node_) : list(list_), node(node_) {}
-		base_iterator(const DoubleLinkedList<T>* list_, size_t node_) : list(list_), node(node_) {}
-		~base_iterator() noexcept = default;
-		base_iterator(const base_iterator& o) { list = o.list; node = o.node; }
-		base_iterator& operator=(const base_iterator& o) { list = o.list; node = o.node; }
-		bool operator==(const base_iterator& o) const { return list == o.list and node == o.node; }
+		~const_iterator() noexcept = default;
+		const_iterator() = default;
+		const_iterator(const DoubleLinkedList<T>* list_, size_t node_) : list(list_), node(node_) {}
+		const_iterator(const const_iterator& o) { list = o.list; node = o.node; }
+		const_iterator& operator=(const const_iterator& o) { list = o.list; node = o.node; }
+		bool operator==(const const_iterator& o) const { return list == o.list and node == o.node; }
 		value_type& operator*() const { assert(list and node < list->values.size()); return list->values[node]; }
-		base_iterator& operator++() { // Prefix
+		const_iterator& operator++() { // Prefix
 			if (node != NIL) {
 				assert(list and node < list->values.size());
 				node = list->next[node];
+				if (node == NIL) {
+					list = nullptr;
+				}
 			}
 			return *this;
 		}
-		base_iterator operator++(int) { // Postfix
+		const_iterator operator++(int) { // Postfix
 			auto tmp = *this;
 			++(*this);
 			return tmp;
 		}
-		base_iterator& operator--() { // Prefix
+		const_iterator& operator--() { // Prefix
 			if (node != NIL) {
 				assert(list and node < list->values.size());
 				node = list->prev[node];
+				if (node == NIL) {
+					list = nullptr;
+				}
 			}
 			return *this;
 		}
-		base_iterator operator--(int) { // Postfix
+		const_iterator operator--(int) { // Postfix
 			auto tmp = *this;
 			--(*this);
 			return tmp;
 		}
 	};
-	using iterator = base_iterator<T>;
-	using const_iterator = base_iterator<const T>;
+	struct iterator final {
+		using difference_type = ptrdiff_t;
+		using value_type = T;
+
+		DoubleLinkedList<T>* list = nullptr;
+		size_t node = NIL;
+
+		~iterator() noexcept = default;
+		iterator() = default;
+		iterator(DoubleLinkedList<T>* list_, size_t node_) : list(list_), node(node_) {}
+		iterator(const iterator& o) { list = o.list; node = o.node; }
+		iterator& operator=(const iterator& o) { list = o.list; node = o.node; }
+		bool operator==(const iterator& o) const { return list == o.list and node == o.node; }
+		value_type& operator*() const { assert(list and node < list->values.size()); return list->values[node]; }
+		iterator& operator++() { // Prefix
+			if (node != NIL) {
+				assert(list and node < list->values.size());
+				node = list->next[node];
+				if (node == NIL) {
+					list = nullptr;
+				}
+			}
+			return *this;
+		}
+		iterator operator++(int) { // Postfix
+			auto tmp = *this;
+			++(*this);
+			return tmp;
+		}
+		iterator& operator--() { // Prefix
+			if (node != NIL) {
+				assert(list and node < list->values.size());
+				node = list->prev[node];
+				if (node == NIL) {
+					list = nullptr;
+				}
+			}
+			return *this;
+		}
+		iterator operator--(int) { // Postfix
+			auto tmp = *this;
+			--(*this);
+			return tmp;
+		}
+	};
 	static_assert(forward_iterator<iterator>);
 	static_assert(forward_iterator<const_iterator>);
 	iterator begin() { return iterator(this, head); }
@@ -3156,6 +3321,7 @@ static void TestDoubleLinkedList() {
 
 int main(int argc, char** argv)
 {
+	TestBitmap();
 	TestSingleLinkedList();
 	TestDoubleLinkedList();
 //	TestSequenceSort();
