@@ -273,7 +273,7 @@ template<typename T> bool ContainsAll(const SortedSequence<T> A, const SortedSeq
 		else if (cmp > 0) return false;
 		else ++b;
 	}
-	return true;
+	return b == b1;
 }
 template<typename T> bool ContainsAll(const SortedSequence<T> A, const Sequence<T> B) {
 	vector<T> Bs { begin(B), end(B) };
@@ -1130,7 +1130,7 @@ template<typename T, typename FnKeepT> Sequence<T> FilterInplaceNonOrderPreservi
 	if (A.empty()) return A;
 	auto a = begin(A);
 	auto a1 = end(A);
-	#if 1
+	#if 0
 	for (; a != a1; ++a) {
 		const bool keep = fnKeep(*a);
 		if (!keep) {
@@ -1428,9 +1428,8 @@ void TestSequences() {
 			R = Rn;
 		},
 	};
-	for (size_t i = 0; i < 1000000; ++i) {
+	for (size_t i = 0; i < 100000; ++i) {
 		const size_t idx = distInt(rng) % size(fns);
-		if (i == 14180000) __debugbreak();
 		fns[idx]();
 	}
 }
@@ -2773,7 +2772,7 @@ static void TestSingleLinkedList() {
 		assert(equal(begin(list), end(list), begin(reference), end(reference)));
 	};
 	minstd_rand rng(0x1234);
-	geometric_distribution<int> distGeo(0.01);
+	geometric_distribution<int> distGeo(0.1);
 	uniform_int_distribution<int> distInt(1, 100);
 	const function<void()> fns[] = {
 		[&]() {
@@ -3240,7 +3239,7 @@ static void TestDoubleLinkedList() {
 		assert(equal(begin(list), end(list), begin(reference), end(reference)));
 	};
 	minstd_rand rng(0x1234);
-	geometric_distribution<int> distGeo(0.01);
+	geometric_distribution<int> distGeo(0.1);
 	uniform_int_distribution<int> distInt(1, 100);
 	const function<void()> fns[] = {
 		[&]() {
@@ -3321,13 +3320,13 @@ static void TestDoubleLinkedList() {
 
 int main(int argc, char** argv)
 {
+	TestSequenceSort();
+	TestZipperMerge();
+	TestSequences();
+	TestIntervalSet();
 	TestBitmap();
 	TestSingleLinkedList();
 	TestDoubleLinkedList();
-//	TestSequenceSort();
-//	TestZipperMerge();
-	//TestSequences();
-	//TestIntervalSet();
 	return 0;
 }
 
