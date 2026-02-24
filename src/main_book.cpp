@@ -455,6 +455,12 @@ template<typename T, typename It> __forceinline void _AppendCollapseEqualSubseqs
 		for (; a != a1 and *a == *t; ++a);
 	}
 }
+template<typename T, typename It> __forceinline void _AppendSubseqs(vector<T>& R, It& a, const It& a1) {
+	const size_t cA = a1 - a;
+	const size_t cR = R.size();
+	R.resize(cR + cA);
+	move(a, a1, begin(R) + cR);
+}
 template<typename T> vector<T> ZipperMergeStrictlyAscending(AscendingSequence<T> A, AscendingSequence<T> B) {
 	vector<T> R;
 	auto a = begin(A);
@@ -478,33 +484,10 @@ template<typename T> vector<T> ZipperMergeStrictlyAscending(AscendingSequence<T>
 	_AppendCollapseEqualSubseqs(R, b, b1);
 	return R;
 }
-template<typename T> vector<T> ZipperMergeStrictlyAscending(DescendingSequence<T> A, DescendingSequence<T> B) {
+template<typename T> vector<T> ZipperMergeStrictlyAscending(AscendingSequence<T> A, StrictlyAscendingSequence<T> B) {
 	vector<T> R;
-	auto a = rbegin(A);
-	const auto a1 = rend(A);
-	auto b = rbegin(B);
-	const auto b1 = rend(B);
-	for (; a != a1 && b != b1;) {
-		const auto cmp = *a <=> *b;
-		if (cmp < 0) { R.push_back(*a); ++a; }
-		else if (cmp > 0) { R.push_back(*b); ++b; }
-		else {
-			const auto t = a;
-			R.push_back(*a);
-			++a;
-			for (; a != a1 and *a == *t; ++a);
-			++b;
-			for (; b != b1 and *b == *t; ++b);
-		}
-	}
-	_AppendCollapseEqualSubseqs(R, a, a1);
-	_AppendCollapseEqualSubseqs(R, b, b1);
-	return R;
-}
-template<typename T> vector<T> ZipperMergeStrictlyAscending(DescendingSequence<T> A, AscendingSequence<T> B) {
-	vector<T> R;
-	auto a = rbegin(A);
-	const auto a1 = rend(A);
+	auto a = begin(A);
+	const auto a1 = end(A);
 	auto b = begin(B);
 	const auto b1 = end(B);
 	for (; a != a1 && b != b1;) {
@@ -517,11 +500,10 @@ template<typename T> vector<T> ZipperMergeStrictlyAscending(DescendingSequence<T
 			++a;
 			for (; a != a1 and *a == *t; ++a);
 			++b;
-			for (; b != b1 and *b == *t; ++b);
 		}
 	}
 	_AppendCollapseEqualSubseqs(R, a, a1);
-	_AppendCollapseEqualSubseqs(R, b, b1);
+	_AppendSubseqs(R, b, b1);
 	return R;
 }
 template<typename T> vector<T> ZipperMergeStrictlyAscending(AscendingSequence<T> A, DescendingSequence<T> B) {
@@ -547,17 +529,309 @@ template<typename T> vector<T> ZipperMergeStrictlyAscending(AscendingSequence<T>
 	_AppendCollapseEqualSubseqs(R, b, b1);
 	return R;
 }
-template<typename T> void ZipperMergeStrictlyAscendingInplace(vector<T>& A, AscendingSequence<T> B) {
-	const auto cA = A.size();
-	const auto cB = B.size();
-	A.resize(cA + cB);
-	// TODO:
+template<typename T> vector<T> ZipperMergeStrictlyAscending(AscendingSequence<T> A, StrictlyDescendingSequence<T> B) {
+	vector<T> R;
+	auto a = begin(A);
+	const auto a1 = end(A);
+	auto b = rbegin(B);
+	const auto b1 = rend(B);
+	for (; a != a1 && b != b1;) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) { R.push_back(*a); ++a; }
+		else if (cmp > 0) { R.push_back(*b); ++b; }
+		else {
+			const auto t = a;
+			R.push_back(*a);
+			++a;
+			for (; a != a1 and *a == *t; ++a);
+			++b;
+		}
+	}
+	_AppendCollapseEqualSubseqs(R, a, a1);
+	_AppendSubseqs(R, b, b1);
+	return R;
 }
-template<typename T> void ZipperMergeStrictlyAscendingInplace(vector<T>& A, DescendingSequence<T> B) {
+template<typename T> vector<T> ZipperMergeStrictlyAscending(StrictlyAscendingSequence<T> A, AscendingSequence<T> B) {
+	vector<T> R;
+	auto a = begin(A);
+	const auto a1 = end(A);
+	auto b = begin(B);
+	const auto b1 = end(B);
+	for (; a != a1 && b != b1;) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) { R.push_back(*a); ++a; }
+		else if (cmp > 0) { R.push_back(*b); ++b; }
+		else {
+			const auto t = a;
+			R.push_back(*a);
+			++a;
+			++b;
+			for (; b != b1 and *b == *t; ++b);
+		}
+	}
+	_AppendSubseqs(R, a, a1);
+	_AppendCollapseEqualSubseqs(R, b, b1);
+	return R;
 }
-template<typename T> void ZipperMergeStrictlyDescendingInplace(vector<T>& A, AscendingSequence<T> B) {
+template<typename T> vector<T> ZipperMergeStrictlyAscending(StrictlyAscendingSequence<T> A, StrictlyAscendingSequence<T> B) {
+	vector<T> R;
+	auto a = begin(A);
+	const auto a1 = end(A);
+	auto b = begin(B);
+	const auto b1 = end(B);
+	for (; a != a1 && b != b1;) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) { R.push_back(*a); ++a; }
+		else if (cmp > 0) { R.push_back(*b); ++b; }
+		else {
+			const auto t = a;
+			R.push_back(*a);
+			++a;
+			++b;
+		}
+	}
+	_AppendSubseqs(R, a, a1);
+	_AppendSubseqs(R, b, b1);
+	return R;
 }
-template<typename T> void ZipperMergeStrictlyDescendingInplace(vector<T>& A, DescendingSequence<T> B) {
+template<typename T> vector<T> ZipperMergeStrictlyAscending(StrictlyAscendingSequence<T> A, DescendingSequence<T> B) {
+	vector<T> R;
+	auto a = begin(A);
+	const auto a1 = end(A);
+	auto b = rbegin(B);
+	const auto b1 = rend(B);
+	for (; a != a1 && b != b1;) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) { R.push_back(*a); ++a; }
+		else if (cmp > 0) { R.push_back(*b); ++b; }
+		else {
+			const auto t = a;
+			R.push_back(*a);
+			++a;
+			++b;
+			for (; b != b1 and *b == *t; ++b);
+		}
+	}
+	_AppendSubseqs(R, a, a1);
+	_AppendCollapseEqualSubseqs(R, b, b1);
+	return R;
+}
+template<typename T> vector<T> ZipperMergeStrictlyAscending(StrictlyAscendingSequence<T> A, StrictlyDescendingSequence<T> B) {
+	vector<T> R;
+	auto a = begin(A);
+	const auto a1 = end(A);
+	auto b = rbegin(B);
+	const auto b1 = rend(B);
+	for (; a != a1 && b != b1;) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) { R.push_back(*a); ++a; }
+		else if (cmp > 0) { R.push_back(*b); ++b; }
+		else {
+			const auto t = a;
+			R.push_back(*a);
+			++a;
+			++b;
+		}
+	}
+	_AppendSubseqs(R, a, a1);
+	_AppendSubseqs(R, b, b1);
+	return R;
+}
+template<typename T> vector<T> ZipperMergeStrictlyAscending(DescendingSequence<T> A, AscendingSequence<T> B) {
+	vector<T> R;
+	auto a = rbegin(A);
+	const auto a1 = rend(A);
+	auto b = begin(B);
+	const auto b1 = end(B);
+	for (; a != a1 && b != b1;) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) { R.push_back(*a); ++a; }
+		else if (cmp > 0) { R.push_back(*b); ++b; }
+		else {
+			const auto t = a;
+			R.push_back(*a);
+			++a;
+			for (; a != a1 and *a == *t; ++a);
+			++b;
+			for (; b != b1 and *b == *t; ++b);
+		}
+	}
+	_AppendCollapseEqualSubseqs(R, a, a1);
+	_AppendCollapseEqualSubseqs(R, b, b1);
+	return R;
+}
+template<typename T> vector<T> ZipperMergeStrictlyAscending(DescendingSequence<T> A, StrictlyAscendingSequence<T> B) {
+	vector<T> R;
+	auto a = rbegin(A);
+	const auto a1 = rend(A);
+	auto b = begin(B);
+	const auto b1 = end(B);
+	for (; a != a1 && b != b1;) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) { R.push_back(*a); ++a; }
+		else if (cmp > 0) { R.push_back(*b); ++b; }
+		else {
+			const auto t = a;
+			R.push_back(*a);
+			++a;
+			for (; a != a1 and *a == *t; ++a);
+			++b;
+		}
+	}
+	_AppendCollapseEqualSubseqs(R, a, a1);
+	_AppendSubseqs(R, b, b1);
+	return R;
+}
+template<typename T> vector<T> ZipperMergeStrictlyAscending(DescendingSequence<T> A, DescendingSequence<T> B) {
+	vector<T> R;
+	auto a = rbegin(A);
+	const auto a1 = rend(A);
+	auto b = rbegin(B);
+	const auto b1 = rend(B);
+	for (; a != a1 && b != b1;) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) { R.push_back(*a); ++a; }
+		else if (cmp > 0) { R.push_back(*b); ++b; }
+		else {
+			const auto t = a;
+			R.push_back(*a);
+			++a;
+			for (; a != a1 and *a == *t; ++a);
+			++b;
+			for (; b != b1 and *b == *t; ++b);
+		}
+	}
+	_AppendCollapseEqualSubseqs(R, a, a1);
+	_AppendCollapseEqualSubseqs(R, b, b1);
+	return R;
+}
+template<typename T> vector<T> ZipperMergeStrictlyAscending(DescendingSequence<T> A, StrictlyDescendingSequence<T> B) {
+	vector<T> R;
+	auto a = rbegin(A);
+	const auto a1 = rend(A);
+	auto b = rbegin(B);
+	const auto b1 = rend(B);
+	for (; a != a1 && b != b1;) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) { R.push_back(*a); ++a; }
+		else if (cmp > 0) { R.push_back(*b); ++b; }
+		else {
+			const auto t = a;
+			R.push_back(*a);
+			++a;
+			for (; a != a1 and *a == *t; ++a);
+			++b;
+		}
+	}
+	_AppendCollapseEqualSubseqs(R, a, a1);
+	_AppendSubseqs(R, b, b1);
+	return R;
+}
+template<typename T> vector<T> ZipperMergeStrictlyAscending(StrictlyDescendingSequence<T> A, AscendingSequence<T> B) {
+	vector<T> R;
+	auto a = rbegin(A);
+	const auto a1 = rend(A);
+	auto b = begin(B);
+	const auto b1 = end(B);
+	for (; a != a1 && b != b1;) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) { R.push_back(*a); ++a; }
+		else if (cmp > 0) { R.push_back(*b); ++b; }
+		else {
+			const auto t = a;
+			R.push_back(*a);
+			++a;
+			++b;
+			for (; b != b1 and *b == *t; ++b);
+		}
+	}
+	_AppendSubseqs(R, a, a1);
+	_AppendCollapseEqualSubseqs(R, b, b1);
+	return R;
+}
+template<typename T> vector<T> ZipperMergeStrictlyAscending(StrictlyDescendingSequence<T> A, StrictlyAscendingSequence<T> B) {
+	vector<T> R;
+	auto a = rbegin(A);
+	const auto a1 = rend(A);
+	auto b = begin(B);
+	const auto b1 = end(B);
+	for (; a != a1 && b != b1;) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) { R.push_back(*a); ++a; }
+		else if (cmp > 0) { R.push_back(*b); ++b; }
+		else {
+			const auto t = a;
+			R.push_back(*a);
+			++a;
+			++b;
+		}
+	}
+	_AppendSubseqs(R, a, a1);
+	_AppendSubseqs(R, b, b1);
+	return R;
+}
+template<typename T> vector<T> ZipperMergeStrictlyAscending(StrictlyDescendingSequence<T> A, DescendingSequence<T> B) {
+	vector<T> R;
+	auto a = rbegin(A);
+	const auto a1 = rend(A);
+	auto b = rbegin(B);
+	const auto b1 = rend(B);
+	for (; a != a1 && b != b1;) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) { R.push_back(*a); ++a; }
+		else if (cmp > 0) { R.push_back(*b); ++b; }
+		else {
+			const auto t = a;
+			R.push_back(*a);
+			++a;
+			++b;
+			for (; b != b1 and *b == *t; ++b);
+		}
+	}
+	_AppendSubseqs(R, a, a1);
+	_AppendCollapseEqualSubseqs(R, b, b1);
+	return R;
+}
+template<typename T> vector<T> ZipperMergeStrictlyAscending(StrictlyDescendingSequence<T> A, StrictlyDescendingSequence<T> B) {
+	vector<T> R;
+	auto a = rbegin(A);
+	const auto a1 = rend(A);
+	auto b = rbegin(B);
+	const auto b1 = rend(B);
+	for (; a != a1 && b != b1;) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) { R.push_back(*a); ++a; }
+		else if (cmp > 0) { R.push_back(*b); ++b; }
+		else {
+			const auto t = a;
+			R.push_back(*a);
+			++a;
+			++b;
+		}
+	}
+	_AppendSubseqs(R, a, a1);
+	_AppendSubseqs(R, b, b1);
+	return R;
+}
+template<typename T, typename Tag> void ZipperMergeStrictlyAscendingInplace(vector<T>& A, SortedSequence<T, Tag> B) {
+	assert(IsStrictlyAscending<T>(A));
+	ZipperMergeAscendingInplace(A, B);
+	DeduplicateSortedInplace(A);
+}
+template<typename T, typename Tag> void ZipperMergeStrictlyAscendingInplace(vector<T>& A, StrictlySortedSequence<T, Tag> B) {
+	assert(IsStrictlyAscending<T>(A));
+	ZipperMergeAscendingInplace(A, B);
+	DeduplicateSortedInplace(A);
+}
+template<typename T, typename Tag> void ZipperMergeStrictlyDescendingInplace(vector<T>& A, SortedSequence<T, Tag> B) {
+	assert(IsStrictlyDescending<T>(A));
+	ZipperMergeDescendingInplace(A, B);
+	DeduplicateSortedInplace(A);
+}
+template<typename T, typename Tag> void ZipperMergeStrictlyDescendingInplace(vector<T>& A, StrictlySortedSequence<T, Tag> B) {
+	assert(IsStrictlyDescending<T>(A));
+	ZipperMergeDescendingInplace(A, B);
+	DeduplicateSortedInplace(A);
 }
 
 void TestZipperMerge() {
@@ -596,7 +870,13 @@ template<typename T> bool Contains(Sequence<T> A, const T& b) {
 template<typename T> bool Contains(AscendingSequence<T> A, const T& b) {
 	return binary_search(begin(A), end(A), b);
 }
+template<typename T> bool Contains(StrictlyAscendingSequence<T> A, const T& b) {
+	return binary_search(begin(A), end(A), b);
+}
 template<typename T> bool Contains(DescendingSequence<T> A, const T& b) {
+	return binary_search(rbegin(A), rend(A), b);
+}
+template<typename T> bool Contains(StrictlyDescendingSequence<T> A, const T& b) {
 	return binary_search(rbegin(A), rend(A), b);
 }
 
@@ -814,30 +1094,29 @@ template<typename T> vector<T> Deduplicate(DescendingSequence<T> A) {
 	return R;
 }
 
-// TODO: fix to use Strictly.
-template<typename T> void UnionAscendingInplace(vector<T>& A, AscendingSequence<T> B) {
-	if (!IsAscending<T>(A)) SortAscendingInplace<T>(A);
-	ZipperMergeAscendingInplace(A, B);
-	DeduplicateSortedInplace(A);
+template<typename T, typename Tag> void UnionStrictlyAscendingInplace(vector<T>& A, SortedSequence<T, Tag> B) {
+	assert(IsStrictlyAscending<T>(A));
+	ZipperMergeStrictlyAscendingInplace(A, B);
 }
-template<typename T> void UnionAscendingInplace(vector<T>& A, DescendingSequence<T> B) {
-	if (!IsAscending<T>(A)) SortAscendingInplace<T>(A);
-	ZipperMergeAscendingInplace(A, B);
-	DeduplicateSortedInplace(A);
+template<typename T, typename Tag> void UnionStrictlyAscendingInplace(vector<T>& A, StrictlySortedSequence<T, Tag> B) {
+	assert(IsStrictlyAscending<T>(A));
+	ZipperMergeStrictlyAscendingInplace(A, B);
 }
-template<typename T> vector<T> Union(SortedSequence<T> A, const SortedSequence<T> B) {
-	vector<T> R = ZipperMergeAscending(A, B);
-	DeduplicateSortedInplace(R);
-	return R;
+template<typename T, typename Tag> vector<T> Union(StrictlyAscendingSequence<T> A, SortedSequence<T, Tag> B) {
+	return ZipperMergeStrictlyAscending(A, B);
 }
-template<typename T> vector<T> Union(SortedSequence<T> A, const Sequence<T> B) {
+template<typename T, typename Tag> vector<T> Union(StrictlyAscendingSequence<T> A, StrictlySortedSequence<T, Tag> B) {
+	return ZipperMergeStrictlyAscending(A, B);
+}
+template<typename T> vector<T> Union(StrictlyAscendingSequence<T> A, Sequence<T> B) {
 	vector<T> Bs { begin(B), end(B) };
 	SortAscendingInplace(Bs);
-	return Union(A, SortedSequence<T>(Bs));
+	DeduplicateSortedInplace(Bs);
+	return Union(A, StrictlyAscendingSequence<T>(Bs));
 }
 
-template<typename T> void IntersectInplace(vector<T>& A, const SortedSequence<T> B) {
-	if (!IsAscending<T>(A)) SortAscendingInplace<T>(A);
+template<typename T> void IntersectStrictlyAscendingInplace(vector<T>& A, AscendingSequence<T> B) {
+	assert(IsStrictlyAscending<T>(A));
 	const auto a0 = begin(A);
 	auto a = a0;
 	const auto a1 = end(A);
@@ -853,7 +1132,6 @@ template<typename T> void IntersectInplace(vector<T>& A, const SortedSequence<T>
 				*write = *a;
 			}
 			++a;
-			for (; a != a1 and *a == *write; ++a); // Skip duplicates in A.
 			++b;
 			for (; b != b1 and *b == *write; ++b); // Skip duplicates in B.
 			++write;
@@ -862,13 +1140,85 @@ template<typename T> void IntersectInplace(vector<T>& A, const SortedSequence<T>
 	const size_t cWritten = write - a0;
 	A.resize(cWritten);
 }
-template<typename T> vector<T> Intersect(SortedSequence<T> A, const SortedSequence<T> B) {
+template<typename T> void IntersectStrictlyAscendingInplace(vector<T>& A, StrictlyAscendingSequence<T> B) {
+	assert(IsStrictlyAscending<T>(A));
+	const auto a0 = begin(A);
+	auto a = a0;
+	const auto a1 = end(A);
+	auto b = begin(B);
+	const auto b1 = end(B);
+	auto write = a0;
+	while (a != a1 and b != b1) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) ++a;
+		else if (cmp > 0) ++b;
+		else {
+			if (write != a) {
+				*write = *a;
+			}
+			++a;
+			++b;
+			++write;
+		}
+	}
+	const size_t cWritten = write - a0;
+	A.resize(cWritten);
+}
+template<typename T> void IntersectStrictlyAscendingInplace(vector<T>& A, DescendingSequence<T> B) {
+	assert(IsStrictlyAscending<T>(A));
+	const auto a0 = begin(A);
+	auto a = a0;
+	const auto a1 = end(A);
+	auto b = rbegin(B);
+	const auto b1 = rend(B);
+	auto write = a0;
+	while (a != a1 and b != b1) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) ++a;
+		else if (cmp > 0) ++b;
+		else {
+			if (write != a) {
+				*write = *a;
+			}
+			++a;
+			++b;
+			for (; b != b1 and *b == *write; ++b); // Skip duplicates in B.
+			++write;
+		}
+	}
+	const size_t cWritten = write - a0;
+	A.resize(cWritten);
+}
+template<typename T> void IntersectStrictlyAscendingInplace(vector<T>& A, StrictlyDescendingSequence<T> B) {
+	assert(IsStrictlyAscending<T>(A));
+	const auto a0 = begin(A);
+	auto a = a0;
+	const auto a1 = end(A);
+	auto b = rbegin(B);
+	const auto b1 = rend(B);
+	auto write = a0;
+	while (a != a1 and b != b1) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) ++a;
+		else if (cmp > 0) ++b;
+		else {
+			if (write != a) {
+				*write = *a;
+			}
+			++a;
+			++b;
+			++write;
+		}
+	}
+	const size_t cWritten = write - a0;
+	A.resize(cWritten);
+}
+template<typename T> vector<T> Intersect(StrictlyAscendingSequence<T> A, AscendingSequence<T> B) {
 	// ALTERNATE: Could do the following, but it's less memory efficient for cases where Intersect removes lots of elements.
 	// vector<T> R { begin(A), end(A) };
 	// IntersectInplace(R, B);
 	// return R;
 	// Instead, we'll rely on geometric resizing of the result as we accumulate.
-
 	const auto a0 = begin(A);
 	auto a = a0;
 	const auto a1 = end(A);
@@ -882,7 +1232,6 @@ template<typename T> vector<T> Intersect(SortedSequence<T> A, const SortedSequen
 		else {
 			T value = *a;
 			++a;
-			for (; a != a1 and *a == value; ++a); // Skip duplicates in A.
 			++b;
 			for (; b != b1 and *b == value; ++b); // Skip duplicates in B.
 			R.emplace_back(move(value));
@@ -890,14 +1239,76 @@ template<typename T> vector<T> Intersect(SortedSequence<T> A, const SortedSequen
 	}
 	return R;
 }
-template<typename T> vector<T> Intersect(SortedSequence<T> A, const Sequence<T> B) {
+template<typename T> vector<T> Intersect(StrictlyAscendingSequence<T> A, StrictlyAscendingSequence<T> B) {
+	const auto a0 = begin(A);
+	auto a = a0;
+	const auto a1 = end(A);
+	auto b = begin(B);
+	const auto b1 = end(B);
+	vector<T> R;
+	while (a != a1 and b != b1) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) ++a;
+		else if (cmp > 0) ++b;
+		else {
+			T value = *a;
+			++a;
+			++b;
+			R.emplace_back(move(value));
+		}
+	}
+	return R;
+}
+template<typename T> vector<T> Intersect(StrictlyAscendingSequence<T> A, DescendingSequence<T> B) {
+	const auto a0 = begin(A);
+	auto a = a0;
+	const auto a1 = end(A);
+	auto b = rbegin(B);
+	const auto b1 = rend(B);
+	vector<T> R;
+	while (a != a1 and b != b1) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) ++a;
+		else if (cmp > 0) ++b;
+		else {
+			T value = *a;
+			++a;
+			++b;
+			for (; b != b1 and *b == value; ++b); // Skip duplicates in B.
+			R.emplace_back(move(value));
+		}
+	}
+	return R;
+}
+template<typename T> vector<T> Intersect(StrictlyAscendingSequence<T> A, StrictlyDescendingSequence<T> B) {
+	const auto a0 = begin(A);
+	auto a = a0;
+	const auto a1 = end(A);
+	auto b = rbegin(B);
+	const auto b1 = rend(B);
+	vector<T> R;
+	while (a != a1 and b != b1) {
+		const auto cmp = *a <=> *b;
+		if (cmp < 0) ++a;
+		else if (cmp > 0) ++b;
+		else {
+			T value = *a;
+			++a;
+			++b;
+			R.emplace_back(move(value));
+		}
+	}
+	return R;
+}
+template<typename T> vector<T> Intersect(StrictlyAscendingSequence<T> A, Sequence<T> B) {
 	vector<T> Bs { begin(B), end(B) };
 	SortAscendingInplace(Bs);
-	return Intersect(A, SortedSequence<T>(Bs));
+	DeduplicateSortedInplace(Bs);
+	return Intersect(A, StrictlyAscendingSequence<T>(Bs));
 }
 
-template<typename T> void SubtractInplace(vector<T>& A, const SortedSequence<T> B) {
-	if (!IsAscending<T>(A)) SortAscendingInplace<T>(A);
+template<typename T> void SubtractStrictlyAscendingInplace(vector<T>& A, SortedSequence<T> B) {
+	assert(IsStrictlyAscending<T>(A));
 	const auto a0 = begin(A);
 	auto a = a0;
 	const auto a1 = end(A);
@@ -918,7 +1329,6 @@ template<typename T> void SubtractInplace(vector<T>& A, const SortedSequence<T> 
 		}
 		else {
 			++a;
-			for (; a != a1 and *a == *write; ++a); // Skip duplicates in A.
 			++b;
 			for (; b != b1 and *b == *write; ++b); // Skip duplicates in B.
 		}
@@ -931,12 +1341,12 @@ template<typename T> void SubtractInplace(vector<T>& A, const SortedSequence<T> 
 	const size_t cWritten = write - a0;
 	A.resize(cWritten);
 }
-template<typename T> vector<T> Subtract(const SortedSequence<T> A, const SortedSequence<T> B) {
+template<typename T> vector<T> Subtract(SortedSequence<T> A, SortedSequence<T> B) {
 	vector<T> R { begin(A), end(A) };
-	SubtractInplace(R, B);
+	SubtractStrictlyAscendingInplace(R, B);
 	return R;
 }
-template<typename T> vector<T> Subtract(SortedSequence<T> A, const Sequence<T> B) {
+template<typename T> vector<T> Subtract(SortedSequence<T> A, Sequence<T> B) {
 	vector<T> Bs { begin(B), end(B) };
 	SortAscendingInplace(Bs);
 	return Subtract(A, SortedSequence<T>(Bs));
@@ -944,20 +1354,20 @@ template<typename T> vector<T> Subtract(SortedSequence<T> A, const Sequence<T> B
 
 // Symmetric difference
 //   SymmetricDifference(A,B) = Subtract(Union(A,B), Intersection(A,B))
-template<typename T> vector<T> SymmetricDifference(SortedSequence<T> A, const SortedSequence<T> B) {
+template<typename T> vector<T> SymmetricDifference(SortedSequence<T> A, SortedSequence<T> B) {
 	vector<T> U = Union(A, B);
 	vector<T> I = Intersect(A, B);
-	SubtractInplace(U, SortedSequence<T>(I));
+	SubtractStrictlyAscendingInplace(U, SortedSequence<T>(I));
 	return U;
 }
-template<typename T> void SymmetricDifferenceInplace(vector<T>& A, const SortedSequence<T> B) {
+template<typename T> void SymmetricDifferenceInplace(vector<T>& A, SortedSequence<T> B) {
 	// IDEA: Union(A, B) - Intersect(A, B)
 	vector<T> I = Intersect(SortedSequence<T>(A), B);
-	UnionAscendingInplace(A, B);
-	SubtractInplace(A, SortedSequence<T>(I));
+	UnionStrictlyAscendingInplace(A, B);
+	SubtractStrictlyAscendingInplace(A, SortedSequence<T>(I));
 }
 
-template<typename T> bool Equal(const SortedSequence<T>& A, const SortedSequence<T>& B) {
+template<typename T> bool Equal(SortedSequence<T>& A, SortedSequence<T>& B) {
 	if (A.size() != B.size()) return false;
 	const auto a = begin(A);
 	const auto a1 = end(A);
@@ -982,7 +1392,7 @@ template<typename T> bool ContainsAny(Sequence<T> A, const SortedSequence<T> B) 
 	SortAscendingInplace(As);
 	return ContainsAny(SortedSequence<T>(As), B);
 }
-template<typename T> bool ContainsAny(Sequence<T> A, const Sequence<T> B) {
+template<typename T> bool ContainsAny(Sequence<T> A, Sequence<T> B) {
 	vector<T> As { begin(A), end(A) };
 	SortAscendingInplace(As);
 	vector<T> Bs { begin(B), end(B) };
@@ -995,7 +1405,7 @@ template<typename T> bool ContainsAll(Sequence<T> A, const SortedSequence<T> B) 
 	SortAscendingInplace(As);
 	return ContainsAll(SortedSequence<T>(As), B);
 }
-template<typename T> bool ContainsAll(Sequence<T> A, const Sequence<T> B) {
+template<typename T> bool ContainsAll(Sequence<T> A, Sequence<T> B) {
 	vector<T> As { begin(A), end(A) };
 	SortAscendingInplace(As);
 	vector<T> Bs { begin(B), end(B) };
@@ -1003,7 +1413,7 @@ template<typename T> bool ContainsAll(Sequence<T> A, const Sequence<T> B) {
 	return ContainsAll(SortedSequence<T>(As), SortedSequence<T>(Bs));
 }
 
-template<typename T> vector<T> DeduplicateSort(const Sequence<T> A) {
+template<typename T> vector<T> DeduplicateSort(Sequence<T> A) {
 	vector<T> R { begin(A), end(A) };
 	SortAscendingInplace<T>(R);
 	DeduplicateSortedInplace(R);
@@ -1149,7 +1559,7 @@ template<typename T> bool ReplaceLast(Sequence<T> A, const T& find, const T& rep
 }
 
 // Returns the first index where the B sequence appears in A, or nullopt if not found.
-template<typename T> optional<size_t> IFindFirst(Sequence<T> A, const Sequence<T>& B) {
+template<typename T> optional<size_t> IFindFirst(Sequence<T> A, Sequence<T> B) {
 	const size_t cA = A.size();
 	const size_t cB = B.size();
 	if (cB > cA) return nullopt; // B is longer than A, so it cannot be found.
@@ -1178,7 +1588,7 @@ template<typename T> optional<size_t> IFindFirst(Sequence<T> A, const Sequence<T
 	return nullopt;
 }
 // Returns all indices where the B sequence appears in A, or empty if not found.
-template<typename T> vector<size_t> IFindAll(Sequence<T> A, const Sequence<T>& B) {
+template<typename T> vector<size_t> IFindAll(Sequence<T> A, Sequence<T> B) {
 	vector<size_t> R;
 	const size_t cA = A.size();
 	const size_t cB = B.size();
@@ -1208,7 +1618,7 @@ template<typename T> vector<size_t> IFindAll(Sequence<T> A, const Sequence<T>& B
 	return R;
 }
 // Returns the number of times where the B sequence appears in A.
-template<typename T> size_t Count(Sequence<T> A, const Sequence<T>& B) {
+template<typename T> size_t Count(Sequence<T> A, Sequence<T> B) {
 	size_t R = 0;
 	const size_t cA = A.size();
 	const size_t cB = B.size();
@@ -1238,7 +1648,7 @@ template<typename T> size_t Count(Sequence<T> A, const Sequence<T>& B) {
 	return R;
 }
 // Returns the last index where the B sequence appears in A, or nullopt if not found.
-template<typename T> optional<size_t> IFindLast(Sequence<T> A, const Sequence<T>& B) {
+template<typename T> optional<size_t> IFindLast(Sequence<T> A, Sequence<T> B) {
 	const size_t cA = A.size();
 	const size_t cB = B.size();
 	if (cB > cA) return nullopt; // B is longer than A, so it cannot be found.
@@ -1703,7 +2113,7 @@ template<typename T, typename FnKeepT> vector<T> Filter(Sequence<T> A, FnKeepT&&
 template<typename T> vector<T> Union(Sequence<T> A, const SortedSequence<T> B) {
 	return Union(B, A);
 }
-template<typename T> vector<T> Union(Sequence<T> A, const Sequence<T> B) {
+template<typename T> vector<T> Union(Sequence<T> A, Sequence<T> B) {
 	vector<T> As { begin(A), end(A) };
 	SortAscendingInplace(As);
 	return Union(As, B);
@@ -1712,7 +2122,7 @@ template<typename T> vector<T> Union(Sequence<T> A, const Sequence<T> B) {
 template<typename T> vector<T> Intersect(Sequence<T> A, const SortedSequence<T> B) {
 	return Intersect(B, A);
 }
-template<typename T> vector<T> Intersect(Sequence<T> A, const Sequence<T> B) {
+template<typename T> vector<T> Intersect(Sequence<T> A, Sequence<T> B) {
 	vector<T> As{ begin(A), end(A) };
 	SortAscendingInplace(As);
 	return Intersect(SortedSequence<T>(As), B);
@@ -1723,7 +2133,7 @@ template<typename T> vector<T> Subtract(Sequence<T> A, const SortedSequence<T> B
 	SortAscendingInplace(As);
 	return Subtract(SortedSequence<T>(As), B);
 }
-template<typename T> vector<T> Subtract(Sequence<T> A, const Sequence<T> B) {
+template<typename T> vector<T> Subtract(Sequence<T> A, Sequence<T> B) {
 	vector<T> As{ begin(A), end(A) };
 	SortAscendingInplace(As);
 	vector<T> Bs{ begin(B), end(B) };
@@ -1736,7 +2146,7 @@ template<typename T> vector<T> SymmetricDifference(Sequence<T> A, const SortedSe
 	SortAscendingInplace(As);
 	return SymmetricDifference(SortedSequence<T>(As), B);
 }
-template<typename T> vector<T> SymmetricDifference(Sequence<T> A, const Sequence<T> B) {
+template<typename T> vector<T> SymmetricDifference(Sequence<T> A, Sequence<T> B) {
 	vector<T> As{ begin(A), end(A) };
 	SortAscendingInplace(As);
 	vector<T> Bs{ begin(B), end(B) };
@@ -1753,21 +2163,12 @@ template<typename T, typename Rng> void RandomShuffleInplace(Sequence<T> A, Rng&
 	}
 }
 
-template<typename T> bool Equal(const Sequence<T>& A, const Sequence<T>& B) {
-	if (A.size() != B.size()) return false;
-	const auto a = begin(A);
-	const auto a1 = end(A);
-	const auto b = begin(B);
-	const auto b1 = end(B);
-	return equal(a, a1, b, b1);
-}
-
 
 struct NaiveSet {
 	set<int> points;
 
 	NaiveSet() = default;
-	explicit NaiveSet(const Sequence<int> points_) {
+	explicit NaiveSet(Sequence<int> points_) {
 		for (const auto& p : points_) {
 			points.insert(p);
 		}
@@ -1776,13 +2177,13 @@ struct NaiveSet {
 bool Contains(const NaiveSet& A, int pt) {
 	return A.points.contains(pt);
 }
-bool ContainsAny(const NaiveSet& A, const Sequence<int> B) {
+bool ContainsAny(const NaiveSet& A, Sequence<int> B) {
 	for (const auto& p : B) {
 		if (Contains(A, p)) return true;
 	}
 	return false;
 }
-bool ContainsAll(const NaiveSet& A, const Sequence<int> B) {
+bool ContainsAll(const NaiveSet& A, Sequence<int> B) {
 	for (const auto& p : B) {
 		if (!Contains(A, p)) return false;
 	}
@@ -1832,11 +2233,11 @@ bool Equal(const NaiveSet& A, const NaiveSet& B) {
 	}
 	return true;
 }
-bool Equal(const NaiveSet& A, const Sequence<int> B) {
+bool Equal(const NaiveSet& A, Sequence<int> B) {
 	NaiveSet Bs{ B };
 	return Equal(A, Bs);
 }
-bool Equal(const Sequence<int> A, const NaiveSet& B) {
+bool Equal(Sequence<int> A, const NaiveSet& B) {
 	NaiveSet As{ A };
 	return Equal(As, B);
 }
@@ -1893,7 +2294,7 @@ void TestSequences() {
 			auto Sn = Intersect(SortedSequence<int>(S), SortedSequence<int>(Sr));
 			auto Rn = Intersect(R, Rr);
 			assert(Equal(Sn, Rn));
-			IntersectInplace(S, SortedSequence<int>(Sr));
+			IntersectStrictlyAscendingInplace(S, SortedSequence<int>(Sr));
 			assert(Equal(SortedSequence<int>(S), SortedSequence<int>(Sn)));
 			R = Rn;
 		},
@@ -1907,7 +2308,7 @@ void TestSequences() {
 			auto Sn = Subtract<int>(SortedSequence<int>(S), SortedSequence<int>(Sr));
 			auto Rn = Subtract(R, Rr);
 			assert(Equal(Sn, Rn));
-			SubtractInplace(S, SortedSequence<int>(Sr));
+			SubtractStrictlyAscendingInplace(S, SortedSequence<int>(Sr));
 			assert(Equal(SortedSequence<int>(S), SortedSequence<int>(Sn)));
 			R = Rn;
 		},
@@ -1921,7 +2322,7 @@ void TestSequences() {
 			auto Sn = Union<int>(SortedSequence<int>(S), SortedSequence<int>(Sr));
 			auto Rn = Union(R, Rr);
 			assert(Equal(Sn, Rn));
-			UnionAscendingInplace<int>(S, SortedSequence<int>(Sr));
+			UnionStrictlyAscendingInplace<int>(S, SortedSequence<int>(Sr));
 			assert(Equal(SortedSequence<int>(S), SortedSequence<int>(Sn)));
 			R = Rn;
 		},
@@ -1978,14 +2379,14 @@ template<typename T> __forceinline bool Contains(const IntervalII<T>& A, const T
 	return A.p0 <= p and p <= A.p1;
 }
 // Interval contains any of the given points.
-template<typename T> __forceinline bool ContainsAny(const IntervalII<T>& A, const Sequence<T> pts) {
+template<typename T> __forceinline bool ContainsAny(const IntervalII<T>& A, Sequence<T> pts) {
 	for (const auto& p : pts) {
 		if (Contains(A, p)) return true;
 	}
 	return false;
 }
 // Interval contains all of the given points.
-template<typename T> __forceinline bool ContainsAll(const IntervalII<T>& A, const Sequence<T> pts) {
+template<typename T> __forceinline bool ContainsAll(const IntervalII<T>& A, Sequence<T> pts) {
 	for (const auto& p : pts) {
 		if (!Contains(A, p)) return false;
 	}
@@ -2000,8 +2401,8 @@ template<typename T> __forceinline bool AdjacentOrOverlap(const IntervalII<T>& A
 	return Adjacent(A, B) or Overlaps(A, B);
 }
 
-template<typename T> vector<IntervalII<T>> Merge(const Sequence<IntervalII<T>> intervals) {
-	auto MergeSorted = [](const Sequence<IntervalII<T>> intervals) {
+template<typename T> vector<IntervalII<T>> Merge(Sequence<IntervalII<T>> intervals) {
+	auto MergeSorted = [](Sequence<IntervalII<T>> intervals) {
 		vector<IntervalII<T>> result;
 		if (!intervals.empty()) {
 			result.push_back(intervals[0]);
@@ -2054,7 +2455,7 @@ template<typename T> void MergeInplace(vector<IntervalII<T>>& intervals) {
 	MergeSortedInplace(intervals);
 }
 
-template<typename T> vector<IntervalII<T>> SortedIntervalsFromPoints(const Sequence<T> points) {
+template<typename T> vector<IntervalII<T>> SortedIntervalsFromPoints(Sequence<T> points) {
 	// IDEA: Sort the points, then create intervals from adjacent points.
 	if (points.empty()) return {};
 	auto sorted = SortAscending(points);
@@ -2080,14 +2481,14 @@ template<typename T> struct IntervalSet {
 	vector<IntervalII<T>> intervals;
 
 	IntervalSet() = default;
-	explicit IntervalSet(const Sequence<IntervalII<T>> intervals_) {
+	explicit IntervalSet(Sequence<IntervalII<T>> intervals_) {
 		intervals = Merge(intervals_);
 	}
 	explicit IntervalSet(const IntervalII<T>& interval_) {
 		const Sequence<IntervalII<T>> intervals_{ (IntervalII<T>*)&interval_, 1 };
 		intervals = Merge(intervals_);
 	}
-	explicit IntervalSet(const Sequence<T> points) {
+	explicit IntervalSet(Sequence<T> points) {
 		intervals = SortedIntervalsFromPoints(points);
 	}
 	~IntervalSet() noexcept = default;
@@ -2173,7 +2574,7 @@ template<typename T> bool Contains(const IntervalSet<T>& A, const T& pt) {
 	// it : last interval with: pt <= interval.p1
 	return Contains(*it, pt);
 }
-template<typename T> bool ContainsAnySorted(const IntervalSet<T>& A, const Sequence<T> pointsSorted) {
+template<typename T> bool ContainsAnySorted(const IntervalSet<T>& A, Sequence<T> pointsSorted) {
 	// Idea: If we sort the given points, we can do a single pass comparison.
 	// This is O(|I| + |P| log |P|) when P is unsorted; O(|I| + |P|) when P is sorted.
 	auto p = begin(pointsSorted);
@@ -2193,7 +2594,7 @@ template<typename T> bool ContainsAnySorted(const IntervalSet<T>& A, const Seque
 	}
 	return false;
 }
-template<typename T> bool ContainsAny(const IntervalSet<T>& A, const Sequence<T> pts) {
+template<typename T> bool ContainsAny(const IntervalSet<T>& A, Sequence<T> pts) {
 	// Alternative: for each given point, binary search the intervals. This would be O(|P| log |I|).
 	if (IsAscending<T>(pts)) {
 		return ContainsAnySorted<T>(A, pts);
@@ -2203,7 +2604,7 @@ template<typename T> bool ContainsAny(const IntervalSet<T>& A, const Sequence<T>
 		return ContainsAnySorted<T>(A, sorted);
 	}
 }
-template<typename T> bool ContainsAllSorted(const IntervalSet<T>& A, const Sequence<T> pointsSorted) {
+template<typename T> bool ContainsAllSorted(const IntervalSet<T>& A, Sequence<T> pointsSorted) {
 	assert(IsAscending<T>(pointsSorted));
 	// Idea: If we sort the given points, we can do a single pass comparison.
 	// This is O(|I| + |P| log |P|) when P is unsorted; O(|I| + |P|) when P is sorted.
@@ -2225,7 +2626,7 @@ template<typename T> bool ContainsAllSorted(const IntervalSet<T>& A, const Seque
 	}
 	return p == p1;
 }
-template<typename T> bool ContainsAll(const IntervalSet<T>& A, const Sequence<T> pts) {
+template<typename T> bool ContainsAll(const IntervalSet<T>& A, Sequence<T> pts) {
 	// Alternative: for each given point, binary search the intervals. This would be O(|P| log |I|).
 	if (IsAscending<T>(pts)) {
 		return ContainsAllSorted<T>(A, pts);
@@ -2236,7 +2637,7 @@ template<typename T> bool ContainsAll(const IntervalSet<T>& A, const Sequence<T>
 	}
 }
 
-template<typename T> optional<IntervalII<T>> Intersect(const Sequence<IntervalII<T>> intervals) {
+template<typename T> optional<IntervalII<T>> Intersect(Sequence<IntervalII<T>> intervals) {
 	// IDEA: Accumulate max of p0, min of p1. If they all overlap, this gets us the intersection.
 	if (!intervals.empty()) {
 		T p0 = intervals[0].p0;
