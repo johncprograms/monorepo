@@ -298,9 +298,7 @@ uint64_t GCD(span<uint64_t> s) {
 	vector<uint64_t> S(begin(s), end(s));
 	c = CeilingToPowerOf2(c);
 	S.resize(c); // Zero extended
-	size_t offset = 1;
-	for (; c > 1; c /= 2) {
-		offset *= 2;
+	for (size_t offset = 2; offset <= c; offset *= 2) {
 		parallel_for (size_t i = 0; i < c; i += offset) {
 			S[i] = GCD(S[i], S[i+offset/2]);
 		}
