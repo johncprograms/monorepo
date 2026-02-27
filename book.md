@@ -10,7 +10,6 @@
 	- [Underflow](#underflow)
 	- [Multiplication](#multiplication)
 	- [Division](#division)
-	- [Long division](#long-division)
 	- [Greatest common divisor](#greatest-common-divisor)
 	- [Least common multiple](#least-common-multiple)
 	- [Detecting overflow](#detecting-overflow)
@@ -262,18 +261,92 @@ Otherwise x is already in the [0, y) range, and the result is x. You can think o
 
 ## Multiplication
 TODO
+https://en.wikipedia.org/wiki/Multiplication_algorithm
 
 ## Division
 TODO: Long division algorithm
 
-## Long division
-TODO
-
 ## Greatest common divisor
-TODO
+This is the problem of: given a set of numbers, find the largest number that divides every number in the set with zero remainder. Mathematically, 
+```
+GCD(S) = max { D | for all s in S, s % D == 0 }
+```
+For example, given `{ 4, 6, 8 }`, the greatest common divisor would be `2`.
+
+First, note that when `|S| = 1`, `GCD(s) = s`. Trivially, `s` divides itself.
+
+When `|S| = 2`, Euclid gives us an algorithm that runs in `O(d)` steps, where `d` is the number of digits of the input. Classically, it's given by:
+```
+uint64_t GCD(uint64_t A, uint64_t B) {
+	auto a = max<uint64_t>(A,B);
+	auto b = min<uint64_t>(A,B);
+	assert(b);
+	while (b) {
+		const auto t = b;
+		b = a % b;
+		a = t;
+	}
+	return a;
+}
+```
+When `|S| > 2`, note that we can use the `|S| = 2` algorithm to collapse pairs together and replace that set element, since `GCD(s) = s`. E.g. if we have `{ 4, 6, 8, 12 }`, we could collapse adjacents to get `{ GCD(4,6), GCD(8,12) } = { 2, 4 }` and again, `{ GCD(2,4) } = { 2 }` which is the right answer, `2`. Note you can apply the pairwise collapsing in any order. Maximum throughput would be to do it in parallel:
+```
+uint64_t GCD(span<uint64_t> s) {
+	size_t c = s.size();
+	if (!c) return 0;
+	if (c == 1) return s[0];
+	vector<uint64_t> S(begin(s), end(s));
+	c = CeilingToPowerOf2(c);
+	S.resize(c); // Zero extended
+	size_t offset = 1;
+	for (; c > 1; c /= 2) {
+		offset *= 2;
+		parallel_for (size_t i = 0; i < c; i += offset) {
+			S[i] = GCD(S[i], S[i+offset/2]);
+		}
+	}
+	return S[0];
+}
+```
+A slightly better version would be to use `FloorToPowerOf2` and combine it with the following serial version to handle the non-power of 2 remainder:
+```
+uint64_t GCD(span<uint64_t> s) {
+	const size_t c = s.size();
+	if (!c) return 0;
+	if (c == 1) return s[0];
+	auto R = GCD(s[0], s[1]);
+	for (size_t i = 2; i < c; ++i) {
+		R = GCD(R, s[i]);
+	}
+	return R;
+}
+```
 
 ## Least common multiple
-TODO
+This is the problem of: given a set of numbers, find the smallest number that's divisible by every number in the set. Mathematically, 
+```
+LCM(S) = min { M | for all s in S, M % s == 0 }
+```
+For example, given `{ 4, 5, 6 }`, the least common multiple would be `60`.
+
+The first observation is that we could multiply all numbers in the set and get a common multiple, although it may not be the minimum. To get to the minimum, we'd need to take that common multiple and divide it by the `GCD` of the numbers in the set. I.e.
+```
+LCM(S) = (s1 * s2 * ... * sS) / GCD(S)
+```
+For overflow reasons it's advantageous to distribute the `/ GCD(S)` divide to each `si` first, and then multiply the terms together. This is perfectly safe since we know the `GCD(S)` will divide each member of `S` with `0` remainder.
+
+If we had a prime factorization for each of the numbers, e.g. `{ 4, 5, 6 } = { 2^2, 5^1, 2^1 3^1 }`, we can take the set of primes that cover the prime factors, in this case `{ 2, 3, 5 }`, and the maximum exponent of each, `{ 2^2, 3^1, 5^1 }`, and multiply those together to get the `LCM`. Unfortunately, computing a prime factorization takes time that grows exponentially as the number of digits grows. So in practice, most software will use the `GCD` formulation to compute the `LCM`.
+
+```
+uint64_t LCM(span<uint64_t> s) {
+	const auto gcd = GCD(s);
+	uint64_t R = 1;
+	for (const auto& num : s) {
+		R *= (num / gcd);
+	}
+	return R;
+}
+```
 
 ## Detecting overflow
 `a + b` overflows when `a + b >= numeric_limits<>::max()`. Rearranging to avoid overflow in the detection, `a >= numeric_limits<>::max() - b`.
@@ -2619,7 +2692,68 @@ Levelorder
 TODO
 
 ## Succinct static trees
-TODO
+The basic idea here is to define a recursive serialization of a tree: `<node> = '(' <node0> ... <nodeN> ')'`. I.e. define `(` and `)` as open/close tags denoting a tree node, and `<nodeI>` form the children of that node. Hence we can nest indefinitely, forming any arbitrary tree. If we wanted to store additional data per-node inline, we could serialize extra data into the open/close tag. Or, we could store a separate array of that data, in some order that we can correspond to this structural serialization. This lets us separate the structure of the tree and encode it succinctly. The key insight here is that we can use a `0` bit for the open tag, and a `1` bit for the close tag, so we only require a bitmap with two bits per node. E.g. to encode
+```
+    0
+  1   2
+     3 4
+```
+We can write
+```
+(()(()()))
+0112334420
+```
+Where I've written the associated node underneath each tag. Converting the parentheses tags to bitmap form looks like:
+```
+(()(()()))
+0010010111
+```
+Note that this is a preorder tree traversal to generate the open tags. The close tags are a simultaneous postorder traversal. So to serialize, the recursive version looks like:
+```
+template<typename T> struct Node { vector<Node*> children; T value; };
+// Serialize the given `node` tree into `bitmap` (encoding tree structure) and `preorder` (encoding per-node data in preorder).
+template<typename T> void Serialize(Node<T>* node, vector<bool>& bitmap, vector<T>& preorder) {
+	if (!node) return;
+	bitmap.push_back(false);
+	preorder.push_back(node->value);
+	for (const auto& child : node->children) {
+		Serialize(child, bitmap, preorder);
+	}
+	bitmap.push_back(true);
+}
+```
+To parse the bitmap, maintain a stack of nodes. On `0`, make a new child node of the current stack top and push it onto the stack. On `1`, finish the current stack top and pop it.
+```
+template<typename T> struct Node { vector<Node*> children; T value; };
+// Deserialize the given `bitmap` (encoding tree structure) and `preorder` (encoding per-node data in preorder) into a preorder tree stored in `result` (root is `result[0]`).
+template<typename T> void Deserialize(const vector<bool>& bitmap, span<T> preorder, vector<unique_ptr<Node>>& result) {
+	assert(bitmap.size() % 2 == 0);
+	assert(preorder.size() == bitmap.size() / 2);
+	result.clear();
+	if (bitmap.empty()) return;
+	result.resize(bitmap.size() / 2);
+	stack<Node*> s;
+	size_t ipreorder = 0;
+	for (const auto& b : bitmap) {
+		if (b) {
+			assert(ipreorder < preorder.size());
+			auto node = make_unique<Node>(preorder[ipreorder]);
+			if (!s.empty()) {
+				auto* parent = s.top();
+				parent->children.push_back(node.get());
+			}
+			s.push(node.get());
+			result[ipreorder] = move(node);
+			++ipreorder;
+		}
+		else {
+			assert(!s.empty());
+			s.pop();
+		}
+	}
+	assert(s.empty());
+}
+```
 
 ## Left-child only binary tree encoding
 The key idea here is to eliminate the `right` pointer, and instead infer that 
