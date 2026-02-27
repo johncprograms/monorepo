@@ -2733,7 +2733,7 @@ template<typename T> void Deserialize(const vector<bool>& bitmap, span<T> preord
 	stack<Node*> s;
 	size_t ipreorder = 0;
 	for (const auto& b : bitmap) {
-		if (b) {
+		if (!b) {
 			assert(ipreorder < preorder.size());
 			auto node = make_unique<Node>(preorder[ipreorder]);
 			if (!s.empty()) {
